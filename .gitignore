@@ -1,0 +1,6 @@
+examples/
+docs/superpowers/
+storage/plugins/chatgpt_accounts/
+__pycache__/
+*.pyc
+dist/
