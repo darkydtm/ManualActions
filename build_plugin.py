@@ -33,11 +33,22 @@ def read_source(path: Path) -> str:
 
 def strip_local_imports(source: str) -> str:
 	lines = []
+	skipping_local_import = False
+	parentheses = 0
+
 	for line in source.splitlines():
 		stripped = line.strip()
+		if skipping_local_import:
+			parentheses += stripped.count("(") - stripped.count(")")
+			if parentheses <= 0:
+				skipping_local_import = False
+			continue
+
 		if stripped == "from __future__ import annotations":
 			continue
 		if stripped.startswith(LOCAL_IMPORT_PREFIXES):
+			parentheses = stripped.count("(") - stripped.count(")")
+			skipping_local_import = parentheses > 0
 			continue
 		lines.append(line)
 	return "\n".join(lines).strip()
