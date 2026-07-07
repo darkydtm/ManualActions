@@ -8,10 +8,11 @@ from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 from tg_bot import CBT
 from tg_bot.utils import escape
 
-from .blacklist import remove_user_from_blacklist
+from .blacklist import unblock_user
 from .constants import (
 	CBT_BLACKLIST_PAGE,
 	CBT_BL_UNBL,
+	CBT_STATUS_DETAIL,
 	CBT_STATUS_EDIT_AUTO,
 	CBT_STATUS_EDIT_RESPONSE,
 	CBT_STATUS_PAGE,
@@ -60,6 +61,10 @@ class TelegramSettingsUI:
 		self.host.tg.cbq_handler(
 			self.open_status_page,
 			lambda c: (c.data or "").startswith(CBT_STATUS_PAGE),
+		)
+		self.host.tg.cbq_handler(
+			self.open_status_detail,
+			lambda c: (c.data or "").startswith(CBT_STATUS_DETAIL),
 		)
 		self.host.tg.cbq_handler(
 			self.set_status,
@@ -111,29 +116,65 @@ class TelegramSettingsUI:
 
 	def show_status_page(self, chat_id: int, message_id: int | None = None, offset: str = "0", edit: bool = False) -> None:
 		current = self.host.settings["status"]
-		lines = [f"<b>Статусы</b>\n\nТекущий: <b>{escape(status_label(current))}</b>"]
+		lines = [f"<b>Статусы</b>\n\nТекущий: <b>{escape(status_label(current))}</b>\n\nВыберите статус для настройки:"]
 		keyboard = K(row_width=1)
 
 		for status_id in STATUS_IDS:
 			label = status_label(status_id)
-			response = self.host.settings["status_response_texts"][status_id].strip() or "не задан"
 			auto_config = self.host.settings["status_auto_messages"][status_id]
-			auto_text = str(auto_config["text"]).strip() or "не задан"
-			auto_state = "вкл" if auto_config["enabled"] else "выкл"
+			auto_state = "авто вкл" if auto_config["enabled"] else "авто выкл"
 			marker = "✅ " if current == status_id else ""
-
-			lines.append(
-				f"\n<b>{status_id}. {escape(label)}</b>\n"
-				f"!status: <code>{escape(self.preview(response))}</code>\n"
-				f"Авто: <b>{auto_state}</b>, <code>{escape(self.preview(auto_text))}</code>"
-			)
-			keyboard.add(B(f"{marker}{status_id}. {label}", callback_data=f"{CBT_STATUS_SET}{status_id}:{offset}"))
-			keyboard.add(B(f"Текст !status: {label}", callback_data=f"{CBT_STATUS_EDIT_RESPONSE}{status_id}:{offset}"))
-			keyboard.add(B(f"{'🟢' if auto_config['enabled'] else '🔴'} Авто: {label}", callback_data=f"{CBT_STATUS_TOGGLE_AUTO}{status_id}:{offset}"))
-			keyboard.add(B(f"Текст авто: {label}", callback_data=f"{CBT_STATUS_EDIT_AUTO}{status_id}:{offset}"))
+			keyboard.add(B(
+				f"{marker}{status_id}. {label} - {auto_state}",
+				callback_data=f"{CBT_STATUS_DETAIL}{status_id}:{offset}",
+			))
 
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.PLUGIN_SETTINGS}:{UUID}:{offset}"))
 		self.send_or_edit("\n".join(lines), chat_id, message_id, keyboard, edit)
+
+	def open_status_detail(self, call: telebot.types.CallbackQuery) -> None:
+		status_id, offset = self.parse_status_callback(call.data, CBT_STATUS_DETAIL)
+		if status_id is None:
+			self.host.tgbot.answer_callback_query(call.id)
+			return
+
+		self.show_status_detail(call.message.chat.id, call.message.id, status_id, offset=offset, edit=True)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def show_status_detail(
+		self,
+		chat_id: int,
+		message_id: int | None,
+		status_id: str,
+		offset: str = "0",
+		edit: bool = False,
+	) -> None:
+		current = self.host.settings["status"]
+		label = status_label(status_id)
+		response = self.host.settings["status_response_texts"][status_id].strip() or "не задан"
+		auto_config = self.host.settings["status_auto_messages"][status_id]
+		auto_text = str(auto_config["text"]).strip() or "не задан"
+		auto_state = "включён" if auto_config["enabled"] else "выключен"
+		current_state = "да" if current == status_id else "нет"
+		text = (
+			f"<b>{status_id}. {escape(label)}</b>\n\n"
+			f"Текущий: <b>{current_state}</b>\n"
+			f"Автоответ: <b>{auto_state}</b>\n\n"
+			f"<b>Ответ !status</b>\n<code>{escape(self.preview(response))}</code>\n\n"
+			f"<b>Автоответ</b>\n<code>{escape(self.preview(auto_text))}</code>"
+		)
+
+		keyboard = K(row_width=1)
+		if current != status_id:
+			keyboard.add(B("✅ Сделать текущим", callback_data=f"{CBT_STATUS_SET}{status_id}:{offset}"))
+		keyboard.add(B("✏️ Текст !status", callback_data=f"{CBT_STATUS_EDIT_RESPONSE}{status_id}:{offset}"))
+		keyboard.add(B(
+			"🟢 Выключить автоответ" if auto_config["enabled"] else "🔴 Включить автоответ",
+			callback_data=f"{CBT_STATUS_TOGGLE_AUTO}{status_id}:{offset}",
+		))
+		keyboard.add(B("✏️ Текст автоответа", callback_data=f"{CBT_STATUS_EDIT_AUTO}{status_id}:{offset}"))
+		keyboard.add(B("◀️ К статусам", callback_data=f"{CBT_STATUS_PAGE}{offset}"))
+		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
 
 	def set_status(self, call: telebot.types.CallbackQuery) -> None:
 		status_id, offset = self.parse_status_callback(call.data, CBT_STATUS_SET)
@@ -143,7 +184,7 @@ class TelegramSettingsUI:
 
 		self.host.settings["status"] = status_id
 		self.host.save_settings()
-		self.show_status_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
+		self.show_status_detail(call.message.chat.id, call.message.id, status_id, offset=offset, edit=True)
 		self.host.tgbot.answer_callback_query(call.id, f"Статус: {status_label(status_id)}")
 
 	def edit_response_text(self, call: telebot.types.CallbackQuery) -> None:
@@ -200,7 +241,7 @@ class TelegramSettingsUI:
 		self.host.settings["status_response_texts"][status_id] = self.clean_text(message.text)
 		self.host.save_settings()
 		keyboard = K().row(
-			B("◀️ Назад", callback_data=f"{CBT_STATUS_PAGE}{offset}"),
+			B("◀️ Назад", callback_data=f"{CBT_STATUS_DETAIL}{status_id}:{offset}"),
 			B("✏️ Изменить", callback_data=f"{CBT_STATUS_EDIT_RESPONSE}{status_id}:{offset}"),
 		)
 		self.host.tgbot.reply_to(message, "Текст ответа !status сохранён.", reply_markup=keyboard)
@@ -219,7 +260,7 @@ class TelegramSettingsUI:
 		self.host.settings["status_auto_messages"][status_id]["text"] = self.clean_text(message.text)
 		self.host.save_settings()
 		keyboard = K().row(
-			B("◀️ Назад", callback_data=f"{CBT_STATUS_PAGE}{offset}"),
+			B("◀️ Назад", callback_data=f"{CBT_STATUS_DETAIL}{status_id}:{offset}"),
 			B("✏️ Изменить", callback_data=f"{CBT_STATUS_EDIT_AUTO}{status_id}:{offset}"),
 		)
 		self.host.tgbot.reply_to(message, "Текст автоответа сохранён.", reply_markup=keyboard)
@@ -233,7 +274,7 @@ class TelegramSettingsUI:
 		config = self.host.settings["status_auto_messages"][status_id]
 		config["enabled"] = not config["enabled"]
 		self.host.save_settings()
-		self.show_status_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
+		self.show_status_detail(call.message.chat.id, call.message.id, status_id, offset=offset, edit=True)
 		self.host.tgbot.answer_callback_query(call.id)
 
 	def open_blacklist_page_callback(self, call: telebot.types.CallbackQuery) -> None:
@@ -262,7 +303,7 @@ class TelegramSettingsUI:
 
 	def unblock_user(self, call: telebot.types.CallbackQuery) -> None:
 		username = call.data.replace(CBT_BL_UNBL, "", 1).strip()
-		if remove_user_from_blacklist(self.host.cardinal, username):
+		if unblock_user(self.host.cardinal, username):
 			self.host.tgbot.answer_callback_query(call.id, f"✅ {username} убран из ЧС.")
 		else:
 			self.host.tgbot.answer_callback_query(call.id, f"{username} не найден в ЧС.", show_alert=True)
