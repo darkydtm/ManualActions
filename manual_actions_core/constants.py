@@ -30,11 +30,25 @@ SETTINGS_FILE = os.path.join(PLUGIN_FOLDER, "settings.json")
 SYNC_PLUGIN_UUID = "745ed27e-3196-47c3-9483-e382c09fd2d8"
 
 CBT_BL_UNBL = "ma_unbl:"
+CBT_BL_LIST = "ma_bl_list:"
+CBT_BL_CONFIRM = "ma_bl_confirm:"
+CBT_BL_CANCEL = "ma_bl_cancel:"
+CBT_BL_USER = "ma_bl_user:"
+CBT_BL_UNBLOCK = "ma_bl_unblock:"
 CBT_BLACKLIST_PAGE = "ma_blacklist_page:"
 CBT_REFUND_CNF = "ma_rfcnf:"
 CBT_REFUND_CANCEL = "ma_rfcancel:"
 
+CBT_LOT_REFRESH = "ma_lot_refresh:"
+CBT_LOT_VIEWED = "ma_lot_viewed:"
+
+CBT_ORDERS_PAGE = "ma_orders_page:"
+CBT_ORDERS_FILTER = "ma_orders_filter:"
+CBT_ORDERS_DETAIL = "ma_orders_detail:"
+CBT_ORDERS_REFUND = "ma_orders_refund:"
+
 CBT_STATUS_PAGE = "ma_status_page:"
+CBT_STATUS_DETAIL = "ma_status_detail:"
 CBT_STATUS_SET = "ma_status_set:"
 CBT_STATUS_EDIT_RESPONSE = "ma_status_edit_response:"
 CBT_STATUS_EDIT_AUTO = "ma_status_edit_auto:"

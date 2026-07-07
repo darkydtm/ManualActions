@@ -6,11 +6,19 @@ from typing import TYPE_CHECKING, Any, Protocol
 import telebot
 from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 
-from .blacklist import add_user_to_blacklist, remove_user_from_blacklist
 from .chat_sync import get_topic_context, is_in_sync_chat
-from .constants import CBT_REFUND_CANCEL, CBT_REFUND_CNF, LOGGER_NAME, LOGGER_PREFIX, UUID
+from .constants import (
+	CBT_REFUND_CANCEL,
+	CBT_REFUND_CNF,
+	LOGGER_NAME,
+	LOGGER_PREFIX,
+	UUID,
+)
 from .orders import get_pending_orders_for_user, refund_order
 from .status import InvalidStatusCommand, parse_telegram_status_command, status_label, toggle_status
+from .telegram_blacklist import TelegramBlacklistFlow
+from .telegram_lots import TelegramLotsFlow
+from .telegram_orders import TelegramOrdersFlow
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal
@@ -34,6 +42,9 @@ class CommandHost(Protocol):
 class TelegramCommands:
 	def __init__(self, host: CommandHost):
 		self.host = host
+		self.blacklist_flow = TelegramBlacklistFlow(host)
+		self.lots_flow = TelegramLotsFlow(host)
+		self.orders_flow = TelegramOrdersFlow(host, self.ask_refund_confirm)
 
 	def register(self) -> None:
 		if not self.host.tg:
@@ -47,17 +58,19 @@ class TelegramCommands:
 			self.cancel_refund,
 			lambda c: (c.data or "").startswith(CBT_REFUND_CANCEL),
 		)
+		self.blacklist_flow.register()
+		self.lots_flow.register()
+		self.orders_flow.register()
 		self.host.cardinal.add_telegram_commands(UUID, [
 			("refund", "Возврат: /refund [ID] или в топике без ID", True),
 			("bl", "В ЧС: /bl [ник] или в топике без ника", True),
 			("unbl", "Из ЧС: /unbl [ник] или в топике без ника", True),
 			("bl_list", "Показать чёрный список", True),
+			("lot", "Информация о лоте: /lot [ID] или в топике", True),
+			("orders", "Заказы пользователя: /orders [ник] или в топике", True),
 			("status", "Статус: /status [0/1/2]", True),
 		])
 		self.host.tg.msg_handler(self.cmd_refund, commands=["refund"])
-		self.host.tg.msg_handler(self.cmd_bl, commands=["bl"])
-		self.host.tg.msg_handler(self.cmd_unbl, commands=["unbl"])
-		self.host.tg.msg_handler(self.cmd_bl_list, commands=["bl_list"])
 		self.host.tg.msg_handler(self.cmd_status, commands=["status"])
 
 	def cmd_refund(self, message: telebot.types.Message) -> None:
@@ -152,69 +165,6 @@ class TelegramCommands:
 		self.host.tgbot.answer_callback_query(call.id, "Отменено.")
 		text = "❌ Возврат отменён." if order_id == "menu" else f"❌ Возврат по заказу #{order_id} отменён."
 		self.host.tgbot.edit_message_text(text, call.message.chat.id, call.message.id, reply_markup=None)
-
-	def cmd_bl(self, message: telebot.types.Message) -> None:
-		args = (message.text or "").split()
-		if len(args) == 1 and is_in_sync_chat(message):
-			context = get_topic_context(self.host.cardinal, message)
-			if not context:
-				self.host.tgbot.reply_to(message, "❌ Не удалось определить пользователя из топика.")
-				return
-			self.add_blacklist_user(message, context.username)
-			return
-
-		if len(args) < 2:
-			self.host.tgbot.reply_to(
-				message,
-				"⚠️ Использование: /bl <ник>\n"
-				"Или введите /bl в топике Chat Sync - ник возьмётся из темы.",
-			)
-			return
-
-		self.add_blacklist_user(message, args[1].lstrip("@"))
-
-	def add_blacklist_user(self, message: telebot.types.Message, username: str) -> None:
-		try:
-			if not add_user_to_blacklist(self.host.cardinal, username):
-				self.host.tgbot.reply_to(message, f"ℹ️ {username} уже в чёрном списке.")
-				return
-			self.host.tgbot.reply_to(message, f"🚫 {username} добавлен в чёрный список.")
-			logger.info(f"{LOGGER_PREFIX} Added {username} to blacklist.")
-		except Exception as exc:
-			self.host.tgbot.reply_to(message, f"❌ Ошибка: {exc}")
-
-	def cmd_unbl(self, message: telebot.types.Message) -> None:
-		args = (message.text or "").split()
-		if len(args) == 1 and is_in_sync_chat(message):
-			context = get_topic_context(self.host.cardinal, message)
-			if not context:
-				self.host.tgbot.reply_to(message, "❌ Не удалось определить пользователя из топика.")
-				return
-			self.remove_blacklist_user(message, context.username)
-			return
-
-		if len(args) < 2:
-			self.host.tgbot.reply_to(
-				message,
-				"⚠️ Использование: /unbl <ник>\n"
-				"Или введите /unbl в топике Chat Sync.",
-			)
-			return
-
-		self.remove_blacklist_user(message, args[1].lstrip("@"))
-
-	def remove_blacklist_user(self, message: telebot.types.Message, username: str) -> None:
-		try:
-			if not remove_user_from_blacklist(self.host.cardinal, username):
-				self.host.tgbot.reply_to(message, f"ℹ️ {username} не найден в чёрном списке.")
-				return
-			self.host.tgbot.reply_to(message, f"✅ {username} убран из чёрного списка.")
-			logger.info(f"{LOGGER_PREFIX} Removed {username} from blacklist.")
-		except Exception as exc:
-			self.host.tgbot.reply_to(message, f"❌ Ошибка: {exc}")
-
-	def cmd_bl_list(self, message: telebot.types.Message) -> None:
-		self.host.telegram_ui.show_blacklist_page(message.chat.id)
 
 	def cmd_status(self, message: telebot.types.Message) -> None:
 		try:
