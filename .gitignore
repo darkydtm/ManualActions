@@ -1,6 +1,6 @@
 examples/
 docs/superpowers/
-storage/plugins/chatgpt_accounts/
+storage/plugins/manual_actions/
 __pycache__/
 *.pyc
 dist/
