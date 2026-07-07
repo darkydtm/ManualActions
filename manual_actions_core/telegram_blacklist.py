@@ -18,6 +18,7 @@ from .constants import (
 	LOGGER_NAME,
 	LOGGER_PREFIX,
 )
+from .payloads import parse_blacklist_payload
 from .telegram_ui import delete_controlled_message, message_thread_id, send_menu
 
 if TYPE_CHECKING:
@@ -212,13 +213,3 @@ class TelegramBlacklistFlow:
 				call.message.id,
 				reply_markup=None,
 			)
-
-
-def parse_blacklist_payload(payload: str) -> tuple[str, str, int | str | None]:
-	parts = payload.split("|", 2)
-	action = parts[0] if parts else ""
-	username = parts[1] if len(parts) > 1 else ""
-	chat_id = parts[2] if len(parts) > 2 and parts[2] else None
-	if chat_id and str(chat_id).isdigit():
-		chat_id = int(chat_id)
-	return action, username, chat_id

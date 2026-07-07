@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(LOGGER_NAME)
 
 
-LOT_ID_RE = re.compile(r"(?:[?&](?:id|offer)=|/offer/|^#?)([A-Za-z0-9_-]+)")
+LOT_URL_ID_RE = re.compile(r"(?:[?&](?:id|offer)=|/offer/)([A-Za-z0-9_-]+)")
 
 
 @dataclass(frozen=True)
@@ -31,13 +31,16 @@ def extract_lot_id(value: str | None) -> str | None:
 	value = (value or "").strip()
 	if not value:
 		return None
+
+	match = LOT_URL_ID_RE.search(value)
+	if match:
+		return match.group(1)
+
 	if value.startswith("#"):
 		value = value[1:]
 	if value.isalnum() or "_" in value or "-" in value:
 		return value
-
-	match = LOT_ID_RE.search(value)
-	return match.group(1) if match else None
+	return None
 
 
 def get_profile_lots(cardinal: Cardinal) -> list[Any]:

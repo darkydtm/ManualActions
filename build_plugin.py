@@ -13,6 +13,7 @@ PACKAGE_MODULES = [
 	"status",
 	"settings",
 	"storage",
+	"payloads",
 	"funpay",
 	"blacklist",
 	"lots",

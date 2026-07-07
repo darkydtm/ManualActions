@@ -16,6 +16,7 @@ from .orders import (
 	get_orders_for_user,
 	order_status_key,
 )
+from .payloads import parse_three_part_payload, parse_two_part_payload
 from .telegram_ui import delete_controlled_message, message_thread_id, send_menu
 
 if TYPE_CHECKING:
@@ -142,14 +143,3 @@ class TelegramOrdersFlow:
 		state = ORDER_FILTERS.get(filter_key)
 		orders = get_orders_for_user(self.host.cardinal, username, state=state)
 		return next((order for order in orders if str(getattr(order, "id", "")) == str(order_id)), None)
-
-
-def parse_two_part_payload(payload: str) -> tuple[str, str]:
-	first, _, second = payload.partition("|")
-	return first, second or "all"
-
-
-def parse_three_part_payload(payload: str) -> tuple[str, str, str]:
-	first, _, tail = payload.partition("|")
-	second, _, third = tail.partition("|")
-	return first, second or "all", third
