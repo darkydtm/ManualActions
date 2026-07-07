@@ -30,6 +30,7 @@ SETTINGS_FILE = os.path.join(PLUGIN_FOLDER, "settings.json")
 SYNC_PLUGIN_UUID = "745ed27e-3196-47c3-9483-e382c09fd2d8"
 
 CBT_BL_UNBL = "ma_unbl:"
+CBT_BLACKLIST_PAGE = "ma_blacklist_page:"
 CBT_REFUND_CNF = "ma_rfcnf:"
 CBT_REFUND_CANCEL = "ma_rfcancel:"
 
