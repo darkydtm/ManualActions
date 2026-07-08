@@ -297,7 +297,7 @@ class TelegramSettingsUI:
 
 		keyboard = K(row_width=1)
 		for username in blacklist[:10]:
-			keyboard.add(B(f"❌ Убрать {username}", callback_data=f"{CBT_BL_UNBL}{username}"))
+			keyboard.add(B(f"✅ Разблокировать {username}", callback_data=f"{CBT_BL_UNBL}{username}"))
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.PLUGIN_SETTINGS}:{UUID}:{offset}"))
 		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
 

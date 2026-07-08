@@ -63,8 +63,7 @@ class TelegramCommands:
 		self.orders_flow.register()
 		self.host.cardinal.add_telegram_commands(UUID, [
 			("refund", "Возврат: /refund [ID] или в топике без ID", True),
-			("bl", "В ЧС: /bl [ник] или в топике без ника", True),
-			("unbl", "Из ЧС: /unbl [ник] или в топике без ника", True),
+			("bl", "Переключить ЧС: /bl [ник] или в топике без ника", True),
 			("bl_list", "Показать чёрный список", True),
 			("lot", "Информация о лоте: /lot [ID] или в топике", True),
 			("orders", "Заказы пользователя: /orders [ник] или в топике", True),

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 import telebot
 from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 
-from .blacklist import block_user, list_blocked_users, unblock_user
+from .blacklist import block_user, list_blocked_users, toggle_action_for_user, unblock_user
 from .chat_sync import get_topic_context, is_in_sync_chat
 from .constants import (
 	CBT_BL_CANCEL,
@@ -61,7 +61,6 @@ class TelegramBlacklistFlow:
 			lambda c: (c.data or "").startswith(CBT_BL_UNBLOCK),
 		)
 		self.host.tg.msg_handler(self.cmd_bl, commands=["bl"])
-		self.host.tg.msg_handler(self.cmd_unbl, commands=["unbl"])
 		self.host.tg.msg_handler(self.cmd_bl_list, commands=["bl_list"])
 
 	def cmd_bl(self, message: telebot.types.Message) -> None:
@@ -71,38 +70,20 @@ class TelegramBlacklistFlow:
 			if not context:
 				self.host.tgbot.reply_to(message, "❌ Не удалось определить пользователя из топика.")
 				return
-			self.ask_confirm(message, "block", context.username, context.fp_chat_id)
+			self.ask_confirm(message, toggle_action_for_user(self.host.cardinal, context.username), context.username, context.fp_chat_id)
 			return
 
 		if len(args) < 2:
 			self.host.tgbot.reply_to(
 				message,
 				"⚠️ Использование: /bl <ник>\n"
-				"Или введите /bl в топике Chat Sync - ник возьмётся из темы.",
+				"Или введите /bl в топике Chat Sync - ник возьмётся из темы.\n"
+				"Команда блокирует или разблокирует пользователя.",
 			)
 			return
 
-		self.ask_confirm(message, "block", args[1].lstrip("@"), None)
-
-	def cmd_unbl(self, message: telebot.types.Message) -> None:
-		args = (message.text or "").split()
-		if len(args) == 1 and is_in_sync_chat(message):
-			context = get_topic_context(self.host.cardinal, message)
-			if not context:
-				self.host.tgbot.reply_to(message, "❌ Не удалось определить пользователя из топика.")
-				return
-			self.ask_confirm(message, "unblock", context.username, context.fp_chat_id)
-			return
-
-		if len(args) < 2:
-			self.host.tgbot.reply_to(
-				message,
-				"⚠️ Использование: /unbl <ник>\n"
-				"Или введите /unbl в топике Chat Sync.",
-			)
-			return
-
-		self.ask_confirm(message, "unblock", args[1].lstrip("@"), None)
+		username = args[1].lstrip("@")
+		self.ask_confirm(message, toggle_action_for_user(self.host.cardinal, username), username, None)
 
 	def ask_confirm(
 		self,
@@ -181,7 +162,7 @@ class TelegramBlacklistFlow:
 		self.host.tgbot.answer_callback_query(call.id)
 		delete_controlled_message(self.host.tgbot, call.message)
 		keyboard = K(row_width=1)
-		keyboard.add(B("✅ Разбанить", callback_data=f"{CBT_BL_UNBLOCK}{username}"))
+		keyboard.add(B("✅ Разблокировать", callback_data=f"{CBT_BL_UNBLOCK}{username}"))
 		keyboard.add(B("◀️ Назад", callback_data=CBT_BL_LIST))
 		send_menu(
 			self.host.tgbot,

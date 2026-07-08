@@ -31,6 +31,10 @@ def list_blocked_users(cardinal: Cardinal) -> list[str]:
 	return sorted(list(cardinal.blacklist or []), key=lambda value: value.lower())
 
 
+def toggle_action_for_user(cardinal: Cardinal, username: str) -> str:
+	return "unblock" if username in (cardinal.blacklist or []) else "block"
+
+
 def block_user(cardinal: Cardinal, username: str, user_id: int | None = None, chat_id: int | str | None = None) -> bool:
 	already_cached = username in cardinal.blacklist
 	identity = resolve_user_identity(cardinal, username, chat_id)
