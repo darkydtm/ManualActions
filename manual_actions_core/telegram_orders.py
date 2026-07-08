@@ -16,7 +16,7 @@ from .orders import (
 	get_orders_for_user,
 	order_status_key,
 )
-from .payloads import parse_three_part_payload, parse_two_part_payload
+from .payloads import CallbackPayloadCache, parse_three_part_payload, parse_two_part_payload
 from .telegram_ui import delete_controlled_message, message_thread_id, send_menu
 
 if TYPE_CHECKING:
@@ -34,6 +34,7 @@ class TelegramOrdersFlow:
 	def __init__(self, host: OrdersHost, ask_refund_confirm: Callable[[int, str], None]):
 		self.host = host
 		self.ask_refund_confirm = ask_refund_confirm
+		self.detail_payloads = CallbackPayloadCache()
 
 	def register(self) -> None:
 		self.host.tg.cbq_handler(
@@ -107,9 +108,10 @@ class TelegramOrdersFlow:
 
 		keyboard = K(row_width=1)
 		for order in orders[:20]:
+			token = self.detail_payloads.put((username, filter_key, str(getattr(order, "id", ""))))
 			keyboard.add(B(
 				format_order_summary(order)[:64],
-				callback_data=f"{CBT_ORDERS_DETAIL}{username}|{filter_key}|{getattr(order, 'id', '')}",
+				callback_data=f"{CBT_ORDERS_DETAIL}{token}",
 			))
 		keyboard.add(B("◀️ Категории", callback_data=f"{CBT_ORDERS_FILTER}{username}|menu"))
 		text = (
@@ -120,9 +122,23 @@ class TelegramOrdersFlow:
 		send_menu(self.host.tgbot, chat_id, text, keyboard, thread_id)
 
 	def detail_callback(self, call: telebot.types.CallbackQuery) -> None:
-		username, filter_key, order_id = parse_three_part_payload(call.data.replace(CBT_ORDERS_DETAIL, "", 1))
+		payload = call.data.replace(CBT_ORDERS_DETAIL, "", 1)
+		cached = self.detail_payloads.get(payload)
+		if cached:
+			username, filter_key, order_id = cached
+		else:
+			username, filter_key, order_id = parse_three_part_payload(payload)
 		self.host.tgbot.answer_callback_query(call.id)
 		delete_controlled_message(self.host.tgbot, call.message)
+		if not username or not order_id:
+			send_menu(
+				self.host.tgbot,
+				call.message.chat.id,
+				"❌ Список заказов устарел. Откройте /orders заново.",
+				K(row_width=1),
+				message_thread_id(call.message),
+			)
+			return
 		order = self.find_order(username, filter_key, order_id)
 		keyboard = K(row_width=1)
 		if order and order_status_key(order) == "paid":

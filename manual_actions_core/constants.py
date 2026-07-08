@@ -43,6 +43,7 @@ CBT_REFUND_CANCEL = "ma_rfcancel:"
 
 CBT_LOT_REFRESH = "ma_lot_refresh:"
 CBT_LOT_VIEWED = "ma_lot_viewed:"
+CBT_LOT_SECTION = "ma_lot_section:"
 
 CBT_ORDERS_PAGE = "ma_orders_page:"
 CBT_ORDERS_FILTER = "ma_orders_filter:"
