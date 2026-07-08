@@ -18,7 +18,7 @@ DESCRIPTION = (
 	"/status [0/1/2] - переключить текущий статус\n"
 	"!status - показать статус в FunPay"
 )
-CREDITS = "@developer"
+CREDITS = "beavers_best"
 UUID = "b7e2d3f4-1a2b-4c5d-8e9f-0a1b2c3d4e5f"
 SETTINGS_PAGE = True
 
