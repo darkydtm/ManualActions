@@ -1,5 +1,25 @@
 from __future__ import annotations
 
+from typing import Any
+
+
+class CallbackPayloadCache:
+	def __init__(self, limit: int = 300):
+		self.limit = max(1, limit)
+		self.counter = 0
+		self.payloads: dict[str, Any] = {}
+
+	def put(self, payload: Any) -> str:
+		self.counter += 1
+		token = format(self.counter, "x")
+		self.payloads[token] = payload
+		while len(self.payloads) > self.limit:
+			self.payloads.pop(next(iter(self.payloads)))
+		return token
+
+	def get(self, token: str) -> Any | None:
+		return self.payloads.get(token)
+
 
 def parse_blacklist_payload(payload: str) -> tuple[str, str, int | str | None]:
 	parts = payload.split("|", 2)
