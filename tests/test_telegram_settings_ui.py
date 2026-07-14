@@ -157,7 +157,8 @@ class TelegramSettingsUITest(unittest.TestCase):
 
 		text, _, _, keyboard = bot.edits[0]
 		callbacks = [row[0].callback_data for row in keyboard.rows]
-		self.assertIn("Интервал: <b>Час</b>", text)
+		self.assertIn("<b>Интервал проверки обновлений</b>", text)
+		self.assertIn("Текущий: <b>Час</b>", text)
 		self.assertIn(f"{CBT_UPDATER_INTERVAL}60:0", callbacks)
 		self.assertIn(f"{CBT_UPDATER_INTERVAL}1800:0", callbacks)
 		self.assertIn(f"{CBT_UPDATER_INTERVAL}3600:0", callbacks)

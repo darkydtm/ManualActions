@@ -357,7 +357,6 @@ class TelegramSettingsUI:
 			"<b>Автообновление</b>\n\n"
 			f"Текущая версия: <code>{escape(VERSION)}</code>\n"
 			f"Режим: <b>{escape(self.updater_mode_label(config['mode']))}</b>\n"
-			f"Интервал: <b>{escape(self.updater_interval_label(config['check_interval_seconds']))}</b>\n"
 			f"Последняя проверка: <code>{escape(config['last_checked_version'] or 'не было')}</code>\n"
 			f"Установленный релиз: <code>{escape(config['installed_version'] or 'не задан')}</code>\n"
 			f"Пропущенный релиз: <code>{escape(config['skipped_version'] or 'не задан')}</code>"
@@ -370,6 +369,10 @@ class TelegramSettingsUI:
 				f"{marker}{self.updater_mode_label(mode)}",
 				callback_data=f"{CBT_UPDATER_MODE}{mode}:{offset}",
 			))
+		text += (
+			"\n\n<b>Интервал проверки обновлений</b>\n"
+			f"Текущий: <b>{escape(self.updater_interval_label(config['check_interval_seconds']))}</b>"
+		)
 		for interval, label in UPDATER_INTERVAL_PRESETS:
 			marker = "✅ " if config["check_interval_seconds"] == interval else ""
 			keyboard.add(B(
