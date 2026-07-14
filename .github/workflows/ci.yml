@@ -31,7 +31,7 @@ jobs:
       - name: Compile Python sources
         run: |
           python -m py_compile manual_actions.py build_plugin.py
-          find manual_actions_core -name '*.py' -print0 | xargs -0 python -m py_compile
+          find core -name '*.py' -print0 | xargs -0 python -m py_compile
 
       - name: Check removed reference package stays absent
         run: |
