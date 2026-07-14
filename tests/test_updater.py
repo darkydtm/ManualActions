@@ -64,6 +64,17 @@ class UpdaterTest(unittest.TestCase):
 			"https://github.com/darkydtm/ManualActions/releases/download/1.3.1/manual_actions.py",
 		)
 
+	def test_fetches_sha_named_manual_actions_asset(self):
+		def request_func(request, timeout=15):
+			return FakeResponse([release("1.3.1", asset_name="manual_actions-abc123.py")])
+
+		result = fetch_latest_release(request_func)
+
+		self.assertEqual(
+			result.asset_url,
+			"https://github.com/darkydtm/ManualActions/releases/download/1.3.1/manual_actions-abc123.py",
+		)
+
 	def test_fetches_first_non_draft_release(self):
 		requests = []
 
@@ -104,7 +115,19 @@ class UpdaterTest(unittest.TestCase):
 			self.assertFalse(current.exists())
 			self.assertEqual(target.read_text(encoding="utf-8"), "NEW = True\n")
 
-	def test_replaces_current_manual_actions_file(self):
+	def test_installs_update_from_main_py_to_canonical_file(self):
+		with tempfile.TemporaryDirectory() as directory:
+			current = Path(directory) / "main.py"
+			target = Path(directory) / "manual_actions.py"
+			current.write_text("OLD = True\n", encoding="utf-8")
+
+			result = install_plugin_update(current, b"NEW = True\n")
+
+			self.assertEqual(result, target)
+			self.assertFalse(current.exists())
+			self.assertEqual(target.read_text(encoding="utf-8"), "NEW = True\n")
+
+	def test_replaces_current_canonical_manual_actions_file(self):
 		with tempfile.TemporaryDirectory() as directory:
 			current = Path(directory) / "manual_actions.py"
 			current.write_text("OLD = True\n", encoding="utf-8")
@@ -174,6 +197,25 @@ class UpdaterTest(unittest.TestCase):
 
 		self.assertTrue(result.update_available)
 		self.assertEqual(available, ["1.3.1"])
+
+	def test_disabled_mode_does_not_poll_github(self):
+		settings = {"updater": {"mode": "disabled", "installed_version": "", "skipped_version": ""}}
+
+		def request_func(request, timeout=15):
+			raise AssertionError("disabled updater must not poll GitHub")
+
+		updater = ManualActionsUpdater(
+			settings,
+			lambda: None,
+			"manual_actions.py",
+			"1.3.0",
+			request_func=request_func,
+		)
+
+		result = updater.check_once()
+
+		self.assertFalse(result.update_available)
+		self.assertEqual(result.message, "disabled")
 
 	def test_skipped_release_is_not_reported_again(self):
 		settings = {"updater": {"mode": "ask", "installed_version": "", "skipped_version": "1.3.1"}}

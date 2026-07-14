@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 
 RELEASES_API_URL = "https://api.github.com/repos/darkydtm/ManualActions/releases?per_page=10"
 PLUGIN_ASSET_NAME = "manual_actions.py"
+PLUGIN_ASSET_PREFIX = "manual_actions"
 TARGET_PLUGIN_NAME = "manual_actions.py"
 UPDATER_USER_AGENT = "ManualActionsUpdater/1.0"
 POLL_INTERVAL_SECONDS = 3600
@@ -104,12 +105,12 @@ class ManualActionsUpdater:
 			self.on_update_available(release)
 		return ReleaseCheckResult(release, True, "available")
 
-	def install_latest(self, expected_version: str | None = None) -> Path:
+	def install_latest(self, expected_version: str | None = None, notify: bool = True) -> Path:
 		release = fetch_latest_release(self.request_func)
 		if expected_version and release.version != expected_version:
 			raise UpdaterError("Найден другой релиз. Откройте обновление заново.")
 		path = self.install_release(release)
-		if self.on_update_installed:
+		if notify and self.on_update_installed:
 			self.on_update_installed(release, path)
 		return path
 
@@ -154,9 +155,9 @@ def fetch_latest_release(request_func: Callable[..., Any] = urlopen, timeout: in
 	if not version:
 		raise UpdaterError("В релизе GitHub нет tag_name.")
 
-	asset_url = asset_download_url(release_data, PLUGIN_ASSET_NAME)
+	asset_url = plugin_asset_download_url(release_data)
 	if not asset_url:
-		raise UpdaterError(f"В релизе {version} нет файла {PLUGIN_ASSET_NAME}.")
+		raise UpdaterError(f"В релизе {version} нет файла manual_actions*.py.")
 
 	return UpdaterRelease(
 		version=version,
@@ -209,6 +210,30 @@ def asset_download_url(release_data: dict[str, Any], asset_name: str) -> str:
 			continue
 		if asset.get("name") == asset_name and isinstance(asset.get("browser_download_url"), str):
 			return asset["browser_download_url"]
+	return ""
+
+
+def plugin_asset_download_url(release_data: dict[str, Any]) -> str:
+	exact = asset_download_url(release_data, PLUGIN_ASSET_NAME)
+	if exact:
+		return exact
+
+	assets = release_data.get("assets")
+	if not isinstance(assets, list):
+		return ""
+
+	for asset in assets:
+		if not isinstance(asset, dict):
+			continue
+		name = asset.get("name")
+		url = asset.get("browser_download_url")
+		if (
+			isinstance(name, str)
+			and isinstance(url, str)
+			and name.startswith(PLUGIN_ASSET_PREFIX)
+			and name.endswith(".py")
+		):
+			return url
 	return ""
 
 
