@@ -40,3 +40,13 @@ jobs:
             -g '!AGENTS.md' \
             -g '!docs/superpowers/**' \
             -g '!examples/**'
+
+      - name: Build plugin artifact
+        run: python build_plugin.py
+
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-actions-plugin
+          path: dist/manual_actions.py
+          if-no-files-found: error
