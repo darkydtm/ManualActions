@@ -19,6 +19,7 @@ from .status import InvalidStatusCommand, parse_telegram_status_command, status_
 from .telegram_blacklist import TelegramBlacklistFlow
 from .telegram_lots import TelegramLotsFlow
 from .telegram_orders import TelegramOrdersFlow
+from .pastebin.telegram import TelegramPastebinFlow
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal
@@ -45,6 +46,7 @@ class TelegramCommands:
 		self.blacklist_flow = TelegramBlacklistFlow(host)
 		self.lots_flow = TelegramLotsFlow(host)
 		self.orders_flow = TelegramOrdersFlow(host, self.ask_refund_confirm)
+		self.pastebin_flow = TelegramPastebinFlow(host)
 
 	def register(self) -> None:
 		if not self.host.tg:
@@ -61,12 +63,14 @@ class TelegramCommands:
 		self.blacklist_flow.register()
 		self.lots_flow.register()
 		self.orders_flow.register()
+		self.pastebin_flow.register()
 		self.host.cardinal.add_telegram_commands(UUID, [
 			("refund", "Возврат: /refund [ID] или в топике без ID", True),
 			("bl", "Переключить ЧС: /bl [ник] или в топике без ника", True),
 			("bl_list", "Показать чёрный список", True),
 			("lot", "Информация о лоте: /lot [ID] или в топике", True),
 			("orders", "Заказы пользователя: /orders [ник] или в топике", True),
+			("pastebin", "Создать raw-ссылку Pastebin: /pastebin <текст> или reply", True),
 			("status", "Статус: /status [0/1/2]", True),
 		])
 		self.host.tg.msg_handler(self.cmd_refund, commands=["refund"])
