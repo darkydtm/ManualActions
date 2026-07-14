@@ -1,3 +1,4 @@
+[English](READMDE-en.md) | [Русский](README.md)
 # Быстрый старт
 1. Соберите плагин
 ```python
