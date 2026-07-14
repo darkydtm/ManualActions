@@ -4,7 +4,7 @@
 ```python
 python3 build_plugin.py
 ```
-2. Установите плагин по пути manual_actions.py в папке dist/ в Cardinal
+2. Установите плагин manual_actions.py в папке dist/ в Cardinal
 
 <details>
 <summary>Скриншоты</summary>
