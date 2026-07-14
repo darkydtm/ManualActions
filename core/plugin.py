@@ -80,7 +80,7 @@ class ManualActionsPlugin:
 	def refresh_updater(self) -> None:
 		if not self.updater:
 			return
-		if not self.tg or self.settings["updater"]["mode"] == MODE_DISABLED:
+		if self.settings["updater"]["mode"] == MODE_DISABLED:
 			self.updater.stop()
 			return
 		self.updater.start()

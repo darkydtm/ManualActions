@@ -19,15 +19,28 @@ from .constants import (
 	CBT_STATUS_PAGE,
 	CBT_STATUS_SET,
 	CBT_STATUS_TOGGLE_AUTO,
+	CBT_UPDATER_INSTALL,
+	CBT_UPDATER_MODE,
+	CBT_UPDATER_PAGE,
+	CBT_UPDATER_SKIP,
 	STATE_STATUS_AUTO,
 	STATE_STATUS_RESPONSE,
 	UUID,
+	VERSION,
 )
 from .pastebin.ui import TelegramPastebinSettingsUI
 from .status import STATUS_IDS, status_label
+from .updater import MODE_ASK, MODE_DISABLED, MODE_ENABLED
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal
+
+
+UPDATER_MODE_LABELS = {
+	MODE_ENABLED: "Включить",
+	MODE_DISABLED: "Выключить",
+	MODE_ASK: "Спрашивать каждый раз",
+}
 
 
 class SettingsHost(Protocol):
@@ -37,6 +50,15 @@ class SettingsHost(Protocol):
 	settings: dict[str, Any]
 
 	def save_settings(self) -> None:
+		...
+
+	def refresh_updater(self) -> None:
+		...
+
+	def install_update_version(self, version: str) -> Any:
+		...
+
+	def skip_update_version(self, version: str) -> None:
 		...
 
 
@@ -87,6 +109,22 @@ class TelegramSettingsUI:
 			lambda c: (c.data or "").startswith(CBT_STATUS_TOGGLE_AUTO),
 		)
 		self.host.tg.cbq_handler(
+			self.open_updater_page,
+			lambda c: (c.data or "").startswith(CBT_UPDATER_PAGE),
+		)
+		self.host.tg.cbq_handler(
+			self.set_updater_mode,
+			lambda c: (c.data or "").startswith(CBT_UPDATER_MODE),
+		)
+		self.host.tg.cbq_handler(
+			self.install_update,
+			lambda c: (c.data or "").startswith(CBT_UPDATER_INSTALL),
+		)
+		self.host.tg.cbq_handler(
+			self.skip_update,
+			lambda c: (c.data or "").startswith(CBT_UPDATER_SKIP),
+		)
+		self.host.tg.cbq_handler(
 			self.open_blacklist_page_callback,
 			lambda c: (c.data or "").startswith(CBT_BLACKLIST_PAGE),
 		)
@@ -100,6 +138,7 @@ class TelegramSettingsUI:
 		keyboard = K(row_width=1)
 		keyboard.add(B("Статусы", callback_data=f"{CBT_STATUS_PAGE}{offset}"))
 		keyboard.add(B("Pastebin", callback_data=f"{CBT_PASTEBIN_PAGE}{offset}"))
+		keyboard.add(B("Автообновление", callback_data=f"{CBT_UPDATER_PAGE}{offset}"))
 		keyboard.add(B("Чёрный список", callback_data=f"{CBT_BLACKLIST_PAGE}{offset}"))
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.EDIT_PLUGIN}:{UUID}:{offset}"))
 		text = (
@@ -282,6 +321,83 @@ class TelegramSettingsUI:
 		self.show_status_detail(call.message.chat.id, call.message.id, status_id, offset=offset, edit=True)
 		self.host.tgbot.answer_callback_query(call.id)
 
+	def open_updater_page(self, call: telebot.types.CallbackQuery) -> None:
+		offset = self.get_offset(call.data)
+		self.show_updater_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def show_updater_page(self, chat_id: int, message_id: int | None = None, offset: str = "0", edit: bool = False) -> None:
+		config = self.host.settings["updater"]
+		text = (
+			"<b>Автообновление</b>\n\n"
+			f"Текущая версия: <code>{escape(VERSION)}</code>\n"
+			f"Режим: <b>{escape(self.updater_mode_label(config['mode']))}</b>\n"
+			f"Последняя проверка: <code>{escape(config['last_checked_version'] or 'не было')}</code>\n"
+			f"Установленный релиз: <code>{escape(config['installed_version'] or 'не задан')}</code>\n"
+			f"Пропущенный релиз: <code>{escape(config['skipped_version'] or 'не задан')}</code>"
+		)
+
+		keyboard = K(row_width=1)
+		for mode in (MODE_ENABLED, MODE_DISABLED, MODE_ASK):
+			marker = "✅ " if config["mode"] == mode else ""
+			keyboard.add(B(
+				f"{marker}{self.updater_mode_label(mode)}",
+				callback_data=f"{CBT_UPDATER_MODE}{mode}:{offset}",
+			))
+		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.PLUGIN_SETTINGS}:{UUID}:{offset}"))
+		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
+
+	def set_updater_mode(self, call: telebot.types.CallbackQuery) -> None:
+		mode, offset = self.parse_two_part_callback(call.data, CBT_UPDATER_MODE)
+		if mode not in UPDATER_MODE_LABELS:
+			self.host.tgbot.answer_callback_query(call.id)
+			return
+
+		self.host.settings["updater"]["mode"] = mode
+		self.host.save_settings()
+		self.host.refresh_updater()
+		self.show_updater_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
+		self.host.tgbot.answer_callback_query(call.id, self.updater_mode_label(mode))
+
+	def install_update(self, call: telebot.types.CallbackQuery) -> None:
+		version = call.data.replace(CBT_UPDATER_INSTALL, "", 1).strip()
+		if not version:
+			self.host.tgbot.answer_callback_query(call.id)
+			return
+
+		self.host.tgbot.answer_callback_query(call.id, "Обновляю...")
+		try:
+			path = self.host.install_update_version(version)
+			text = (
+				"<b>Manual Actions</b>\n\n"
+				f"✅ Обновление <code>{escape(version)}</code> установлено.\n"
+				f"Файл: <code>{escape(str(path))}</code>\n\n"
+				"Перезапустите Cardinal, чтобы загрузить новую версию."
+			)
+			self.host.tgbot.edit_message_text(text, call.message.chat.id, call.message.id, reply_markup=None)
+		except Exception as exc:
+			self.host.tgbot.edit_message_text(
+				f"❌ Не удалось установить обновление:\n<code>{escape(str(exc))}</code>",
+				call.message.chat.id,
+				call.message.id,
+				reply_markup=None,
+			)
+
+	def skip_update(self, call: telebot.types.CallbackQuery) -> None:
+		version = call.data.replace(CBT_UPDATER_SKIP, "", 1).strip()
+		if not version:
+			self.host.tgbot.answer_callback_query(call.id)
+			return
+
+		self.host.skip_update_version(version)
+		self.host.tgbot.answer_callback_query(call.id, "Обновление пропущено.")
+		self.host.tgbot.edit_message_text(
+			f"❌ Обновление <code>{escape(version)}</code> пропущено.",
+			call.message.chat.id,
+			call.message.id,
+			reply_markup=None,
+		)
+
 	def open_blacklist_page_callback(self, call: telebot.types.CallbackQuery) -> None:
 		offset = self.get_offset(call.data)
 		self.show_blacklist_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
@@ -332,6 +448,13 @@ class TelegramSettingsUI:
 			return None, offset
 		return status_id, offset
 
+	def parse_two_part_callback(self, data: str, prefix: str) -> tuple[str, str]:
+		payload = data.replace(prefix, "", 1)
+		parts = payload.split(":", 1)
+		value = parts[0]
+		offset = parts[1] if len(parts) > 1 and parts[1].isdigit() else "0"
+		return value, offset
+
 	def get_offset(self, data: str) -> str:
 		parts = data.split(":")
 		return parts[-1] if parts and parts[-1].isdigit() else "0"
@@ -344,3 +467,6 @@ class TelegramSettingsUI:
 		if len(text) > 160:
 			return f"{text[:160]}\n..."
 		return text
+
+	def updater_mode_label(self, mode: str) -> str:
+		return UPDATER_MODE_LABELS.get(mode, mode)
