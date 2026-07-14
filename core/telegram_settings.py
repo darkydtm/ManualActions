@@ -19,12 +19,15 @@ from .constants import (
 	CBT_STATUS_PAGE,
 	CBT_STATUS_SET,
 	CBT_STATUS_TOGGLE_AUTO,
+	CBT_UPDATER_CUSTOM_INTERVAL,
 	CBT_UPDATER_INSTALL,
+	CBT_UPDATER_INTERVAL,
 	CBT_UPDATER_MODE,
 	CBT_UPDATER_PAGE,
 	CBT_UPDATER_SKIP,
 	STATE_STATUS_AUTO,
 	STATE_STATUS_RESPONSE,
+	STATE_UPDATER_CUSTOM_INTERVAL,
 	UUID,
 	VERSION,
 )
@@ -41,6 +44,16 @@ UPDATER_MODE_LABELS = {
 	MODE_DISABLED: "Выключить",
 	MODE_ASK: "Спрашивать каждый раз",
 }
+
+UPDATER_INTERVAL_PRESETS = (
+	(60, "Минута"),
+	(1800, "Полчаса"),
+	(3600, "Час"),
+	(86400, "Сутки"),
+	(604800, "Неделя"),
+)
+
+UPDATER_INTERVAL_LABELS = dict(UPDATER_INTERVAL_PRESETS)
 
 
 class SettingsHost(Protocol):
@@ -80,6 +93,10 @@ class TelegramSettingsUI:
 			self.save_auto_text,
 			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_STATUS_AUTO),
 		)
+		self.host.tg.msg_handler(
+			self.save_custom_updater_interval,
+			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_UPDATER_CUSTOM_INTERVAL),
+		)
 		self.host.tg.cbq_handler(
 			self.open_settings,
 			lambda c: f"{CBT.PLUGIN_SETTINGS}:{UUID}" in (c.data or ""),
@@ -115,6 +132,14 @@ class TelegramSettingsUI:
 		self.host.tg.cbq_handler(
 			self.set_updater_mode,
 			lambda c: (c.data or "").startswith(CBT_UPDATER_MODE),
+		)
+		self.host.tg.cbq_handler(
+			self.set_updater_interval,
+			lambda c: (c.data or "").startswith(CBT_UPDATER_INTERVAL),
+		)
+		self.host.tg.cbq_handler(
+			self.edit_custom_updater_interval,
+			lambda c: (c.data or "").startswith(CBT_UPDATER_CUSTOM_INTERVAL),
 		)
 		self.host.tg.cbq_handler(
 			self.install_update,
@@ -332,6 +357,7 @@ class TelegramSettingsUI:
 			"<b>Автообновление</b>\n\n"
 			f"Текущая версия: <code>{escape(VERSION)}</code>\n"
 			f"Режим: <b>{escape(self.updater_mode_label(config['mode']))}</b>\n"
+			f"Интервал: <b>{escape(self.updater_interval_label(config['check_interval_seconds']))}</b>\n"
 			f"Последняя проверка: <code>{escape(config['last_checked_version'] or 'не было')}</code>\n"
 			f"Установленный релиз: <code>{escape(config['installed_version'] or 'не задан')}</code>\n"
 			f"Пропущенный релиз: <code>{escape(config['skipped_version'] or 'не задан')}</code>"
@@ -344,6 +370,13 @@ class TelegramSettingsUI:
 				f"{marker}{self.updater_mode_label(mode)}",
 				callback_data=f"{CBT_UPDATER_MODE}{mode}:{offset}",
 			))
+		for interval, label in UPDATER_INTERVAL_PRESETS:
+			marker = "✅ " if config["check_interval_seconds"] == interval else ""
+			keyboard.add(B(
+				f"{marker}{label}",
+				callback_data=f"{CBT_UPDATER_INTERVAL}{interval}:{offset}",
+			))
+		keyboard.add(B("✏️ Свой интервал", callback_data=f"{CBT_UPDATER_CUSTOM_INTERVAL}{offset}"))
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.PLUGIN_SETTINGS}:{UUID}:{offset}"))
 		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
 
@@ -358,6 +391,60 @@ class TelegramSettingsUI:
 		self.host.refresh_updater()
 		self.show_updater_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
 		self.host.tgbot.answer_callback_query(call.id, self.updater_mode_label(mode))
+
+	def set_updater_interval(self, call: telebot.types.CallbackQuery) -> None:
+		value, offset = self.parse_two_part_callback(call.data, CBT_UPDATER_INTERVAL)
+		interval = self.parse_positive_int(value)
+		if interval is None:
+			self.host.tgbot.answer_callback_query(call.id)
+			return
+
+		self.save_updater_interval(interval)
+		self.show_updater_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
+		self.host.tgbot.answer_callback_query(call.id, self.updater_interval_label(interval))
+
+	def edit_custom_updater_interval(self, call: telebot.types.CallbackQuery) -> None:
+		offset = self.get_offset(call.data)
+		result = self.host.tgbot.send_message(
+			call.message.chat.id,
+			"Введите интервал проверки обновлений в минутах. Минимум - 1.",
+			reply_markup=tg_bot.static_keyboards.CLEAR_STATE_BTN(),
+		)
+		self.host.tg.set_state(
+			call.message.chat.id,
+			result.id,
+			call.from_user.id,
+			STATE_UPDATER_CUSTOM_INTERVAL,
+			{"offset": offset},
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def save_custom_updater_interval(self, message: telebot.types.Message) -> None:
+		state = self.host.tg.get_state(message.chat.id, message.from_user.id) or {}
+		data = state.get("data", {})
+		offset = data.get("offset", "0")
+		minutes = self.parse_positive_int(message.text)
+		if minutes is None:
+			self.host.tgbot.reply_to(message, "Введите положительное число минут.")
+			return
+
+		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
+		interval = minutes * 60
+		self.save_updater_interval(interval)
+		keyboard = K().row(
+			B("◀️ Назад", callback_data=f"{CBT_UPDATER_PAGE}{offset}"),
+			B("✏️ Изменить", callback_data=f"{CBT_UPDATER_CUSTOM_INTERVAL}{offset}"),
+		)
+		self.host.tgbot.reply_to(
+			message,
+			f"Интервал проверки обновлений сохранён: {self.updater_interval_label(interval)}.",
+			reply_markup=keyboard,
+		)
+
+	def save_updater_interval(self, interval: int) -> None:
+		self.host.settings["updater"]["check_interval_seconds"] = interval
+		self.host.save_settings()
+		self.host.refresh_updater()
 
 	def install_update(self, call: telebot.types.CallbackQuery) -> None:
 		version = call.data.replace(CBT_UPDATER_INSTALL, "", 1).strip()
@@ -463,6 +550,13 @@ class TelegramSettingsUI:
 		text = text or ""
 		return "" if text.strip() == "-" else text
 
+	def parse_positive_int(self, value: Any) -> int | None:
+		try:
+			number = int(str(value).strip())
+		except (TypeError, ValueError):
+			return None
+		return number if number > 0 else None
+
 	def preview(self, text: str) -> str:
 		if len(text) > 160:
 			return f"{text[:160]}\n..."
@@ -470,3 +564,20 @@ class TelegramSettingsUI:
 
 	def updater_mode_label(self, mode: str) -> str:
 		return UPDATER_MODE_LABELS.get(mode, mode)
+
+	def updater_interval_label(self, interval: Any) -> str:
+		seconds = self.parse_positive_int(interval)
+		if seconds is None:
+			seconds = 3600
+		label = UPDATER_INTERVAL_LABELS.get(seconds)
+		if label:
+			return label
+		if seconds % 604800 == 0:
+			return f"{seconds // 604800} нед."
+		if seconds % 86400 == 0:
+			return f"{seconds // 86400} сут."
+		if seconds % 3600 == 0:
+			return f"{seconds // 3600} ч."
+		if seconds % 60 == 0:
+			return f"{seconds // 60} мин."
+		return f"{seconds} сек."
