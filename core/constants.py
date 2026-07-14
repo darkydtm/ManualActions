@@ -73,6 +73,11 @@ CBT_PASTEBIN_EDIT_CUSTOM_TITLE = "ma_pb_edit_title:"
 CBT_PASTEBIN_VISIBILITY_PAGE = "ma_pb_visibility_page:"
 CBT_PASTEBIN_SET_VISIBILITY = "ma_pb_set_visibility:"
 
+CBT_UPDATER_PAGE = "ma_updater_page:"
+CBT_UPDATER_MODE = "ma_updater_mode:"
+CBT_UPDATER_INSTALL = "ma_updater_install:"
+CBT_UPDATER_SKIP = "ma_updater_skip:"
+
 STATE_STATUS_RESPONSE = "ma_status_response_text"
 STATE_STATUS_AUTO = "ma_status_auto_text"
 STATE_PASTEBIN_DEV_KEY = "ma_pastebin_dev_key"
