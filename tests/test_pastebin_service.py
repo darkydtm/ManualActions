@@ -90,6 +90,7 @@ class PastebinServiceTest(unittest.TestCase):
 		self.assertEqual(body["api_dev_key"], ["dev"])
 		self.assertEqual(body["api_user_name"], ["login"])
 		self.assertEqual(body["api_user_password"], ["pass"])
+		self.assertEqual(requests[0][0].headers["User-agent"], "ManualActionsPastebin/1.0")
 
 	def test_rejects_bad_login_response(self):
 		def request_func(request, timeout=15):

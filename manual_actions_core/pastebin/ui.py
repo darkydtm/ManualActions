@@ -312,7 +312,12 @@ class TelegramPastebinSettingsUI:
 			self.show_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
 			self.host.tgbot.answer_callback_query(call.id, "API user key сохранён.")
 		except Exception as exc:
-			self.host.tgbot.answer_callback_query(call.id, pastebin_error_text(exc), show_alert=True)
+			error = pastebin_error_text(exc)
+			self.host.tgbot.answer_callback_query(call.id, self.alert_text(error), show_alert=True)
+			self.host.tgbot.send_message(
+				call.message.chat.id,
+				f"❌ Не удалось получить API user key Pastebin:\n<code>{escape(error)}</code>",
+			)
 
 	def edit_folder(self, call: telebot.types.CallbackQuery) -> None:
 		self.ask_text(call, STATE_PASTEBIN_FOLDER, "Введите folder key Pastebin. Отправьте - чтобы очистить.")
@@ -368,7 +373,7 @@ class TelegramPastebinSettingsUI:
 		target = self.host.settings["pastebin"]
 		for key in path[:-1]:
 			target = target[key]
-		target[path[-1]] = self.clean_text(message.text).strip()
+		target[path[-1]] = self.clean_setting_text(message.text, path)
 		self.host.save_settings()
 
 		keyboard = K(row_width=1)
@@ -399,6 +404,12 @@ class TelegramPastebinSettingsUI:
 		text = text or ""
 		return "" if text.strip() == "-" else text
 
+	def clean_setting_text(self, text: str | None, path: tuple[str, ...]) -> str:
+		value = self.clean_text(text)
+		if path in (("login_password",), ("password", "custom")):
+			return value
+		return value.strip()
+
 	def title_mode_button(self, mode: str, current: str) -> str:
 		marker = "✅ " if mode == current else ""
 		return f"{marker}{pastebin_title_mode_label(mode)}"
@@ -406,3 +417,8 @@ class TelegramPastebinSettingsUI:
 	def password_mode_button(self, mode: str, current: str) -> str:
 		marker = "✅ " if mode == current else ""
 		return f"{marker}{pastebin_password_mode_label(mode)}"
+
+	def alert_text(self, text: str) -> str:
+		if len(text) <= 180:
+			return text
+		return f"{text[:177]}..."

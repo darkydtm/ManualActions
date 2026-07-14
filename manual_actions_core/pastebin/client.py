@@ -60,7 +60,10 @@ def post_form(
 	request = Request(
 		url,
 		data=urlencode(payload).encode("utf-8"),
-		headers={"Content-Type": "application/x-www-form-urlencoded"},
+		headers={
+			"Content-Type": "application/x-www-form-urlencoded",
+			"User-Agent": "ManualActionsPastebin/1.0",
+		},
 	)
 	try:
 		with request_func(request, timeout=timeout) as response:

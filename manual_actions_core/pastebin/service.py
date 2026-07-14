@@ -82,7 +82,7 @@ def prepare_paste_text(settings: dict[str, Any], text: str) -> ProtectedText:
 		return ProtectedText(text=text, password="", protected=False)
 
 	if mode == "custom":
-		password = password_settings["custom"].strip()
+		password = password_settings["custom"]
 		if not password:
 			raise PastebinConfigError("Свой пароль Pastebin не задан.")
 	else:

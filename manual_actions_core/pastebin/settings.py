@@ -49,10 +49,14 @@ def normalize_pastebin_settings(data: Any) -> dict[str, Any]:
 	if not isinstance(data, dict):
 		return settings
 
-	for key in ("api_dev_key", "api_user_key", "username", "login_password", "folder_key"):
+	for key in ("api_dev_key", "api_user_key", "username", "folder_key"):
 		value = data.get(key)
 		if isinstance(value, str):
 			settings[key] = value.strip()
+
+	login_password = data.get("login_password")
+	if isinstance(login_password, str):
+		settings["login_password"] = login_password
 
 	expire_date = data.get("expire_date")
 	if isinstance(expire_date, str) and expire_date in PASTEBIN_EXPIRATION_OPTIONS:
@@ -94,7 +98,7 @@ def normalize_pastebin_password_settings(data: Any) -> dict[str, Any]:
 
 	custom = data.get("custom")
 	if isinstance(custom, str):
-		settings["custom"] = custom.strip()
+		settings["custom"] = custom
 
 	length = data.get("length")
 	if isinstance(length, int):

@@ -47,14 +47,14 @@ class PastebinSettingsTest(unittest.TestCase):
 		self.assertEqual(settings["pastebin"]["api_dev_key"], "dev")
 		self.assertEqual(settings["pastebin"]["api_user_key"], "user")
 		self.assertEqual(settings["pastebin"]["username"], "login")
-		self.assertEqual(settings["pastebin"]["login_password"], "pass")
+		self.assertEqual(settings["pastebin"]["login_password"], " pass ")
 		self.assertEqual(settings["pastebin"]["expire_date"], "1W")
 		self.assertEqual(settings["pastebin"]["folder_key"], "folder")
 		self.assertEqual(settings["pastebin"]["visibility"], "2")
 		self.assertEqual(settings["pastebin"]["title"]["mode"], "custom")
 		self.assertEqual(settings["pastebin"]["title"]["custom"], "Client title")
 		self.assertEqual(settings["pastebin"]["password"]["mode"], "random")
-		self.assertEqual(settings["pastebin"]["password"]["custom"], "secret")
+		self.assertEqual(settings["pastebin"]["password"]["custom"], " secret ")
 		self.assertEqual(settings["pastebin"]["password"]["length"], 40)
 
 	def test_rejects_invalid_pastebin_settings(self):
