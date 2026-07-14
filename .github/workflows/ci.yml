@@ -71,11 +71,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download plugin artifact
-        uses: actions/download-artifact@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          name: manual_actions-${{ github.sha }}.py
-          path: release
+          python-version: "3.12"
 
       - name: Prepare release metadata
         id: release
@@ -87,7 +86,7 @@ jobs:
 
           git fetch --force --tags
 
-          next_tag="$(
+          current_tag="$(
             python - <<'PY'
           import ast
           from pathlib import Path
@@ -105,11 +104,60 @@ jobs:
               raise SystemExit("VERSION not found in core/constants.py")
           PY
           )"
+          next_tag="$current_tag"
 
-          if gh release view "$next_tag" >/dev/null 2>&1; then
-            echo "tag=$next_tag" >> "$GITHUB_OUTPUT"
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          version_exists() {
+            gh release view "$1" >/dev/null 2>&1 || git rev-parse --verify --quiet "refs/tags/$1" >/dev/null
+          }
+
+          while version_exists "$next_tag"; do
+            next_tag="$(
+              python - "$next_tag" <<'PY'
+          import re
+          import sys
+
+          version = sys.argv[1]
+          match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+          if not match:
+              raise SystemExit(f"Cannot bump non-semver VERSION: {version}")
+
+          major, minor, patch = (int(part) for part in match.groups())
+          print(f"{major}.{minor}.{patch + 1}")
+          PY
+            )"
+          done
+
+          target_sha="${{ github.sha }}"
+          if [[ "$next_tag" != "$current_tag" ]]; then
+            python - "$next_tag" <<'PY'
+          import ast
+          import sys
+          from pathlib import Path
+
+          next_version = sys.argv[1]
+          path = Path("core/constants.py")
+          source = path.read_text(encoding="utf-8")
+          tree = ast.parse(source)
+          lines = source.splitlines()
+
+          for node in tree.body:
+              if not isinstance(node, ast.Assign):
+                  continue
+              if not any(isinstance(target, ast.Name) and target.id == "VERSION" for target in node.targets):
+                  continue
+              lines[node.lineno - 1] = f'VERSION = "{next_version}"'
+              path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+              break
+          else:
+              raise SystemExit("VERSION not found in core/constants.py")
+          PY
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add core/constants.py
+            git commit -m "chore bump plugin version to $next_tag"
+            git push origin "HEAD:main"
+            target_sha="$(git rev-parse HEAD)"
           fi
 
           latest_tag="$(
@@ -137,6 +185,14 @@ jobs:
 
           echo "tag=$next_tag" >> "$GITHUB_OUTPUT"
           echo "publish=true" >> "$GITHUB_OUTPUT"
+          echo "target=$target_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Build plugin artifact
+        if: steps.release.outputs.publish == 'true'
+        run: |
+          python build_plugin.py
+          mkdir -p release
+          mv dist/manual_actions.py "release/manual_actions-${{ steps.release.outputs.target }}.py"
 
       - name: Publish pre-release
         if: steps.release.outputs.publish == 'true'
@@ -144,8 +200,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ steps.release.outputs.tag }}" \
-            "release/manual_actions-${{ github.sha }}.py" \
+            "release/manual_actions-${{ steps.release.outputs.target }}.py" \
             --title "V${{ steps.release.outputs.tag }}" \
             --notes-file release-notes.md \
             --prerelease \
-            --target "${{ github.sha }}"
+            --target "${{ steps.release.outputs.target }}"
