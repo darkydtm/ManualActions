@@ -83,6 +83,7 @@ class ManualActionsPlugin:
 		if self.settings["updater"]["mode"] == MODE_DISABLED:
 			self.updater.stop()
 			return
+		self.updater.stop()
 		self.updater.start()
 
 	def shutdown(self) -> None:
