@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install check tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests
+
+      - name: Compile Python sources
+        run: |
+          python -m py_compile manual_actions.py build_plugin.py
+          find manual_actions_core -name '*.py' -print0 | xargs -0 python -m py_compile
+
+      - name: Check removed reference package stays absent
+        run: |
+          ! rg -n "chatgpt_accounts|ChatGPT Accounts|chatgpt" \
+            -g '!AGENTS.md' \
+            -g '!docs/superpowers/**' \
+            -g '!examples/**'
