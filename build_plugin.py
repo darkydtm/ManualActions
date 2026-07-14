@@ -11,6 +11,7 @@ OUTPUT_FILE = ROOT / "dist" / "manual_actions.py"
 PACKAGE_MODULES = [
 	"constants",
 	"status",
+	"pastebin/settings",
 	"settings",
 	"storage",
 	"payloads",
@@ -23,6 +24,8 @@ PACKAGE_MODULES = [
 	"telegram_blacklist",
 	"telegram_lots",
 	"telegram_orders",
+	"pastebin/client",
+	"pastebin/service",
 	"telegram_settings",
 	"telegram_commands",
 	"plugin",
