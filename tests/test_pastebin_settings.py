@@ -18,9 +18,7 @@ class PastebinSettingsTest(unittest.TestCase):
 		self.assertEqual(settings["pastebin"]["visibility"], "1")
 		self.assertEqual(settings["pastebin"]["title"]["mode"], "off")
 		self.assertEqual(settings["pastebin"]["title"]["custom"], "")
-		self.assertEqual(settings["pastebin"]["password"]["mode"], "off")
-		self.assertEqual(settings["pastebin"]["password"]["custom"], "")
-		self.assertEqual(settings["pastebin"]["password"]["length"], 24)
+		self.assertNotIn("password", settings["pastebin"])
 
 	def test_keeps_valid_pastebin_settings(self):
 		settings = normalize_settings({
@@ -36,11 +34,6 @@ class PastebinSettingsTest(unittest.TestCase):
 					"mode": "custom",
 					"custom": " Client title ",
 				},
-				"password": {
-					"mode": "random",
-					"custom": " secret ",
-					"length": 40,
-				},
 			},
 		})
 
@@ -53,9 +46,7 @@ class PastebinSettingsTest(unittest.TestCase):
 		self.assertEqual(settings["pastebin"]["visibility"], "2")
 		self.assertEqual(settings["pastebin"]["title"]["mode"], "custom")
 		self.assertEqual(settings["pastebin"]["title"]["custom"], "Client title")
-		self.assertEqual(settings["pastebin"]["password"]["mode"], "random")
-		self.assertEqual(settings["pastebin"]["password"]["custom"], " secret ")
-		self.assertEqual(settings["pastebin"]["password"]["length"], 40)
+		self.assertNotIn("password", settings["pastebin"])
 
 	def test_keeps_order_id_title_mode(self):
 		settings = normalize_settings({
@@ -83,11 +74,6 @@ class PastebinSettingsTest(unittest.TestCase):
 					"mode": "bad",
 					"custom": 123,
 				},
-				"password": {
-					"mode": "bad",
-					"custom": 123,
-					"length": 100,
-				},
 			},
 		})
 
@@ -100,9 +86,7 @@ class PastebinSettingsTest(unittest.TestCase):
 		self.assertEqual(settings["pastebin"]["visibility"], "1")
 		self.assertEqual(settings["pastebin"]["title"]["mode"], "off")
 		self.assertEqual(settings["pastebin"]["title"]["custom"], "")
-		self.assertEqual(settings["pastebin"]["password"]["mode"], "off")
-		self.assertEqual(settings["pastebin"]["password"]["custom"], "")
-		self.assertEqual(settings["pastebin"]["password"]["length"], 64)
+		self.assertNotIn("password", settings["pastebin"])
 
 
 if __name__ == "__main__":

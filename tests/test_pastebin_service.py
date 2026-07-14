@@ -6,13 +6,10 @@ from urllib.parse import parse_qs
 from manual_actions_core.pastebin.client import PastebinError, extract_paste_key, login, pastebin_url
 from manual_actions_core.pastebin.service import (
 	PastebinConfigError,
-	build_password_paste_payload,
 	build_paste_payload,
 	create_pastebin,
-	pastebin_config_errors,
 	resolve_paste_title,
 	resolve_api_user_key,
-	resolve_paste_password,
 )
 
 
@@ -56,35 +53,6 @@ class PastebinServiceTest(unittest.TestCase):
 		self.assertEqual(payload["api_paste_name"], "Title")
 		self.assertEqual(payload["api_paste_private"], "2")
 		self.assertEqual(payload["api_paste_code"], "Body")
-
-	def test_does_not_build_pastebin_password_payload(self):
-		payload = build_paste_payload(
-			{
-				"api_dev_key": "dev",
-			},
-			"Body",
-		)
-
-		self.assertNotIn("api_paste_password", payload)
-		self.assertEqual(payload["api_paste_code"], "Body")
-
-	def test_builds_password_paste_form_payload(self):
-		payload = build_password_paste_payload(
-			{
-				"expire_date": "1D",
-				"visibility": "1",
-			},
-			"Body",
-			"Title",
-			"secret",
-		)
-
-		self.assertEqual(payload["PostForm[text]"], "Body")
-		self.assertEqual(payload["PostForm[expiration]"], "1D")
-		self.assertEqual(payload["PostForm[status]"], "1")
-		self.assertEqual(payload["PostForm[is_password_enabled]"], "1")
-		self.assertEqual(payload["PostForm[password]"], "secret")
-		self.assertEqual(payload["PostForm[name]"], "Title")
 
 	def test_requires_dev_key(self):
 		with self.assertRaises(PastebinConfigError):
@@ -156,45 +124,16 @@ class PastebinServiceTest(unittest.TestCase):
 
 		self.assertEqual(key, "manual")
 
-	def test_resolves_empty_password_by_default(self):
-		password = resolve_paste_password({})
-
-		self.assertEqual(password, "")
-
-	def test_resolves_custom_password(self):
-		password = resolve_paste_password({
-			"password": {
-				"mode": "custom",
-				"custom": "secret",
-			},
-		})
-
-		self.assertEqual(password, "secret")
-
-	def test_reports_missing_custom_password_config(self):
-		errors = pastebin_config_errors({
-			"password": {
-				"mode": "custom",
-				"custom": "",
-			},
-		})
-
-		self.assertIn("Свой пароль", errors[0])
-
-	def test_creates_password_paste_through_form(self):
+	def test_creates_paste_through_api(self):
 		requests = []
 
 		def request_func(request, timeout=15):
 			requests.append(request)
-			if len(requests) == 1:
-				return FakeResponse(
-					'<input type="hidden" name="_csrf-frontend" value="csrf">',
-					"https://pastebin.com/",
-				)
-			return FakeResponse("", "https://pastebin.com/AbCd1234")
+			return FakeResponse("https://pastebin.com/AbCd1234")
 
 		result = create_pastebin(
 			{
+				"api_dev_key": "dev",
 				"password": {
 					"mode": "custom",
 					"custom": "secret",
@@ -204,16 +143,10 @@ class PastebinServiceTest(unittest.TestCase):
 			"Title",
 			request_func=request_func,
 		)
-		post_body = requests[1].data.decode("utf-8")
+		body = parse_qs(requests[0].data.decode("utf-8"))
 
 		self.assertEqual(result.url, "https://pastebin.com/AbCd1234")
-		self.assertEqual(result.password, "secret")
-		self.assertTrue(result.protected)
-		self.assertIn('name="PostForm[text]"', post_body)
-		self.assertIn("Body", post_body)
-		self.assertIn('name="PostForm[password]"', post_body)
-		self.assertIn("secret", post_body)
-		self.assertIn('name="_csrf-frontend"', post_body)
+		self.assertEqual(body["api_paste_code"], ["Body"])
 
 	def test_extracts_url_from_pastebin_response(self):
 		self.assertEqual(extract_paste_key("https://pastebin.com/AbCd1234"), "AbCd1234")

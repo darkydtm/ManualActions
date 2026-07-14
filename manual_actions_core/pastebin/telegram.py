@@ -59,7 +59,7 @@ class TelegramPastebinFlow:
 			return
 
 		self.host.tgbot.edit_message_text(
-			self.format_result(result.url, result.password),
+			self.format_result(result.url),
 			wait_message.chat.id,
 			wait_message.message_id,
 			disable_web_page_preview=True,
@@ -71,11 +71,8 @@ class TelegramPastebinFlow:
 		context = get_topic_context(self.host.cardinal, message)
 		return context.username if context else None
 
-	def format_result(self, url: str, password: str = "") -> str:
-		text = f"✅ Pastebin ссылка:\n{html_escape(url)}"
-		if password:
-			text += f"\n\n🔒 Пароль:\n<code>{html_escape(password)}</code>"
-		return text
+	def format_result(self, url: str) -> str:
+		return f"✅ Pastebin ссылка:\n{html_escape(url)}"
 
 	def format_config_errors(self, errors: list[str]) -> str:
 		lines = ["❌ Pastebin не настроен:"]

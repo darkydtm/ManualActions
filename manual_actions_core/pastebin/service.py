@@ -3,8 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .client import PastebinError, create_paste, create_password_paste, login
-from .passwords import generate_password
+from .client import PastebinError, create_paste, login
 from .settings import normalize_pastebin_settings
 
 
@@ -18,8 +17,6 @@ class PastebinConfigError(Exception):
 @dataclass(frozen=True)
 class PastebinResult:
 	url: str
-	password: str
-	protected: bool
 
 
 def build_paste_payload(
@@ -61,24 +58,6 @@ def build_paste_payload(
 	return payload
 
 
-def build_password_paste_payload(settings: dict[str, Any], text: str, title: str = "", password: str = "") -> dict[str, str]:
-	config = normalize_pastebin_settings(settings)
-	payload = {
-		"PostForm[text]": text,
-		"PostForm[category_id]": "0",
-		"PostForm[tag]": "",
-		"PostForm[format]": "1",
-		"PostForm[expiration]": config["expire_date"],
-		"PostForm[status]": config["visibility"],
-		"PostForm[folder_key]": "",
-		"PostForm[is_password_enabled]": "1",
-		"PostForm[password]": password,
-		"PostForm[is_burn]": "0",
-		"PostForm[name]": title.strip(),
-	}
-	return payload
-
-
 def resolve_paste_title(
 	settings: dict[str, Any],
 	chat_sync_username: str | None = None,
@@ -97,23 +76,6 @@ def resolve_paste_title(
 	return ""
 
 
-def resolve_paste_password(settings: dict[str, Any]) -> str:
-	config = normalize_pastebin_settings(settings)
-	password_settings = config["password"]
-	mode = password_settings["mode"]
-
-	if mode == "off":
-		return ""
-
-	if mode == "custom":
-		password = password_settings["custom"]
-		if not password:
-			raise PastebinConfigError("Свой пароль Pastebin не задан.")
-		return password
-
-	return generate_password(password_settings["length"])
-
-
 def pastebin_config_errors(settings: dict[str, Any], order_id: str = "") -> list[str]:
 	config = normalize_pastebin_settings(settings)
 	errors = []
@@ -123,23 +85,15 @@ def pastebin_config_errors(settings: dict[str, Any], order_id: str = "") -> list
 	has_login_password = bool(config["login_password"])
 	has_login_pair = has_username and has_login_password
 	has_user_auth = has_user_key or has_login_pair
-	password_mode = config["password"]["mode"]
-	password_enabled = password_mode != "off"
 
-	if not has_dev_key and not password_enabled:
+	if not has_dev_key:
 		errors.append("API dev key не задан - Pastebin > Аккаунт и API.")
-	if (has_username or has_login_password) and not has_login_pair and not password_enabled:
+	if (has_username or has_login_password) and not has_login_pair:
 		errors.append("Для входа нужны логин и пароль аккаунта - Pastebin > Аккаунт и API.")
-	if config["visibility"] == PASTEBIN_VISIBILITY_PRIVATE and password_enabled:
-		errors.append("Пароль Pastebin создаётся через форму, где приватный режим недоступен. Выберите публичный или по ссылке.")
-	elif config["visibility"] == PASTEBIN_VISIBILITY_PRIVATE and not has_user_auth:
+	if config["visibility"] == PASTEBIN_VISIBILITY_PRIVATE and not has_user_auth:
 		errors.append("Для приватной публикации нужен API user key или логин с паролем - Pastebin > Аккаунт и API.")
-	if config["folder_key"].strip() and password_enabled:
-		errors.append("Пароль Pastebin создаётся через форму, где папки недоступны. Очистите папку в Pastebin > Публикация.")
-	elif config["folder_key"].strip() and not has_user_auth:
+	if config["folder_key"].strip() and not has_user_auth:
 		errors.append("Для папки нужен API user key или логин с паролем - Pastebin > Аккаунт и API.")
-	if password_mode == "custom" and not config["password"]["custom"]:
-		errors.append("Свой пароль Pastebin не задан - Pastebin > Пароль Pastebin.")
 	if config["title"]["mode"] == "order_id" and not order_id.strip():
 		errors.append("Для title по заказу укажите номер заказа: /pastebin #ORDER_ID <текст>.")
 
@@ -163,22 +117,13 @@ def create_pastebin(
 	request_func: Any | None = None,
 	login_request_func: Any | None = None,
 ) -> PastebinResult:
-	password = resolve_paste_password(settings)
-	if password:
-		payload = build_password_paste_payload(settings, text, title, password)
-		if request_func is None:
-			url = create_password_paste(payload)
-		else:
-			url = create_password_paste(payload, request_func=request_func)
-		return PastebinResult(url=url, password=password, protected=True)
-
 	api_user_key = resolve_api_user_key(settings, login_request_func)
 	payload = build_paste_payload(settings, text, title, api_user_key)
 	if request_func is None:
 		url = create_paste(payload)
 	else:
 		url = create_paste(payload, request_func=request_func)
-	return PastebinResult(url=url, password="", protected=False)
+	return PastebinResult(url=url)
 
 
 def resolve_api_user_key(settings: dict[str, Any], request_func: Any | None = None) -> str:

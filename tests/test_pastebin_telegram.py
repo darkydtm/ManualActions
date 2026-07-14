@@ -93,7 +93,7 @@ class PastebinTelegramTest(unittest.TestCase):
 			message_thread_id=None,
 		)
 
-		result = SimpleNamespace(url="https://pastebin.com/key", password="", protected=False)
+		result = SimpleNamespace(url="https://pastebin.com/key")
 		with patch("manual_actions_core.pastebin.telegram.create_pastebin", return_value=result) as create:
 			TelegramPastebinFlow(host).cmd_pastebin(message)
 
@@ -117,42 +117,11 @@ class PastebinTelegramTest(unittest.TestCase):
 			message_thread_id=None,
 		)
 
-		result = SimpleNamespace(url="https://pastebin.com/key", password="", protected=False)
+		result = SimpleNamespace(url="https://pastebin.com/key")
 		with patch("manual_actions_core.pastebin.telegram.create_pastebin", return_value=result) as create:
 			TelegramPastebinFlow(host).cmd_pastebin(message)
 
 		create.assert_called_once_with(host.settings["pastebin"], "Body text", title="ABC123")
-
-	def test_creates_protected_pastebin(self):
-		bot = FakeBot()
-		host = SimpleNamespace(
-			tgbot=bot,
-			cardinal=SimpleNamespace(),
-			settings={
-				"pastebin": {
-					"api_dev_key": "dev",
-					"password": {
-						"mode": "custom",
-						"custom": "secret",
-					},
-				},
-			},
-		)
-		message = SimpleNamespace(
-			text="/pastebin Body text",
-			reply_to_message=None,
-			chat=SimpleNamespace(id=1),
-			is_topic_message=False,
-			message_thread_id=None,
-		)
-		result = SimpleNamespace(url="https://pastebin.com/key", password="secret", protected=True)
-
-		with patch("manual_actions_core.pastebin.telegram.create_pastebin", return_value=result) as create:
-			TelegramPastebinFlow(host).cmd_pastebin(message)
-
-		create.assert_called_once_with(host.settings["pastebin"], "Body text", title="")
-		self.assertIn("https://pastebin.com/key", bot.edits[0][0])
-		self.assertIn("<code>secret</code>", bot.edits[0][0])
 
 	def test_reports_usage_without_text(self):
 		bot = FakeBot()
