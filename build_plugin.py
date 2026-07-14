@@ -14,6 +14,7 @@ PACKAGE_MODULES = [
 	"pastebin/settings",
 	"settings",
 	"storage",
+	"updater",
 	"payloads",
 	"funpay",
 	"blacklist",
