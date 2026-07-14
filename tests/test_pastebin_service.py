@@ -3,20 +3,20 @@ from __future__ import annotations
 import unittest
 from urllib.parse import parse_qs
 
-from manual_actions_core.pastebin.client import PastebinError, extract_paste_key, login, pastebin_raw_url
-from manual_actions_core.pastebin.service import (
+from core.pastebin.client import PastebinError, extract_paste_key, login, pastebin_url
+from core.pastebin.service import (
 	PastebinConfigError,
 	build_paste_payload,
 	create_pastebin,
-	prepare_paste_text,
 	resolve_paste_title,
 	resolve_api_user_key,
 )
 
 
 class FakeResponse:
-	def __init__(self, text: str):
+	def __init__(self, text: str, url: str = ""):
 		self.text = text
+		self.url = url
 
 	def __enter__(self):
 		return self
@@ -26,6 +26,9 @@ class FakeResponse:
 
 	def read(self):
 		return self.text.encode("utf-8")
+
+	def geturl(self):
+		return self.url
 
 
 class PastebinServiceTest(unittest.TestCase):
@@ -90,6 +93,7 @@ class PastebinServiceTest(unittest.TestCase):
 		self.assertEqual(body["api_dev_key"], ["dev"])
 		self.assertEqual(body["api_user_name"], ["login"])
 		self.assertEqual(body["api_user_password"], ["pass"])
+		self.assertEqual(requests[0][0].headers["User-agent"], "ManualActionsPastebin/1.0")
 
 	def test_rejects_bad_login_response(self):
 		def request_func(request, timeout=15):
@@ -120,25 +124,12 @@ class PastebinServiceTest(unittest.TestCase):
 
 		self.assertEqual(key, "manual")
 
-	def test_prepares_unprotected_text_by_default(self):
-		prepared = prepare_paste_text({}, "Body")
+	def test_creates_paste_through_api(self):
+		requests = []
 
-		self.assertEqual(prepared.text, "Body")
-		self.assertEqual(prepared.password, "")
-		self.assertFalse(prepared.protected)
-
-	def test_requires_custom_password_when_enabled(self):
-		with self.assertRaises(PastebinConfigError):
-			prepare_paste_text({
-				"password": {
-					"mode": "custom",
-					"custom": "",
-				},
-			}, "Body")
-
-	def test_returns_password_with_protected_result(self):
 		def request_func(request, timeout=15):
-			return FakeResponse("https://pastebin.com/key")
+			requests.append(request)
+			return FakeResponse("https://pastebin.com/AbCd1234")
 
 		result = create_pastebin(
 			{
@@ -149,21 +140,22 @@ class PastebinServiceTest(unittest.TestCase):
 				},
 			},
 			"Body",
+			"Title",
 			request_func=request_func,
 		)
+		body = parse_qs(requests[0].data.decode("utf-8"))
 
-		self.assertEqual(result.raw_url, "https://pastebin.com/raw/key")
-		self.assertEqual(result.password, "secret")
-		self.assertTrue(result.protected)
+		self.assertEqual(result.url, "https://pastebin.com/AbCd1234")
+		self.assertEqual(body["api_paste_code"], ["Body"])
 
-	def test_extracts_raw_url_from_pastebin_response(self):
+	def test_extracts_url_from_pastebin_response(self):
 		self.assertEqual(extract_paste_key("https://pastebin.com/AbCd1234"), "AbCd1234")
 		self.assertEqual(extract_paste_key("https://pastebin.com/raw/AbCd1234"), "AbCd1234")
-		self.assertEqual(pastebin_raw_url("https://pastebin.com/AbCd1234"), "https://pastebin.com/raw/AbCd1234")
+		self.assertEqual(pastebin_url("https://pastebin.com/AbCd1234"), "https://pastebin.com/AbCd1234")
 
-	def test_rejects_unknown_raw_url_format(self):
+	def test_rejects_unknown_url_format(self):
 		with self.assertRaises(PastebinError):
-			pastebin_raw_url("")
+			pastebin_url("")
 
 	def test_resolves_custom_title(self):
 		title = resolve_paste_title({
@@ -184,6 +176,16 @@ class PastebinServiceTest(unittest.TestCase):
 		}, "buyer")
 
 		self.assertEqual(title, "buyer")
+
+	def test_resolves_order_id_title(self):
+		title = resolve_paste_title({
+			"title": {
+				"mode": "order_id",
+				"custom": "Ignored",
+			},
+		}, order_id="ABC123")
+
+		self.assertEqual(title, "ABC123")
 
 
 if __name__ == "__main__":

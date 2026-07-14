@@ -9,8 +9,8 @@ utils = types.ModuleType("Utils")
 utils.cardinal_tools = SimpleNamespace(cache_blacklist=lambda blacklist: None)
 sys.modules.setdefault("Utils", utils)
 
-from manual_actions_core.blacklist import toggle_action_for_user
-from manual_actions_core.payloads import parse_blacklist_payload
+from core.blacklist import toggle_action_for_user
+from core.payloads import parse_blacklist_payload
 
 
 class BlacklistFlowTest(unittest.TestCase):

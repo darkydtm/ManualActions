@@ -8,7 +8,8 @@ from urllib.request import Request, urlopen
 
 PASTEBIN_API_URL = "https://pastebin.com/api/api_post.php"
 PASTEBIN_LOGIN_URL = "https://pastebin.com/api/api_login.php"
-PASTEBIN_RAW_URL = "https://pastebin.com/raw/{key}"
+PASTEBIN_URL = "https://pastebin.com/{key}"
+USER_AGENT = "ManualActionsPastebin/1.0"
 
 
 class PastebinError(Exception):
@@ -22,7 +23,7 @@ def create_paste(payload: dict[str, str], request_func: Callable[..., Any] = url
 	if not body:
 		raise PastebinError("Pastebin вернул пустой ответ.")
 
-	return pastebin_raw_url(body)
+	return pastebin_url(body)
 
 
 def login(
@@ -60,7 +61,10 @@ def post_form(
 	request = Request(
 		url,
 		data=urlencode(payload).encode("utf-8"),
-		headers={"Content-Type": "application/x-www-form-urlencoded"},
+		headers={
+			"Content-Type": "application/x-www-form-urlencoded",
+			"User-Agent": USER_AGENT,
+		},
 	)
 	try:
 		with request_func(request, timeout=timeout) as response:
@@ -73,11 +77,11 @@ def post_form(
 		raise PastebinError(f"Не удалось {action}: {exc}") from exc
 
 
-def pastebin_raw_url(url: str) -> str:
+def pastebin_url(url: str) -> str:
 	key = extract_paste_key(url)
 	if not key:
 		raise PastebinError("Pastebin вернул ссылку в неизвестном формате.")
-	return PASTEBIN_RAW_URL.format(key=key)
+	return PASTEBIN_URL.format(key=key)
 
 
 def extract_paste_key(url: str) -> str:

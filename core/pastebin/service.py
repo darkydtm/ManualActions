@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from .client import PastebinError, create_paste, login
-from .passwords import ProtectedText, generate_password, protect_text
 from .settings import normalize_pastebin_settings
 
 
@@ -17,9 +16,7 @@ class PastebinConfigError(Exception):
 
 @dataclass(frozen=True)
 class PastebinResult:
-	raw_url: str
-	password: str
-	protected: bool
+	url: str
 
 
 def build_paste_payload(
@@ -61,7 +58,11 @@ def build_paste_payload(
 	return payload
 
 
-def resolve_paste_title(settings: dict[str, Any], chat_sync_username: str | None = None) -> str:
+def resolve_paste_title(
+	settings: dict[str, Any],
+	chat_sync_username: str | None = None,
+	order_id: str | None = None,
+) -> str:
 	config = normalize_pastebin_settings(settings)
 	title = config["title"]
 	mode = title["mode"]
@@ -70,35 +71,43 @@ def resolve_paste_title(settings: dict[str, Any], chat_sync_username: str | None
 		return title["custom"].strip()
 	if mode == "chat_sync" and chat_sync_username:
 		return chat_sync_username.strip()
+	if mode == "order_id" and order_id:
+		return order_id.strip().lstrip("#")
 	return ""
 
 
-def prepare_paste_text(settings: dict[str, Any], text: str) -> ProtectedText:
+def pastebin_config_errors(settings: dict[str, Any], order_id: str = "") -> list[str]:
 	config = normalize_pastebin_settings(settings)
-	password_settings = config["password"]
-	mode = password_settings["mode"]
+	errors = []
+	has_dev_key = bool(config["api_dev_key"].strip())
+	has_user_key = bool(config["api_user_key"].strip())
+	has_username = bool(config["username"].strip())
+	has_login_password = bool(config["login_password"])
+	has_login_pair = has_username and has_login_password
+	has_user_auth = has_user_key or has_login_pair
 
-	if mode == "off":
-		return ProtectedText(text=text, password="", protected=False)
+	if not has_dev_key:
+		errors.append("API dev key не задан - Pastebin > Аккаунт и API.")
+	if (has_username or has_login_password) and not has_login_pair:
+		errors.append("Для входа нужны логин и пароль аккаунта - Pastebin > Аккаунт и API.")
+	if config["visibility"] == PASTEBIN_VISIBILITY_PRIVATE and not has_user_auth:
+		errors.append("Для приватной публикации нужен API user key или логин с паролем - Pastebin > Аккаунт и API.")
+	if config["folder_key"].strip() and not has_user_auth:
+		errors.append("Для папки нужен API user key или логин с паролем - Pastebin > Аккаунт и API.")
+	if config["title"]["mode"] == "order_id" and not order_id.strip():
+		errors.append("Для title по заказу укажите номер заказа: /pastebin #ORDER_ID <текст>.")
 
-	if mode == "custom":
-		password = password_settings["custom"].strip()
-		if not password:
-			raise PastebinConfigError("Свой пароль Pastebin не задан.")
-	else:
-		password = generate_password(password_settings["length"])
-
-	return ProtectedText(text=protect_text(text, password), password=password, protected=True)
+	return errors
 
 
-def create_pastebin_raw_url(
+def create_pastebin_url(
 	settings: dict[str, Any],
 	text: str,
 	title: str = "",
 	request_func: Any | None = None,
 	login_request_func: Any | None = None,
 ) -> str:
-	return create_pastebin(settings, text, title, request_func, login_request_func).raw_url
+	return create_pastebin(settings, text, title, request_func, login_request_func).url
 
 
 def create_pastebin(
@@ -108,14 +117,13 @@ def create_pastebin(
 	request_func: Any | None = None,
 	login_request_func: Any | None = None,
 ) -> PastebinResult:
-	prepared = prepare_paste_text(settings, text)
 	api_user_key = resolve_api_user_key(settings, login_request_func)
-	payload = build_paste_payload(settings, prepared.text, title, api_user_key)
+	payload = build_paste_payload(settings, text, title, api_user_key)
 	if request_func is None:
-		raw_url = create_paste(payload)
+		url = create_paste(payload)
 	else:
-		raw_url = create_paste(payload, request_func=request_func)
-	return PastebinResult(raw_url=raw_url, password=prepared.password, protected=prepared.protected)
+		url = create_paste(payload, request_func=request_func)
+	return PastebinResult(url=url)
 
 
 def resolve_api_user_key(settings: dict[str, Any], request_func: Any | None = None) -> str:

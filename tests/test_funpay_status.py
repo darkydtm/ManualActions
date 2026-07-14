@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from manual_actions_core.funpay import MessageContext, should_send_auto_status_message
+from core.funpay import MessageContext, should_send_auto_status_message
 
 
 class FunPayStatusTest(unittest.TestCase):

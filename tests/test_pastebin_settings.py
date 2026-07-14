@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from manual_actions_core.settings import normalize_settings
+from core.settings import normalize_settings
 
 
 class PastebinSettingsTest(unittest.TestCase):
@@ -18,9 +18,7 @@ class PastebinSettingsTest(unittest.TestCase):
 		self.assertEqual(settings["pastebin"]["visibility"], "1")
 		self.assertEqual(settings["pastebin"]["title"]["mode"], "off")
 		self.assertEqual(settings["pastebin"]["title"]["custom"], "")
-		self.assertEqual(settings["pastebin"]["password"]["mode"], "off")
-		self.assertEqual(settings["pastebin"]["password"]["custom"], "")
-		self.assertEqual(settings["pastebin"]["password"]["length"], 24)
+		self.assertNotIn("password", settings["pastebin"])
 
 	def test_keeps_valid_pastebin_settings(self):
 		settings = normalize_settings({
@@ -36,26 +34,31 @@ class PastebinSettingsTest(unittest.TestCase):
 					"mode": "custom",
 					"custom": " Client title ",
 				},
-				"password": {
-					"mode": "random",
-					"custom": " secret ",
-					"length": 40,
-				},
 			},
 		})
 
 		self.assertEqual(settings["pastebin"]["api_dev_key"], "dev")
 		self.assertEqual(settings["pastebin"]["api_user_key"], "user")
 		self.assertEqual(settings["pastebin"]["username"], "login")
-		self.assertEqual(settings["pastebin"]["login_password"], "pass")
+		self.assertEqual(settings["pastebin"]["login_password"], " pass ")
 		self.assertEqual(settings["pastebin"]["expire_date"], "1W")
 		self.assertEqual(settings["pastebin"]["folder_key"], "folder")
 		self.assertEqual(settings["pastebin"]["visibility"], "2")
 		self.assertEqual(settings["pastebin"]["title"]["mode"], "custom")
 		self.assertEqual(settings["pastebin"]["title"]["custom"], "Client title")
-		self.assertEqual(settings["pastebin"]["password"]["mode"], "random")
-		self.assertEqual(settings["pastebin"]["password"]["custom"], "secret")
-		self.assertEqual(settings["pastebin"]["password"]["length"], 40)
+		self.assertNotIn("password", settings["pastebin"])
+
+	def test_keeps_order_id_title_mode(self):
+		settings = normalize_settings({
+			"pastebin": {
+				"title": {
+					"mode": "order_id",
+					"custom": "Ignored",
+				},
+			},
+		})
+
+		self.assertEqual(settings["pastebin"]["title"]["mode"], "order_id")
 
 	def test_rejects_invalid_pastebin_settings(self):
 		settings = normalize_settings({
@@ -71,11 +74,6 @@ class PastebinSettingsTest(unittest.TestCase):
 					"mode": "bad",
 					"custom": 123,
 				},
-				"password": {
-					"mode": "bad",
-					"custom": 123,
-					"length": 100,
-				},
 			},
 		})
 
@@ -88,9 +86,7 @@ class PastebinSettingsTest(unittest.TestCase):
 		self.assertEqual(settings["pastebin"]["visibility"], "1")
 		self.assertEqual(settings["pastebin"]["title"]["mode"], "off")
 		self.assertEqual(settings["pastebin"]["title"]["custom"], "")
-		self.assertEqual(settings["pastebin"]["password"]["mode"], "off")
-		self.assertEqual(settings["pastebin"]["password"]["custom"], "")
-		self.assertEqual(settings["pastebin"]["password"]["length"], 64)
+		self.assertNotIn("password", settings["pastebin"])
 
 
 if __name__ == "__main__":

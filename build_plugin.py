@@ -25,7 +25,6 @@ PACKAGE_MODULES = [
 	"telegram_lots",
 	"telegram_orders",
 	"pastebin/client",
-	"pastebin/passwords",
 	"pastebin/service",
 	"pastebin/ui",
 	"pastebin/telegram",
@@ -148,10 +147,10 @@ def sort_import_aliases(module: str, aliases: list[tuple[str, str | None]]) -> l
 
 def is_local_import(statement: ast.stmt) -> bool:
 	if isinstance(statement, ast.Import):
-		return any(alias.name == "manual_actions_core" or alias.name.startswith("manual_actions_core.") for alias in statement.names)
+		return any(alias.name == "core" or alias.name.startswith("core.") for alias in statement.names)
 	if isinstance(statement, ast.ImportFrom):
 		module = statement.module or ""
-		return statement.level > 0 or module == "manual_actions_core" or module.startswith("manual_actions_core.")
+		return statement.level > 0 or module == "core" or module.startswith("core.")
 	return False
 
 
@@ -221,7 +220,7 @@ def build_source() -> str:
 	module_sections = []
 
 	for module_name in PACKAGE_MODULES:
-		path = ROOT / "manual_actions_core" / f"{module_name}.py"
+		path = ROOT / "core" / f"{module_name}.py"
 		section = extract_module_body(read_source(path), collector)
 		if section:
 			module_sections.append(section)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from manual_actions_core.status import (
+from core.status import (
 	InvalidStatusCommand,
 	auto_message_text,
 	parse_funpay_status_command,
