@@ -16,12 +16,18 @@ class ReleaseWorkflowTest(unittest.TestCase):
 		self.assertIn('target.id == "VERSION"', source)
 		self.assertNotIn("git tag --list '1.0.*'", source)
 
-	def test_existing_version_tag_skips_release_publish(self):
+	def test_existing_release_skips_publish(self):
 		source = WORKFLOW.read_text(encoding="utf-8")
 
-		self.assertIn('git rev-parse -q --verify "refs/tags/$next_tag"', source)
+		self.assertIn('gh release view "$next_tag"', source)
 		self.assertIn('echo "publish=false"', source)
 		self.assertIn("if: steps.release.outputs.publish == 'true'", source)
+
+	def test_existing_version_tag_does_not_skip_publish(self):
+		source = WORKFLOW.read_text(encoding="utf-8")
+
+		self.assertNotIn('git rev-parse -q --verify "refs/tags/$next_tag"', source)
+		self.assertIn('$0 != next_tag', source)
 
 
 if __name__ == "__main__":
