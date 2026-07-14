@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 sys.modules.setdefault("telebot", SimpleNamespace(types=SimpleNamespace(Message=object)))
 
-from manual_actions_core.pastebin.telegram import (
+from core.pastebin.telegram import (
 	TelegramPastebinFlow,
 	pastebin_request_from_message,
 	pastebin_text_from_message,
@@ -94,7 +94,7 @@ class PastebinTelegramTest(unittest.TestCase):
 		)
 
 		result = SimpleNamespace(url="https://pastebin.com/key")
-		with patch("manual_actions_core.pastebin.telegram.create_pastebin", return_value=result) as create:
+		with patch("core.pastebin.telegram.create_pastebin", return_value=result) as create:
 			TelegramPastebinFlow(host).cmd_pastebin(message)
 
 		create.assert_called_once_with(host.settings["pastebin"], "Body text", title="")
@@ -118,7 +118,7 @@ class PastebinTelegramTest(unittest.TestCase):
 		)
 
 		result = SimpleNamespace(url="https://pastebin.com/key")
-		with patch("manual_actions_core.pastebin.telegram.create_pastebin", return_value=result) as create:
+		with patch("core.pastebin.telegram.create_pastebin", return_value=result) as create:
 			TelegramPastebinFlow(host).cmd_pastebin(message)
 
 		create.assert_called_once_with(host.settings["pastebin"], "Body text", title="ABC123")

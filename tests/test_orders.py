@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 
-from manual_actions_core.orders import format_order_details, format_order_summary, order_status_key
+from core.orders import format_order_details, format_order_summary, order_status_key
 
 
 class OrdersTest(unittest.TestCase):

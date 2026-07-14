@@ -27,15 +27,15 @@ sys.modules.setdefault("tg_bot", tg_bot_module)
 sys.modules.setdefault("tg_bot.static_keyboards", tg_bot_static_keyboards_module)
 sys.modules.setdefault("tg_bot.utils", tg_bot_utils_module)
 
-from manual_actions_core import settings as settings_module
-from manual_actions_core.constants import (
+from core import settings as settings_module
+from core.constants import (
 	CBT_PASTEBIN_ACCOUNT_PAGE,
 	CBT_PASTEBIN_PUBLISH_PAGE,
 	CBT_PASTEBIN_SET_TITLE_MODE,
 	CBT_PASTEBIN_TITLE_PAGE,
 )
-from manual_actions_core.pastebin import ui as pastebin_ui_module
-from manual_actions_core.pastebin.ui import TelegramPastebinSettingsUI
+from core.pastebin import ui as pastebin_ui_module
+from core.pastebin.ui import TelegramPastebinSettingsUI
 
 
 class FakeButton:

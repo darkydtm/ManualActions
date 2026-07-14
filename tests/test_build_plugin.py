@@ -24,7 +24,7 @@ class BuildPluginTest(unittest.TestCase):
 	def test_removes_local_imports(self):
 		source = build_plugin.build_source()
 
-		self.assertNotIn("from manual_actions_core.", source)
+		self.assertNotIn("from core.", source)
 		self.assertNotIn("from .", source)
 
 	def test_deduplicates_imports(self):

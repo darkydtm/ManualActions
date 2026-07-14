@@ -3,8 +3,8 @@ from __future__ import annotations
 import unittest
 from urllib.parse import parse_qs
 
-from manual_actions_core.pastebin.client import PastebinError, extract_paste_key, login, pastebin_url
-from manual_actions_core.pastebin.service import (
+from core.pastebin.client import PastebinError, extract_paste_key, login, pastebin_url
+from core.pastebin.service import (
 	PastebinConfigError,
 	build_paste_payload,
 	create_pastebin,

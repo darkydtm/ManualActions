@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from manual_actions_core.settings import normalize_settings
+from core.settings import normalize_settings
 
 
 class PastebinSettingsTest(unittest.TestCase):
