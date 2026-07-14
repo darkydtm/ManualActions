@@ -12,6 +12,10 @@ class ManualActionsSettingsTest(unittest.TestCase):
 		self.assertEqual(settings["status"], "1")
 		self.assertIn("0", settings["status_response_texts"])
 		self.assertIn("2", settings["status_auto_messages"])
+		self.assertEqual(settings["updater"]["mode"], "disabled")
+		self.assertEqual(settings["updater"]["skipped_version"], "")
+		self.assertEqual(settings["updater"]["installed_version"], "")
+		self.assertEqual(settings["updater"]["last_checked_version"], "")
 
 	def test_keeps_valid_status_values(self):
 		settings = normalize_settings({
@@ -50,6 +54,36 @@ class ManualActionsSettingsTest(unittest.TestCase):
 		self.assertEqual(settings["status_response_texts"]["1"], "Сейчас я доступен.")
 		self.assertFalse(settings["status_auto_messages"]["1"]["enabled"])
 		self.assertEqual(settings["status_auto_messages"]["1"]["text"], "")
+
+	def test_keeps_valid_updater_settings(self):
+		settings = normalize_settings({
+			"updater": {
+				"mode": "ask",
+				"skipped_version": " 1.2.3 ",
+				"installed_version": " 1.2.2 ",
+				"last_checked_version": " 1.2.1 ",
+			},
+		})
+
+		self.assertEqual(settings["updater"]["mode"], "ask")
+		self.assertEqual(settings["updater"]["skipped_version"], "1.2.3")
+		self.assertEqual(settings["updater"]["installed_version"], "1.2.2")
+		self.assertEqual(settings["updater"]["last_checked_version"], "1.2.1")
+
+	def test_rejects_invalid_updater_settings(self):
+		settings = normalize_settings({
+			"updater": {
+				"mode": "bad",
+				"skipped_version": 123,
+				"installed_version": None,
+				"last_checked_version": [],
+			},
+		})
+
+		self.assertEqual(settings["updater"]["mode"], "disabled")
+		self.assertEqual(settings["updater"]["skipped_version"], "")
+		self.assertEqual(settings["updater"]["installed_version"], "")
+		self.assertEqual(settings["updater"]["last_checked_version"], "")
 
 
 if __name__ == "__main__":

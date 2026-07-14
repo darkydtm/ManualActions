@@ -28,11 +28,21 @@ DEFAULT_STATUS_AUTO_MESSAGES = {
 	},
 }
 
+UPDATER_MODES = ("enabled", "disabled", "ask")
+
+DEFAULT_UPDATER_SETTINGS = {
+	"mode": "disabled",
+	"skipped_version": "",
+	"installed_version": "",
+	"last_checked_version": "",
+}
+
 DEFAULT_SETTINGS = {
 	"status": "1",
 	"status_response_texts": DEFAULT_STATUS_RESPONSE_TEXTS,
 	"status_auto_messages": DEFAULT_STATUS_AUTO_MESSAGES,
 	"pastebin": DEFAULT_PASTEBIN_SETTINGS,
+	"updater": DEFAULT_UPDATER_SETTINGS,
 }
 
 
@@ -48,6 +58,7 @@ def normalize_settings(data: dict[str, Any] | None) -> dict[str, Any]:
 	)
 	settings["status_auto_messages"] = normalize_auto_messages(data.get("status_auto_messages"))
 	settings["pastebin"] = normalize_pastebin_settings(data.get("pastebin"))
+	settings["updater"] = normalize_updater_settings(data.get("updater"))
 	return settings
 
 
@@ -82,3 +93,20 @@ def normalize_auto_messages(data: Any) -> dict[str, dict[str, bool | str]]:
 			messages[status_id]["text"] = text
 
 	return messages
+
+
+def normalize_updater_settings(data: Any) -> dict[str, str]:
+	settings = DEFAULT_UPDATER_SETTINGS.copy()
+	if not isinstance(data, dict):
+		return settings
+
+	mode = data.get("mode")
+	if mode in UPDATER_MODES:
+		settings["mode"] = mode
+
+	for key in ("skipped_version", "installed_version", "last_checked_version"):
+		value = data.get(key)
+		if isinstance(value, str):
+			settings[key] = value.strip()
+
+	return settings
