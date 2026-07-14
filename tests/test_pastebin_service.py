@@ -7,6 +7,7 @@ from manual_actions_core.pastebin.client import PastebinError, extract_paste_key
 from manual_actions_core.pastebin.service import (
 	PastebinConfigError,
 	build_paste_payload,
+	prepare_paste_text,
 	resolve_paste_title,
 	resolve_api_user_key,
 )
@@ -103,7 +104,7 @@ class PastebinServiceTest(unittest.TestCase):
 		key = resolve_api_user_key({
 			"api_dev_key": "dev",
 			"username": "login",
-			"password": "pass",
+			"login_password": "pass",
 		}, request_func=request_func)
 
 		self.assertEqual(key, "generated-key")
@@ -113,10 +114,26 @@ class PastebinServiceTest(unittest.TestCase):
 			"api_dev_key": "dev",
 			"api_user_key": "manual",
 			"username": "login",
-			"password": "pass",
+			"login_password": "pass",
 		}, request_func=lambda request, timeout=15: FakeResponse("generated"))
 
 		self.assertEqual(key, "manual")
+
+	def test_prepares_unprotected_text_by_default(self):
+		prepared = prepare_paste_text({}, "Body")
+
+		self.assertEqual(prepared.text, "Body")
+		self.assertEqual(prepared.password, "")
+		self.assertFalse(prepared.protected)
+
+	def test_requires_custom_password_when_enabled(self):
+		with self.assertRaises(PastebinConfigError):
+			prepare_paste_text({
+				"password": {
+					"mode": "custom",
+					"custom": "",
+				},
+			}, "Body")
 
 	def test_extracts_raw_url_from_pastebin_response(self):
 		self.assertEqual(extract_paste_key("https://pastebin.com/AbCd1234"), "AbCd1234")

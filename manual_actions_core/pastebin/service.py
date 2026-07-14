@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .client import PastebinError, create_paste, login
+from .passwords import ProtectedText, generate_password, protect_text
 from .settings import normalize_pastebin_settings
 
 
@@ -64,6 +65,24 @@ def resolve_paste_title(settings: dict[str, Any], chat_sync_username: str | None
 	return ""
 
 
+def prepare_paste_text(settings: dict[str, Any], text: str) -> ProtectedText:
+	config = normalize_pastebin_settings(settings)
+	password_settings = config["password"]
+	mode = password_settings["mode"]
+
+	if mode == "off":
+		return ProtectedText(text=text, password="", protected=False)
+
+	if mode == "custom":
+		password = password_settings["custom"].strip()
+		if not password:
+			raise PastebinConfigError("Свой пароль Pastebin не задан.")
+	else:
+		password = generate_password(password_settings["length"])
+
+	return ProtectedText(text=protect_text(text, password), password=password, protected=True)
+
+
 def create_pastebin_raw_url(
 	settings: dict[str, Any],
 	text: str,
@@ -72,7 +91,8 @@ def create_pastebin_raw_url(
 	login_request_func: Any | None = None,
 ) -> str:
 	api_user_key = resolve_api_user_key(settings, login_request_func)
-	payload = build_paste_payload(settings, text, title, api_user_key)
+	prepared = prepare_paste_text(settings, text)
+	payload = build_paste_payload(settings, prepared.text, title, api_user_key)
 	if request_func is None:
 		return create_paste(payload)
 	return create_paste(payload, request_func=request_func)
@@ -82,15 +102,15 @@ def resolve_api_user_key(settings: dict[str, Any], request_func: Any | None = No
 	config = normalize_pastebin_settings(settings)
 	if config["api_user_key"]:
 		return config["api_user_key"]
-	if not config["username"] and not config["password"]:
+	if not config["username"] and not config["login_password"]:
 		return ""
 	if not config["api_dev_key"]:
 		raise PastebinConfigError("API dev key Pastebin не задан.")
-	if not config["username"] or not config["password"]:
+	if not config["username"] or not config["login_password"]:
 		raise PastebinConfigError("Для входа Pastebin нужны логин и пароль.")
 	if request_func is None:
-		return login(config["api_dev_key"], config["username"], config["password"])
-	return login(config["api_dev_key"], config["username"], config["password"], request_func=request_func)
+		return login(config["api_dev_key"], config["username"], config["login_password"])
+	return login(config["api_dev_key"], config["username"], config["login_password"], request_func=request_func)
 
 
 def pastebin_error_text(exc: Exception) -> str:
