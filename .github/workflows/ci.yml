@@ -47,11 +47,14 @@ jobs:
       - name: Build plugin artifact
         run: python build_plugin.py
 
+      - name: Add commit SHA to artifact filename
+        run: mv dist/manual_actions.py "dist/manual_actions-${GITHUB_SHA}.py"
+
       - name: Upload plugin artifact
         uses: actions/upload-artifact@v4
         with:
-          name: manual-actions-plugin
-          path: dist/manual_actions.py
+          name: manual_actions-${{ github.sha }}.py
+          path: dist/manual_actions-${{ github.sha }}.py
           if-no-files-found: error
 
   release:
@@ -71,7 +74,7 @@ jobs:
       - name: Download plugin artifact
         uses: actions/download-artifact@v4
         with:
-          name: manual-actions-plugin
+          name: manual_actions-${{ github.sha }}.py
           path: release
 
       - name: Prepare release metadata
@@ -115,7 +118,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ steps.release.outputs.tag }}" \
-            release/manual_actions.py \
+            "release/manual_actions-${{ github.sha }}.py" \
             --title "V${{ steps.release.outputs.tag }}" \
             --notes-file release-notes.md \
             --prerelease \
