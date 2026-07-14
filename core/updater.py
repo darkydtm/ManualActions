@@ -322,6 +322,10 @@ def should_offer_release(current_version: str, settings: dict[str, str], release
 		return False
 	if version in (settings.get("installed_version", ""), settings.get("skipped_version", "")):
 		return False
+	if is_newer_version(current_version, version):
+		return True
+	if parse_version(current_version) is not None and parse_version(version) is not None:
+		return False
 	return normalize_version_text(version) != normalize_version_text(current_version)
 
 

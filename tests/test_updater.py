@@ -98,7 +98,8 @@ class UpdaterTest(unittest.TestCase):
 
 	def test_should_offer_release_uses_release_identity(self):
 		self.assertTrue(should_offer_release("1.3.0", {}, "1.3.1"))
-		self.assertTrue(should_offer_release("1.3.0", {}, "1.0.5"))
+		self.assertFalse(should_offer_release("1.3.0", {}, "1.0.5"))
+		self.assertTrue(should_offer_release("1.3.0", {}, "build-12"))
 		self.assertFalse(should_offer_release("1.3.0", {}, "1.3.0"))
 		self.assertFalse(should_offer_release("1.3.0", {"installed_version": "1.0.5"}, "1.0.5"))
 		self.assertFalse(should_offer_release("1.3.0", {"skipped_version": "1.0.5"}, "1.0.5"))

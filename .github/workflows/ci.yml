@@ -85,18 +85,40 @@ jobs:
 
           git fetch --force --tags
 
+          next_tag="$(
+            python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          tree = ast.parse(Path("core/constants.py").read_text(encoding="utf-8"))
+          for node in tree.body:
+              if not isinstance(node, ast.Assign):
+                  continue
+              if not any(isinstance(target, ast.Name) and target.id == "VERSION" for target in node.targets):
+                  continue
+              if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                  print(node.value.value)
+                  break
+          else:
+              raise SystemExit("VERSION not found in core/constants.py")
+          PY
+          )"
+
+          if git rev-parse -q --verify "refs/tags/$next_tag" >/dev/null; then
+            echo "tag=$next_tag" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           latest_tag="$(
-            git tag --list '1.0.*' \
-              | awk '/^1\.0\.[0-9]+$/ { print }' \
+            git tag --list '*.*.*' \
+              | awk '/^[0-9]+\.[0-9]+\.[0-9]+$/ { print }' \
               | sort -V \
               | tail -n 1
           )"
           if [[ -z "$latest_tag" ]]; then
-            next_tag="1.0.0"
             commit_range="${{ github.sha }}"
           else
-            patch="${latest_tag##*.}"
-            next_tag="1.0.$((patch + 1))"
             commit_range="${latest_tag}..${{ github.sha }}"
           fi
 
@@ -112,8 +134,10 @@ jobs:
           } > release-notes.md
 
           echo "tag=$next_tag" >> "$GITHUB_OUTPUT"
+          echo "publish=true" >> "$GITHUB_OUTPUT"
 
       - name: Publish pre-release
+        if: steps.release.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
