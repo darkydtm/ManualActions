@@ -48,7 +48,7 @@ jobs:
         run: python build_plugin.py
 
       - name: Add commit SHA to artifact filename
-        run: mv dist/main.py "dist/manual_actions-${GITHUB_SHA}.py"
+        run: mv dist/manual_actions.py "dist/manual_actions-${GITHUB_SHA}.py"
 
       - name: Upload plugin artifact
         uses: actions/upload-artifact@v4
