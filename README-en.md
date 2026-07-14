@@ -1,4 +1,4 @@
-[English](READMDE-en.md) | [Русский](README.md)
+[English](README-en.md) | [Русский](README.md)
 # Quick start
 1. Build a plugin
 ```python
