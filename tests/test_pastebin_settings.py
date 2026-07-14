@@ -57,6 +57,18 @@ class PastebinSettingsTest(unittest.TestCase):
 		self.assertEqual(settings["pastebin"]["password"]["custom"], " secret ")
 		self.assertEqual(settings["pastebin"]["password"]["length"], 40)
 
+	def test_keeps_order_id_title_mode(self):
+		settings = normalize_settings({
+			"pastebin": {
+				"title": {
+					"mode": "order_id",
+					"custom": "Ignored",
+				},
+			},
+		})
+
+		self.assertEqual(settings["pastebin"]["title"]["mode"], "order_id")
+
 	def test_rejects_invalid_pastebin_settings(self):
 		settings = normalize_settings({
 			"pastebin": {

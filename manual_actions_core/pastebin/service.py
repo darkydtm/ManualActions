@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .client import PastebinError, create_paste, login
-from .passwords import ProtectedText, generate_password, protect_text
+from .passwords import generate_password
 from .settings import normalize_pastebin_settings
 
 
@@ -17,7 +17,7 @@ class PastebinConfigError(Exception):
 
 @dataclass(frozen=True)
 class PastebinResult:
-	raw_url: str
+	url: str
 	password: str
 	protected: bool
 
@@ -27,6 +27,7 @@ def build_paste_payload(
 	text: str,
 	title: str = "",
 	api_user_key: str = "",
+	password: str = "",
 ) -> dict[str, str]:
 	config = normalize_pastebin_settings(settings)
 	api_dev_key = config["api_dev_key"].strip()
@@ -58,10 +59,17 @@ def build_paste_payload(
 	if title:
 		payload["api_paste_name"] = title
 
+	if password:
+		payload["api_paste_password"] = password
+
 	return payload
 
 
-def resolve_paste_title(settings: dict[str, Any], chat_sync_username: str | None = None) -> str:
+def resolve_paste_title(
+	settings: dict[str, Any],
+	chat_sync_username: str | None = None,
+	order_id: str | None = None,
+) -> str:
 	config = normalize_pastebin_settings(settings)
 	title = config["title"]
 	mode = title["mode"]
@@ -70,35 +78,36 @@ def resolve_paste_title(settings: dict[str, Any], chat_sync_username: str | None
 		return title["custom"].strip()
 	if mode == "chat_sync" and chat_sync_username:
 		return chat_sync_username.strip()
+	if mode == "order_id" and order_id:
+		return order_id.strip().lstrip("#")
 	return ""
 
 
-def prepare_paste_text(settings: dict[str, Any], text: str) -> ProtectedText:
+def resolve_paste_password(settings: dict[str, Any]) -> str:
 	config = normalize_pastebin_settings(settings)
 	password_settings = config["password"]
 	mode = password_settings["mode"]
 
 	if mode == "off":
-		return ProtectedText(text=text, password="", protected=False)
+		return ""
 
 	if mode == "custom":
 		password = password_settings["custom"]
 		if not password:
 			raise PastebinConfigError("Свой пароль Pastebin не задан.")
-	else:
-		password = generate_password(password_settings["length"])
+		return password
 
-	return ProtectedText(text=protect_text(text, password), password=password, protected=True)
+	return generate_password(password_settings["length"])
 
 
-def create_pastebin_raw_url(
+def create_pastebin_url(
 	settings: dict[str, Any],
 	text: str,
 	title: str = "",
 	request_func: Any | None = None,
 	login_request_func: Any | None = None,
 ) -> str:
-	return create_pastebin(settings, text, title, request_func, login_request_func).raw_url
+	return create_pastebin(settings, text, title, request_func, login_request_func).url
 
 
 def create_pastebin(
@@ -108,14 +117,14 @@ def create_pastebin(
 	request_func: Any | None = None,
 	login_request_func: Any | None = None,
 ) -> PastebinResult:
-	prepared = prepare_paste_text(settings, text)
+	password = resolve_paste_password(settings)
 	api_user_key = resolve_api_user_key(settings, login_request_func)
-	payload = build_paste_payload(settings, prepared.text, title, api_user_key)
+	payload = build_paste_payload(settings, text, title, api_user_key, password)
 	if request_func is None:
-		raw_url = create_paste(payload)
+		url = create_paste(payload)
 	else:
-		raw_url = create_paste(payload, request_func=request_func)
-	return PastebinResult(raw_url=raw_url, password=prepared.password, protected=prepared.protected)
+		url = create_paste(payload, request_func=request_func)
+	return PastebinResult(url=url, password=password, protected=bool(password))
 
 
 def resolve_api_user_key(settings: dict[str, Any], request_func: Any | None = None) -> str:

@@ -70,7 +70,7 @@ class TelegramCommands:
 			("bl_list", "Показать чёрный список", True),
 			("lot", "Информация о лоте: /lot [ID] или в топике", True),
 			("orders", "Заказы пользователя: /orders [ник] или в топике", True),
-			("pastebin", "Создать raw-ссылку Pastebin: /pastebin <текст> или reply", True),
+			("pastebin", "Создать ссылку Pastebin: /pastebin <текст> или reply", True),
 			("status", "Статус: /status [0/1/2]", True),
 		])
 		self.host.tg.msg_handler(self.cmd_refund, commands=["refund"])

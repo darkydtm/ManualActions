@@ -16,7 +16,7 @@ PASTEBIN_EXPIRATION_OPTIONS = {
 	"1Y": "1 год",
 }
 
-PASTEBIN_TITLE_MODES = ("off", "custom", "chat_sync")
+PASTEBIN_TITLE_MODES = ("off", "custom", "chat_sync", "order_id")
 PASTEBIN_PASSWORD_MODES = ("off", "custom", "random")
 PASTEBIN_VISIBILITY_OPTIONS = {
 	"0": "публичный",
@@ -116,6 +116,7 @@ def pastebin_title_mode_label(value: str) -> str:
 		"off": "выключен",
 		"custom": "свой",
 		"chat_sync": "клиент из Chat Sync",
+		"order_id": "номер заказа",
 	}.get(value, "выключен")
 
 
