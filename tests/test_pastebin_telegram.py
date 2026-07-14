@@ -1,0 +1,78 @@
+from __future__ import annotations
+
+import sys
+import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
+
+sys.modules.setdefault("telebot", SimpleNamespace(types=SimpleNamespace(Message=object)))
+
+from manual_actions_core.pastebin.telegram import TelegramPastebinFlow, pastebin_text_from_message
+
+
+class FakeBot:
+	def __init__(self):
+		self.replies = []
+		self.edits = []
+
+	def reply_to(self, message, text, **kwargs):
+		self.replies.append((message, text, kwargs))
+		return SimpleNamespace(chat=message.chat, message_id=99)
+
+	def edit_message_text(self, text, chat_id, message_id, **kwargs):
+		self.edits.append((text, chat_id, message_id, kwargs))
+
+
+class PastebinTelegramTest(unittest.TestCase):
+	def test_uses_command_argument_text(self):
+		message = SimpleNamespace(text="/pastebin Body text", reply_to_message=None)
+
+		self.assertEqual(pastebin_text_from_message(message), "Body text")
+
+	def test_uses_reply_text_before_command_argument(self):
+		reply = SimpleNamespace(text="Reply body", caption=None)
+		message = SimpleNamespace(text="/pastebin Ignored", reply_to_message=reply)
+
+		self.assertEqual(pastebin_text_from_message(message), "Reply body")
+
+	def test_uses_reply_caption(self):
+		reply = SimpleNamespace(text=None, caption="Caption body")
+		message = SimpleNamespace(text="/pastebin", reply_to_message=reply)
+
+		self.assertEqual(pastebin_text_from_message(message), "Caption body")
+
+	def test_creates_pastebin_from_command_text(self):
+		bot = FakeBot()
+		host = SimpleNamespace(
+			tgbot=bot,
+			cardinal=SimpleNamespace(),
+			settings={"pastebin": {"api_dev_key": "dev"}},
+		)
+		message = SimpleNamespace(
+			text="/pastebin Body text",
+			reply_to_message=None,
+			chat=SimpleNamespace(id=1),
+			is_topic_message=False,
+			message_thread_id=None,
+		)
+
+		with patch("manual_actions_core.pastebin.telegram.create_pastebin_raw_url", return_value="https://pastebin.com/raw/key") as create:
+			TelegramPastebinFlow(host).cmd_pastebin(message)
+
+		create.assert_called_once_with(host.settings["pastebin"], "Body text", title="")
+		self.assertEqual(bot.replies[0][1], "⏳ Создаю Pastebin...")
+		self.assertIn("https://pastebin.com/raw/key", bot.edits[0][0])
+
+	def test_reports_usage_without_text(self):
+		bot = FakeBot()
+		host = SimpleNamespace(tgbot=bot, cardinal=SimpleNamespace(), settings={"pastebin": {}})
+		message = SimpleNamespace(text="/pastebin", reply_to_message=None, chat=SimpleNamespace(id=1))
+
+		TelegramPastebinFlow(host).cmd_pastebin(message)
+
+		self.assertIn("Использование", bot.replies[0][1])
+		self.assertEqual(bot.edits, [])
+
+
+if __name__ == "__main__":
+	unittest.main()

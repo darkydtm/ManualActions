@@ -26,6 +26,8 @@ PACKAGE_MODULES = [
 	"telegram_orders",
 	"pastebin/client",
 	"pastebin/service",
+	"pastebin/ui",
+	"pastebin/telegram",
 	"telegram_settings",
 	"telegram_commands",
 	"plugin",
