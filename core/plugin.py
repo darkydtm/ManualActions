@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+from html import escape
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .constants import LOGGER_NAME, LOGGER_PREFIX, UUID, VERSION
+from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
+
+from .constants import CBT_UPDATER_INSTALL, CBT_UPDATER_SKIP, LOGGER_NAME, LOGGER_PREFIX, UUID, VERSION
 from .funpay import MessageContext, extract_message_context, should_send_auto_status_message
 from .settings import DEFAULT_SETTINGS
 from .status import auto_message_text, parse_funpay_status_command, response_text
 from .storage import PluginStorage
 from .telegram_commands import TelegramCommands
 from .telegram_settings import TelegramSettingsUI
+from .updater import MODE_DISABLED, ManualActionsUpdater, UpdaterRelease
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal
@@ -26,7 +31,7 @@ class ManualActionsPlugin:
 			cls._instance = super(ManualActionsPlugin, cls).__new__(cls)
 		return cls._instance
 
-	def __init__(self, crd: Cardinal):
+	def __init__(self, crd: Cardinal, plugin_file_path: str | None = None):
 		if hasattr(self, "initialized"):
 			return
 
@@ -34,8 +39,10 @@ class ManualActionsPlugin:
 		self.cardinal = crd
 		self.tg = None
 		self.tgbot = None
+		self.plugin_file_path = Path(plugin_file_path or __file__).resolve()
 		self.storage = PluginStorage()
 		self.settings: dict[str, Any] = DEFAULT_SETTINGS.copy()
+		self.updater: ManualActionsUpdater | None = None
 		self.telegram_ui = TelegramSettingsUI(self)
 		self.telegram_commands = TelegramCommands(self)
 
@@ -47,6 +54,7 @@ class ManualActionsPlugin:
 
 	def load(self) -> None:
 		self.settings = self.storage.load_settings()
+		self.configure_updater()
 
 	def save_settings(self) -> None:
 		self.storage.save_settings(self.settings)
@@ -56,6 +64,44 @@ class ManualActionsPlugin:
 		self.telegram_commands.register()
 		self.cardinal.new_message_handlers.append(self.message_hook)
 		self.cardinal.last_chat_message_changed_handlers.append(self.message_hook)
+		self.refresh_updater()
+
+	def configure_updater(self) -> None:
+		self.updater = ManualActionsUpdater(
+			self.settings,
+			self.save_settings,
+			self.plugin_file_path,
+			VERSION,
+			on_update_available=self.notify_update_available,
+			on_update_installed=self.notify_update_installed,
+			on_update_error=self.log_update_error,
+		)
+
+	def refresh_updater(self) -> None:
+		if not self.updater:
+			return
+		if not self.tg or self.settings["updater"]["mode"] == MODE_DISABLED:
+			self.updater.stop()
+			return
+		self.updater.start()
+
+	def shutdown(self) -> None:
+		if self.updater:
+			self.updater.stop()
+
+	def install_update_version(self, version: str) -> Path:
+		if not self.updater:
+			self.configure_updater()
+		if not self.updater:
+			raise RuntimeError("Updater is not configured.")
+		return self.updater.install_latest(version, notify=False)
+
+	def skip_update_version(self, version: str) -> None:
+		if self.updater:
+			self.updater.skip_version(version)
+			return
+		self.settings["updater"]["skipped_version"] = version.strip()
+		self.save_settings()
 
 	def message_hook(self, c: Cardinal, e: object) -> None:
 		context = extract_message_context(c, e)
@@ -83,9 +129,65 @@ class ManualActionsPlugin:
 	def send_funpay_message(self, chat_id: int | str, text: str) -> None:
 		self.cardinal.send_message(chat_id=chat_id, message_text=text)
 
+	def notify_update_available(self, release: UpdaterRelease) -> None:
+		keyboard = K(row_width=2)
+		keyboard.add(
+			B("✅ Обновить", callback_data=f"{CBT_UPDATER_INSTALL}{release.version}"),
+			B("❌ Отказаться", callback_data=f"{CBT_UPDATER_SKIP}{release.version}"),
+		)
+		text = (
+			"<b>Manual Actions</b>\n\n"
+			f"Доступно обновление: <code>{escape(release.version)}</code>\n"
+			"Нажмите «Обновить», чтобы скачать новый файл плагина."
+		)
+		self.send_telegram_admin_message(text, keyboard)
 
-def pre_init(c: Cardinal) -> None:
-	plugin = ManualActionsPlugin(c)
+	def notify_update_installed(self, release: UpdaterRelease, path: Path) -> None:
+		text = (
+			"<b>Manual Actions</b>\n\n"
+			f"✅ Обновление <code>{escape(release.version)}</code> установлено.\n"
+			f"Файл: <code>{escape(str(path))}</code>\n\n"
+			"Перезапустите Cardinal, чтобы загрузить новую версию."
+		)
+		self.send_telegram_admin_message(text)
+
+	def log_update_error(self, exc: Exception) -> None:
+		logger.warning(f"{LOGGER_PREFIX} Updater error: {exc}")
+		logger.debug("TRACEBACK", exc_info=True)
+
+	def send_telegram_admin_message(self, text: str, keyboard: K | None = None) -> None:
+		if not self.tgbot:
+			return
+
+		for user_id in self.telegram_admin_ids():
+			try:
+				self.tgbot.send_message(user_id, text, reply_markup=keyboard)
+			except Exception as exc:
+				logger.warning(f"{LOGGER_PREFIX} Failed to send updater notification to {user_id}: {exc}")
+
+	def telegram_admin_ids(self) -> list[Any]:
+		if not self.tg:
+			return []
+
+		users = getattr(self.tg, "authorized_users", []) or []
+		result = []
+		seen = set()
+		for user_id in users:
+			key = str(user_id)
+			if key in seen:
+				continue
+			seen.add(key)
+			result.append(user_id)
+		return result
+
+
+def pre_init(c: Cardinal, plugin_file_path: str | None = None) -> None:
+	plugin = ManualActionsPlugin(c, plugin_file_path)
 	plugin.load()
 	plugin.register()
 	logger.info(f"{LOGGER_PREFIX} Plugin v{VERSION} loaded.")
+
+
+def delete(c: Cardinal) -> None:
+	if ManualActionsPlugin._instance:
+		ManualActionsPlugin._instance.shutdown()

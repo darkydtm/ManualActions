@@ -6,8 +6,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
-ENTRY_FILE = ROOT / "manual_actions.py"
-OUTPUT_FILE = ROOT / "dist" / "manual_actions.py"
+ENTRY_FILE = ROOT / "main.py"
+OUTPUT_FILE = ROOT / "dist" / "main.py"
 PACKAGE_MODULES = [
 	"constants",
 	"status",
