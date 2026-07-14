@@ -55,12 +55,20 @@ class PastebinTelegramTest(unittest.TestCase):
 
 	def test_extracts_order_id_from_reply_command_argument(self):
 		reply = SimpleNamespace(text="Reply body", caption=None)
-		message = SimpleNamespace(text="/pastebin ABC123", reply_to_message=reply)
+		message = SimpleNamespace(text="/pastebin #ABC123", reply_to_message=reply)
 
 		request = pastebin_request_from_message(message, True)
 
 		self.assertEqual(request.text, "Reply body")
 		self.assertEqual(request.order_id, "ABC123")
+
+	def test_does_not_extract_order_id_without_marker(self):
+		message = SimpleNamespace(text="/pastebin ABC123 Body text", reply_to_message=None)
+
+		request = pastebin_request_from_message(message, True)
+
+		self.assertEqual(request.text, "ABC123 Body text")
+		self.assertEqual(request.order_id, "")
 
 	def test_keeps_command_text_without_order_title_mode(self):
 		message = SimpleNamespace(text="/pastebin #ABC123 Body text", reply_to_message=None)
@@ -115,12 +123,20 @@ class PastebinTelegramTest(unittest.TestCase):
 
 		create.assert_called_once_with(host.settings["pastebin"], "Body text", title="ABC123")
 
-	def test_includes_password_for_protected_pastebin(self):
+	def test_creates_protected_pastebin(self):
 		bot = FakeBot()
 		host = SimpleNamespace(
 			tgbot=bot,
 			cardinal=SimpleNamespace(),
-			settings={"pastebin": {"api_dev_key": "dev"}},
+			settings={
+				"pastebin": {
+					"api_dev_key": "dev",
+					"password": {
+						"mode": "custom",
+						"custom": "secret",
+					},
+				},
+			},
 		)
 		message = SimpleNamespace(
 			text="/pastebin Body text",
@@ -131,9 +147,10 @@ class PastebinTelegramTest(unittest.TestCase):
 		)
 		result = SimpleNamespace(url="https://pastebin.com/key", password="secret", protected=True)
 
-		with patch("manual_actions_core.pastebin.telegram.create_pastebin", return_value=result):
+		with patch("manual_actions_core.pastebin.telegram.create_pastebin", return_value=result) as create:
 			TelegramPastebinFlow(host).cmd_pastebin(message)
 
+		create.assert_called_once_with(host.settings["pastebin"], "Body text", title="")
 		self.assertIn("https://pastebin.com/key", bot.edits[0][0])
 		self.assertIn("<code>secret</code>", bot.edits[0][0])
 
@@ -145,6 +162,42 @@ class PastebinTelegramTest(unittest.TestCase):
 		TelegramPastebinFlow(host).cmd_pastebin(message)
 
 		self.assertIn("Использование", bot.replies[0][1])
+		self.assertEqual(bot.edits, [])
+
+	def test_reports_usage_with_missing_pastebin_settings(self):
+		bot = FakeBot()
+		host = SimpleNamespace(tgbot=bot, cardinal=SimpleNamespace(), settings={})
+		message = SimpleNamespace(text="/pastebin", reply_to_message=None, chat=SimpleNamespace(id=1))
+
+		TelegramPastebinFlow(host).cmd_pastebin(message)
+
+		self.assertIn("Использование", bot.replies[0][1])
+		self.assertEqual(bot.edits, [])
+
+	def test_reports_missing_pastebin_settings_before_creating_paste(self):
+		bot = FakeBot()
+		host = SimpleNamespace(tgbot=bot, cardinal=SimpleNamespace(), settings={})
+		message = SimpleNamespace(text="/pastebin Body text", reply_to_message=None, chat=SimpleNamespace(id=1))
+
+		TelegramPastebinFlow(host).cmd_pastebin(message)
+
+		self.assertIn("Pastebin не настроен", bot.replies[0][1])
+		self.assertIn("API dev key", bot.replies[0][1])
+		self.assertEqual(bot.edits, [])
+
+	def test_reports_missing_order_id_title_argument(self):
+		bot = FakeBot()
+		host = SimpleNamespace(
+			tgbot=bot,
+			cardinal=SimpleNamespace(),
+			settings={"pastebin": {"api_dev_key": "dev", "title": {"mode": "order_id"}}},
+		)
+		message = SimpleNamespace(text="/pastebin Body text", reply_to_message=None, chat=SimpleNamespace(id=1))
+
+		TelegramPastebinFlow(host).cmd_pastebin(message)
+
+		self.assertIn("номер заказа", bot.replies[0][1])
+		self.assertIn("/pastebin #ORDER_ID", bot.replies[0][1])
 		self.assertEqual(bot.edits, [])
 
 

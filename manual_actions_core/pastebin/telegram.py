@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 import telebot
 
 from ..chat_sync import get_topic_context, is_in_sync_chat
-from .service import create_pastebin, pastebin_error_text, resolve_paste_title
+from .service import create_pastebin, pastebin_config_errors, pastebin_error_text, resolve_paste_title
 from .settings import normalize_pastebin_settings
 
 if TYPE_CHECKING:
@@ -29,7 +29,8 @@ class TelegramPastebinFlow:
 		self.host.tg.msg_handler(self.cmd_pastebin, commands=["pastebin"])
 
 	def cmd_pastebin(self, message: telebot.types.Message) -> None:
-		config = normalize_pastebin_settings(self.host.settings["pastebin"])
+		pastebin_settings = self.host.settings.get("pastebin", {})
+		config = normalize_pastebin_settings(pastebin_settings)
 		request = pastebin_request_from_message(message, config["title"]["mode"] == "order_id")
 		if not request.text:
 			self.host.tgbot.reply_to(
@@ -39,11 +40,16 @@ class TelegramPastebinFlow:
 			)
 			return
 
+		config_errors = pastebin_config_errors(pastebin_settings, request.order_id)
+		if config_errors:
+			self.host.tgbot.reply_to(message, self.format_config_errors(config_errors))
+			return
+
 		wait_message = self.host.tgbot.reply_to(message, "⏳ Создаю Pastebin...")
 		try:
 			username = self.chat_sync_username(message)
-			title = resolve_paste_title(self.host.settings["pastebin"], username, request.order_id)
-			result = create_pastebin(self.host.settings["pastebin"], request.text, title=title)
+			title = resolve_paste_title(pastebin_settings, username, request.order_id)
+			result = create_pastebin(pastebin_settings, request.text, title=title)
 		except Exception as exc:
 			self.host.tgbot.edit_message_text(
 				f"❌ {html_escape(pastebin_error_text(exc))}",
@@ -70,6 +76,11 @@ class TelegramPastebinFlow:
 		if password:
 			text += f"\n\n🔒 Пароль:\n<code>{html_escape(password)}</code>"
 		return text
+
+	def format_config_errors(self, errors: list[str]) -> str:
+		lines = ["❌ Pastebin не настроен:"]
+		lines.extend(f"• {html_escape(error)}" for error in errors)
+		return "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -104,6 +115,9 @@ def split_order_id_prefix(text: str) -> tuple[str, str]:
 	parts = text.split(maxsplit=1)
 	if not parts:
 		return "", ""
+
+	if not parts[0].startswith("#"):
+		return "", text.strip()
 
 	candidate = parts[0].lstrip("#").strip()
 	if not is_order_id(candidate):

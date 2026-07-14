@@ -32,6 +32,7 @@ from manual_actions_core.constants import (
 	CBT_PASTEBIN_ACCOUNT_PAGE,
 	CBT_PASTEBIN_PASSWORD_PAGE,
 	CBT_PASTEBIN_PUBLISH_PAGE,
+	CBT_PASTEBIN_SET_PASSWORD_MODE,
 	CBT_PASTEBIN_SET_TITLE_MODE,
 	CBT_PASTEBIN_TITLE_PAGE,
 )
@@ -124,6 +125,29 @@ class PastebinUITest(unittest.TestCase):
 		keyboard = bot.messages[0][2]
 		callbacks = [button.callback_data for row in keyboard.rows for button in row]
 		self.assertIn(f"{CBT_PASTEBIN_SET_TITLE_MODE}order_id:0", callbacks)
+
+	def test_password_page_includes_password_modes(self):
+		bot = FakeBot()
+		settings = settings_module.normalize_settings({
+			"pastebin": {
+				"password": {
+					"mode": "custom",
+					"custom": "secret",
+				},
+			},
+		})
+		host = SimpleNamespace(tgbot=bot, settings=settings)
+		ui = TelegramPastebinSettingsUI(host)
+
+		ui.show_password_page(1)
+
+		text = bot.messages[0][1]
+		keyboard = bot.messages[0][2]
+		callbacks = [button.callback_data for row in keyboard.rows for button in row]
+		self.assertIn("Свой пароль", text)
+		self.assertIn(f"{CBT_PASTEBIN_SET_PASSWORD_MODE}off:0", callbacks)
+		self.assertIn(f"{CBT_PASTEBIN_SET_PASSWORD_MODE}custom:0", callbacks)
+		self.assertIn(f"{CBT_PASTEBIN_SET_PASSWORD_MODE}random:0", callbacks)
 
 
 if __name__ == "__main__":
