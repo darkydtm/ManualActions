@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, Any, Protocol
 import telebot
 from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 
-from .chat_sync import TopicContext, get_topic_context, is_in_sync_chat
-from .constants import CBT_LOT_REFRESH, CBT_LOT_SECTION, CBT_LOT_VIEWED
-from .lots import (
+from ..funpay.chat_sync import TopicContext, get_topic_context, is_in_sync_chat
+from ..constants import CBT_LOT_REFRESH, CBT_LOT_SECTION, CBT_LOT_VIEWED
+from ..funpay.lots import (
 	LOT_SECTION_LABELS,
 	extract_lot_id,
 	find_lot,
@@ -16,8 +16,8 @@ from .lots import (
 	get_viewed_lot,
 	lot_public_link,
 )
-from .payloads import parse_three_part_payload
-from .telegram_ui import delete_controlled_message, message_thread_id, send_menu
+from ..payloads import parse_three_part_payload
+from .ui import delete_controlled_message, message_thread_id, send_menu
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal

@@ -4,7 +4,7 @@ import logging
 from html import escape
 from typing import TYPE_CHECKING
 
-from .constants import LOGGER_NAME, LOGGER_PREFIX
+from ..constants import LOGGER_NAME, LOGGER_PREFIX
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .status import auto_message_text, parse_funpay_status_command
+from ..status import auto_message_text, parse_funpay_status_command
 
 try:
 	from FunPayAPI.types import MessageTypes

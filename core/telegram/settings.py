@@ -8,8 +8,8 @@ from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 from tg_bot import CBT
 from tg_bot.utils import escape
 
-from .blacklist import unblock_user
-from .constants import (
+from ..funpay.blacklist import unblock_user
+from ..constants import (
 	CBT_BLACKLIST_PAGE,
 	CBT_PASTEBIN_PAGE,
 	CBT_BL_UNBL,
@@ -31,9 +31,9 @@ from .constants import (
 	UUID,
 	VERSION,
 )
-from .pastebin.ui import TelegramPastebinSettingsUI
-from .status import STATUS_IDS, status_label
-from .updater import MODE_ASK, MODE_DISABLED, MODE_ENABLED
+from ..pastebin.ui import TelegramPastebinSettingsUI
+from ..status import STATUS_IDS, status_label
+from ..updater import MODE_ASK, MODE_DISABLED, MODE_ENABLED
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal

@@ -4,7 +4,7 @@ import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .constants import SYNC_PLUGIN_UUID
+from ..constants import SYNC_PLUGIN_UUID
 
 if TYPE_CHECKING:
 	import telebot

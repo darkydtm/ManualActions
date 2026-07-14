@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 
-from core.lots import extract_lot_id, format_lot_details, format_lot_section
+from core.funpay.lots import extract_lot_id, format_lot_details, format_lot_section
 
 
 class LotsTest(unittest.TestCase):

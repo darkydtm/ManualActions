@@ -36,8 +36,8 @@ sys.modules.setdefault("Utils", utils_module)
 
 from core import settings as settings_module
 from core.constants import CBT_UPDATER_CUSTOM_INTERVAL, CBT_UPDATER_INTERVAL, CBT_UPDATER_MODE, CBT_UPDATER_PAGE
-from core import telegram_settings as telegram_settings_module
-from core.telegram_settings import TelegramSettingsUI
+from core.telegram import settings as telegram_settings_module
+from core.telegram.settings import TelegramSettingsUI
 from core.updater import MODE_ASK
 
 

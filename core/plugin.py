@@ -12,8 +12,8 @@ from .funpay import MessageContext, extract_message_context, should_send_auto_st
 from .settings import DEFAULT_SETTINGS
 from .status import auto_message_text, parse_funpay_status_command, response_text
 from .storage import PluginStorage
-from .telegram_commands import TelegramCommands
-from .telegram_settings import TelegramSettingsUI
+from .telegram.commands import TelegramCommands
+from .telegram.settings import TelegramSettingsUI
 from .updater import MODE_DISABLED, ManualActionsUpdater, UpdaterRelease
 
 if TYPE_CHECKING:

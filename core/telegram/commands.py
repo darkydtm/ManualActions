@@ -6,24 +6,24 @@ from typing import TYPE_CHECKING, Any, Protocol
 import telebot
 from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 
-from .chat_sync import get_topic_context, is_in_sync_chat
-from .constants import (
+from ..funpay.chat_sync import get_topic_context, is_in_sync_chat
+from ..constants import (
 	CBT_REFUND_CANCEL,
 	CBT_REFUND_CNF,
 	LOGGER_NAME,
 	LOGGER_PREFIX,
 	UUID,
 )
-from .orders import get_pending_orders_for_user, refund_order
-from .status import InvalidStatusCommand, parse_telegram_status_command, status_label, toggle_status
-from .telegram_blacklist import TelegramBlacklistFlow
-from .telegram_lots import TelegramLotsFlow
-from .telegram_orders import TelegramOrdersFlow
-from .pastebin.telegram import TelegramPastebinFlow
+from ..funpay.orders import get_pending_orders_for_user, refund_order
+from ..pastebin.telegram import TelegramPastebinFlow
+from ..status import InvalidStatusCommand, parse_telegram_status_command, status_label, toggle_status
+from .blacklist import TelegramBlacklistFlow
+from .lots import TelegramLotsFlow
+from .orders import TelegramOrdersFlow
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal
-	from .telegram_settings import TelegramSettingsUI
+	from .settings import TelegramSettingsUI
 
 
 logger = logging.getLogger(LOGGER_NAME)

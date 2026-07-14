@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import telebot
 
-from ..chat_sync import get_topic_context, is_in_sync_chat
+from ..funpay.chat_sync import get_topic_context, is_in_sync_chat
 from .service import create_pastebin, pastebin_config_errors, pastebin_error_text, resolve_paste_title
 from .settings import normalize_pastebin_settings
 

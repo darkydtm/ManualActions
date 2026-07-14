@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from html import escape
 from typing import TYPE_CHECKING, Any
 
-from .constants import LOGGER_NAME, LOGGER_PREFIX
+from ..constants import LOGGER_NAME, LOGGER_PREFIX
 
 import logging
 

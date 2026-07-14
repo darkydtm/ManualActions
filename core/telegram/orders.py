@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING, Any, Callable, Protocol
 import telebot
 from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 
-from .chat_sync import get_topic_context, is_in_sync_chat
-from .constants import CBT_ORDERS_DETAIL, CBT_ORDERS_FILTER, CBT_ORDERS_REFUND
-from .orders import (
+from ..funpay.chat_sync import get_topic_context, is_in_sync_chat
+from ..constants import CBT_ORDERS_DETAIL, CBT_ORDERS_FILTER, CBT_ORDERS_REFUND
+from ..funpay.orders import (
 	ORDER_FILTER_LABELS,
 	ORDER_FILTERS,
 	format_order_details,
@@ -16,8 +16,8 @@ from .orders import (
 	get_orders_for_user,
 	order_status_key,
 )
-from .payloads import CallbackPayloadCache, parse_three_part_payload, parse_two_part_payload
-from .telegram_ui import delete_controlled_message, message_thread_id, send_menu
+from ..payloads import CallbackPayloadCache, parse_three_part_payload, parse_two_part_payload
+from .ui import delete_controlled_message, message_thread_id, send_menu
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal

@@ -9,7 +9,7 @@ utils = types.ModuleType("Utils")
 utils.cardinal_tools = SimpleNamespace(cache_blacklist=lambda blacklist: None)
 sys.modules.setdefault("Utils", utils)
 
-from core.blacklist import toggle_action_for_user
+from core.funpay.blacklist import toggle_action_for_user
 from core.payloads import parse_blacklist_payload
 
 
