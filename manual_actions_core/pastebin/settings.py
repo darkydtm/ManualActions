@@ -17,12 +17,20 @@ PASTEBIN_EXPIRATION_OPTIONS = {
 }
 
 PASTEBIN_TITLE_MODES = ("off", "custom", "chat_sync")
+PASTEBIN_VISIBILITY_OPTIONS = {
+	"0": "публичный",
+	"1": "по ссылке",
+	"2": "приватный",
+}
 
 DEFAULT_PASTEBIN_SETTINGS = {
 	"api_dev_key": "",
 	"api_user_key": "",
+	"username": "",
+	"password": "",
 	"expire_date": "N",
 	"folder_key": "",
+	"visibility": "1",
 	"title": {
 		"mode": "off",
 		"custom": "",
@@ -35,7 +43,7 @@ def normalize_pastebin_settings(data: Any) -> dict[str, Any]:
 	if not isinstance(data, dict):
 		return settings
 
-	for key in ("api_dev_key", "api_user_key", "folder_key"):
+	for key in ("api_dev_key", "api_user_key", "username", "password", "folder_key"):
 		value = data.get(key)
 		if isinstance(value, str):
 			settings[key] = value.strip()
@@ -43,6 +51,10 @@ def normalize_pastebin_settings(data: Any) -> dict[str, Any]:
 	expire_date = data.get("expire_date")
 	if isinstance(expire_date, str) and expire_date in PASTEBIN_EXPIRATION_OPTIONS:
 		settings["expire_date"] = expire_date
+
+	visibility = data.get("visibility")
+	if isinstance(visibility, str) and visibility in PASTEBIN_VISIBILITY_OPTIONS:
+		settings["visibility"] = visibility
 
 	settings["title"] = normalize_pastebin_title_settings(data.get("title"))
 	return settings
@@ -75,3 +87,6 @@ def pastebin_title_mode_label(value: str) -> str:
 		"chat_sync": "клиент из Chat Sync",
 	}.get(value, "выключен")
 
+
+def pastebin_visibility_label(value: str) -> str:
+	return PASTEBIN_VISIBILITY_OPTIONS.get(value, PASTEBIN_VISIBILITY_OPTIONS["1"])

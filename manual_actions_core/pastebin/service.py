@@ -2,18 +2,23 @@ from __future__ import annotations
 
 from typing import Any
 
-from .client import PastebinError, create_paste
+from .client import PastebinError, create_paste, login
 from .settings import normalize_pastebin_settings
 
 
-PASTEBIN_PRIVATE_UNLISTED = "1"
+PASTEBIN_VISIBILITY_PRIVATE = "2"
 
 
 class PastebinConfigError(Exception):
 	pass
 
 
-def build_paste_payload(settings: dict[str, Any], text: str, title: str = "") -> dict[str, str]:
+def build_paste_payload(
+	settings: dict[str, Any],
+	text: str,
+	title: str = "",
+	api_user_key: str = "",
+) -> dict[str, str]:
 	config = normalize_pastebin_settings(settings)
 	api_dev_key = config["api_dev_key"].strip()
 	if not api_dev_key:
@@ -23,17 +28,20 @@ def build_paste_payload(settings: dict[str, Any], text: str, title: str = "") ->
 		"api_dev_key": api_dev_key,
 		"api_option": "paste",
 		"api_paste_code": text,
-		"api_paste_private": PASTEBIN_PRIVATE_UNLISTED,
+		"api_paste_private": config["visibility"],
 		"api_paste_expire_date": config["expire_date"],
 	}
 
-	api_user_key = config["api_user_key"].strip()
-	if api_user_key:
-		payload["api_user_key"] = api_user_key
+	resolved_user_key = api_user_key.strip() or config["api_user_key"].strip()
+	if resolved_user_key:
+		payload["api_user_key"] = resolved_user_key
+
+	if config["visibility"] == PASTEBIN_VISIBILITY_PRIVATE and not resolved_user_key:
+		raise PastebinConfigError("Для приватного Pastebin нужен API user key.")
 
 	folder_key = config["folder_key"].strip()
 	if folder_key:
-		if not api_user_key:
+		if not resolved_user_key:
 			raise PastebinConfigError("Для папки Pastebin нужен API user key.")
 		payload["api_folder_key"] = folder_key
 
@@ -61,11 +69,28 @@ def create_pastebin_raw_url(
 	text: str,
 	title: str = "",
 	request_func: Any | None = None,
+	login_request_func: Any | None = None,
 ) -> str:
-	payload = build_paste_payload(settings, text, title)
+	api_user_key = resolve_api_user_key(settings, login_request_func)
+	payload = build_paste_payload(settings, text, title, api_user_key)
 	if request_func is None:
 		return create_paste(payload)
 	return create_paste(payload, request_func=request_func)
+
+
+def resolve_api_user_key(settings: dict[str, Any], request_func: Any | None = None) -> str:
+	config = normalize_pastebin_settings(settings)
+	if config["api_user_key"]:
+		return config["api_user_key"]
+	if not config["username"] and not config["password"]:
+		return ""
+	if not config["api_dev_key"]:
+		raise PastebinConfigError("API dev key Pastebin не задан.")
+	if not config["username"] or not config["password"]:
+		raise PastebinConfigError("Для входа Pastebin нужны логин и пароль.")
+	if request_func is None:
+		return login(config["api_dev_key"], config["username"], config["password"])
+	return login(config["api_dev_key"], config["username"], config["password"], request_func=request_func)
 
 
 def pastebin_error_text(exc: Exception) -> str:
