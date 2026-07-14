@@ -7,6 +7,7 @@ from manual_actions_core.pastebin.client import PastebinError, extract_paste_key
 from manual_actions_core.pastebin.service import (
 	PastebinConfigError,
 	build_paste_payload,
+	create_pastebin,
 	prepare_paste_text,
 	resolve_paste_title,
 	resolve_api_user_key,
@@ -134,6 +135,26 @@ class PastebinServiceTest(unittest.TestCase):
 					"custom": "",
 				},
 			}, "Body")
+
+	def test_returns_password_with_protected_result(self):
+		def request_func(request, timeout=15):
+			return FakeResponse("https://pastebin.com/key")
+
+		result = create_pastebin(
+			{
+				"api_dev_key": "dev",
+				"password": {
+					"mode": "custom",
+					"custom": "secret",
+				},
+			},
+			"Body",
+			request_func=request_func,
+		)
+
+		self.assertEqual(result.raw_url, "https://pastebin.com/raw/key")
+		self.assertEqual(result.password, "secret")
+		self.assertTrue(result.protected)
 
 	def test_extracts_raw_url_from_pastebin_response(self):
 		self.assertEqual(extract_paste_key("https://pastebin.com/AbCd1234"), "AbCd1234")

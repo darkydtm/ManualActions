@@ -56,12 +56,35 @@ class PastebinTelegramTest(unittest.TestCase):
 			message_thread_id=None,
 		)
 
-		with patch("manual_actions_core.pastebin.telegram.create_pastebin_raw_url", return_value="https://pastebin.com/raw/key") as create:
+		result = SimpleNamespace(raw_url="https://pastebin.com/raw/key", password="", protected=False)
+		with patch("manual_actions_core.pastebin.telegram.create_pastebin", return_value=result) as create:
 			TelegramPastebinFlow(host).cmd_pastebin(message)
 
 		create.assert_called_once_with(host.settings["pastebin"], "Body text", title="")
 		self.assertEqual(bot.replies[0][1], "⏳ Создаю Pastebin...")
 		self.assertIn("https://pastebin.com/raw/key", bot.edits[0][0])
+
+	def test_includes_password_for_protected_pastebin(self):
+		bot = FakeBot()
+		host = SimpleNamespace(
+			tgbot=bot,
+			cardinal=SimpleNamespace(),
+			settings={"pastebin": {"api_dev_key": "dev"}},
+		)
+		message = SimpleNamespace(
+			text="/pastebin Body text",
+			reply_to_message=None,
+			chat=SimpleNamespace(id=1),
+			is_topic_message=False,
+			message_thread_id=None,
+		)
+		result = SimpleNamespace(raw_url="https://pastebin.com/raw/key", password="secret", protected=True)
+
+		with patch("manual_actions_core.pastebin.telegram.create_pastebin", return_value=result):
+			TelegramPastebinFlow(host).cmd_pastebin(message)
+
+		self.assertIn("https://pastebin.com/raw/key", bot.edits[0][0])
+		self.assertIn("<code>secret</code>", bot.edits[0][0])
 
 	def test_reports_usage_without_text(self):
 		bot = FakeBot()

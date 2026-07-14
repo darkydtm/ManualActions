@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 import telebot
 
 from ..chat_sync import get_topic_context, is_in_sync_chat
-from .service import create_pastebin_raw_url, pastebin_error_text, resolve_paste_title
+from .service import create_pastebin, pastebin_error_text, resolve_paste_title
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal
@@ -40,7 +40,7 @@ class TelegramPastebinFlow:
 		try:
 			username = self.chat_sync_username(message)
 			title = resolve_paste_title(self.host.settings["pastebin"], username)
-			raw_url = create_pastebin_raw_url(self.host.settings["pastebin"], text, title=title)
+			result = create_pastebin(self.host.settings["pastebin"], text, title=title)
 		except Exception as exc:
 			self.host.tgbot.edit_message_text(
 				f"❌ {html_escape(pastebin_error_text(exc))}",
@@ -50,7 +50,7 @@ class TelegramPastebinFlow:
 			return
 
 		self.host.tgbot.edit_message_text(
-			f"✅ Pastebin raw-ссылка:\n{html_escape(raw_url)}",
+			self.format_result(result.raw_url, result.password),
 			wait_message.chat.id,
 			wait_message.message_id,
 			disable_web_page_preview=True,
@@ -61,6 +61,12 @@ class TelegramPastebinFlow:
 			return None
 		context = get_topic_context(self.host.cardinal, message)
 		return context.username if context else None
+
+	def format_result(self, raw_url: str, password: str = "") -> str:
+		text = f"✅ Pastebin raw-ссылка:\n{html_escape(raw_url)}"
+		if password:
+			text += f"\n\n🔒 Пароль:\n<code>{html_escape(password)}</code>"
+		return text
 
 
 def pastebin_text_from_message(message: telebot.types.Message) -> str:

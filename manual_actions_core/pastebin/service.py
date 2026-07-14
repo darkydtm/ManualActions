@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from .client import PastebinError, create_paste, login
@@ -12,6 +13,13 @@ PASTEBIN_VISIBILITY_PRIVATE = "2"
 
 class PastebinConfigError(Exception):
 	pass
+
+
+@dataclass(frozen=True)
+class PastebinResult:
+	raw_url: str
+	password: str
+	protected: bool
 
 
 def build_paste_payload(
@@ -90,12 +98,24 @@ def create_pastebin_raw_url(
 	request_func: Any | None = None,
 	login_request_func: Any | None = None,
 ) -> str:
-	api_user_key = resolve_api_user_key(settings, login_request_func)
+	return create_pastebin(settings, text, title, request_func, login_request_func).raw_url
+
+
+def create_pastebin(
+	settings: dict[str, Any],
+	text: str,
+	title: str = "",
+	request_func: Any | None = None,
+	login_request_func: Any | None = None,
+) -> PastebinResult:
 	prepared = prepare_paste_text(settings, text)
+	api_user_key = resolve_api_user_key(settings, login_request_func)
 	payload = build_paste_payload(settings, prepared.text, title, api_user_key)
 	if request_func is None:
-		return create_paste(payload)
-	return create_paste(payload, request_func=request_func)
+		raw_url = create_paste(payload)
+	else:
+		raw_url = create_paste(payload, request_func=request_func)
+	return PastebinResult(raw_url=raw_url, password=prepared.password, protected=prepared.protected)
 
 
 def resolve_api_user_key(settings: dict[str, Any], request_func: Any | None = None) -> str:
