@@ -218,6 +218,29 @@ class UpdaterTest(unittest.TestCase):
 		self.assertFalse(result.update_available)
 		self.assertEqual(result.message, "disabled")
 
+	def test_poll_interval_reads_settings_value(self):
+		settings = {"updater": {"mode": "ask", "check_interval_seconds": 1800}}
+		updater = ManualActionsUpdater(
+			settings,
+			lambda: None,
+			"manual_actions.py",
+			"1.3.0",
+		)
+
+		self.assertEqual(updater.poll_interval(), 1800)
+
+	def test_poll_interval_falls_back_to_default(self):
+		settings = {"updater": {"mode": "ask", "check_interval_seconds": 0}}
+		updater = ManualActionsUpdater(
+			settings,
+			lambda: None,
+			"manual_actions.py",
+			"1.3.0",
+			poll_interval=120,
+		)
+
+		self.assertEqual(updater.poll_interval(), 120)
+
 	def test_skipped_release_is_not_reported_again(self):
 		settings = {"updater": {"mode": "ask", "installed_version": "", "skipped_version": "1.3.1"}}
 		available = []

@@ -32,6 +32,7 @@ UPDATER_MODES = ("enabled", "disabled", "ask")
 
 DEFAULT_UPDATER_SETTINGS = {
 	"mode": "disabled",
+	"check_interval_seconds": 3600,
 	"skipped_version": "",
 	"installed_version": "",
 	"last_checked_version": "",
@@ -95,7 +96,7 @@ def normalize_auto_messages(data: Any) -> dict[str, dict[str, bool | str]]:
 	return messages
 
 
-def normalize_updater_settings(data: Any) -> dict[str, str]:
+def normalize_updater_settings(data: Any) -> dict[str, Any]:
 	settings = DEFAULT_UPDATER_SETTINGS.copy()
 	if not isinstance(data, dict):
 		return settings
@@ -103,6 +104,10 @@ def normalize_updater_settings(data: Any) -> dict[str, str]:
 	mode = data.get("mode")
 	if mode in UPDATER_MODES:
 		settings["mode"] = mode
+
+	interval = data.get("check_interval_seconds")
+	if isinstance(interval, int) and not isinstance(interval, bool) and interval > 0:
+		settings["check_interval_seconds"] = interval
 
 	for key in ("skipped_version", "installed_version", "last_checked_version"):
 		value = data.get(key)

@@ -63,7 +63,7 @@ class ManualActionsUpdater:
 		self.on_update_installed = on_update_installed
 		self.on_update_error = on_update_error
 		self.request_func = request_func
-		self.poll_interval = poll_interval
+		self.default_poll_interval = poll_interval
 		self._stop = threading.Event()
 		self._thread: threading.Thread | None = None
 
@@ -131,8 +131,14 @@ class ManualActionsUpdater:
 	def mode(self) -> str:
 		return str(self.config().get("mode", MODE_DISABLED))
 
-	def config(self) -> dict[str, str]:
+	def config(self) -> dict[str, Any]:
 		return self.settings.setdefault("updater", {})
+
+	def poll_interval(self) -> int:
+		interval = self.config().get("check_interval_seconds")
+		if isinstance(interval, int) and not isinstance(interval, bool) and interval > 0:
+			return interval
+		return self.default_poll_interval
 
 	def _run(self) -> None:
 		while not self._stop.is_set():
@@ -141,7 +147,7 @@ class ManualActionsUpdater:
 			except Exception as exc:
 				if self.on_update_error:
 					self.on_update_error(exc)
-			if self._stop.wait(self.poll_interval):
+			if self._stop.wait(self.poll_interval()):
 				break
 
 

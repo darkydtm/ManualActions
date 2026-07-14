@@ -13,6 +13,7 @@ class ManualActionsSettingsTest(unittest.TestCase):
 		self.assertIn("0", settings["status_response_texts"])
 		self.assertIn("2", settings["status_auto_messages"])
 		self.assertEqual(settings["updater"]["mode"], "disabled")
+		self.assertEqual(settings["updater"]["check_interval_seconds"], 3600)
 		self.assertEqual(settings["updater"]["skipped_version"], "")
 		self.assertEqual(settings["updater"]["installed_version"], "")
 		self.assertEqual(settings["updater"]["last_checked_version"], "")
@@ -59,6 +60,7 @@ class ManualActionsSettingsTest(unittest.TestCase):
 		settings = normalize_settings({
 			"updater": {
 				"mode": "ask",
+				"check_interval_seconds": 1800,
 				"skipped_version": " 1.2.3 ",
 				"installed_version": " 1.2.2 ",
 				"last_checked_version": " 1.2.1 ",
@@ -66,6 +68,7 @@ class ManualActionsSettingsTest(unittest.TestCase):
 		})
 
 		self.assertEqual(settings["updater"]["mode"], "ask")
+		self.assertEqual(settings["updater"]["check_interval_seconds"], 1800)
 		self.assertEqual(settings["updater"]["skipped_version"], "1.2.3")
 		self.assertEqual(settings["updater"]["installed_version"], "1.2.2")
 		self.assertEqual(settings["updater"]["last_checked_version"], "1.2.1")
@@ -74,6 +77,7 @@ class ManualActionsSettingsTest(unittest.TestCase):
 		settings = normalize_settings({
 			"updater": {
 				"mode": "bad",
+				"check_interval_seconds": 0,
 				"skipped_version": 123,
 				"installed_version": None,
 				"last_checked_version": [],
@@ -81,6 +85,7 @@ class ManualActionsSettingsTest(unittest.TestCase):
 		})
 
 		self.assertEqual(settings["updater"]["mode"], "disabled")
+		self.assertEqual(settings["updater"]["check_interval_seconds"], 3600)
 		self.assertEqual(settings["updater"]["skipped_version"], "")
 		self.assertEqual(settings["updater"]["installed_version"], "")
 		self.assertEqual(settings["updater"]["last_checked_version"], "")
