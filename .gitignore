@@ -1,6 +1,3 @@
-examples/
-docs/superpowers/
-storage/plugins/manual_actions/
 __pycache__/
 *.pyc
 dist/
