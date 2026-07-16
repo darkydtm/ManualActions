@@ -86,7 +86,6 @@ class GistTelegramTest(unittest.TestCase):
 		TelegramGistFlow(host).register()
 
 		self.assertEqual(tg.commands, ["gist"])
-		self.assertNotIn("pastebin", tg.commands)
 
 	def test_uses_command_argument_text(self):
 		message = SimpleNamespace(text="/gist Body text", reply_to_message=None)

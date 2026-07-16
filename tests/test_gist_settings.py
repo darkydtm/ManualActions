@@ -13,7 +13,6 @@ class GistSettingsTest(unittest.TestCase):
 		self.assertEqual(settings["gist"]["visibility"], "secret")
 		self.assertEqual(settings["gist"]["filename"]["mode"], "off")
 		self.assertEqual(settings["gist"]["filename"]["custom"], "")
-		self.assertNotIn("pastebin", settings)
 
 	def test_keeps_valid_gist_settings(self):
 		settings = normalize_settings({
@@ -61,15 +60,15 @@ class GistSettingsTest(unittest.TestCase):
 		self.assertEqual(settings["gist"]["filename"]["mode"], "off")
 		self.assertEqual(settings["gist"]["filename"]["custom"], "")
 
-	def test_ignores_legacy_pastebin_settings(self):
+	def test_ignores_unknown_legacy_settings(self):
 		settings = normalize_settings({
-			"pastebin": {
-				"api_dev_key": "dev",
+			"legacy": {
+				"token": "old",
 			},
 		})
 
 		self.assertEqual(settings["gist"]["token"], "")
-		self.assertNotIn("pastebin", settings)
+		self.assertNotIn("legacy", settings)
 
 	def test_returns_independent_default_objects(self):
 		first = normalize_settings({})
