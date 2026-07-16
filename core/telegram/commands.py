@@ -7,6 +7,7 @@ import telebot
 from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 
 from ..funpay.chat_sync import get_topic_context, is_in_sync_chat
+from ..gist.telegram import TelegramGistFlow
 from ..constants import (
 	CBT_REFUND_CANCEL,
 	CBT_REFUND_CNF,
@@ -15,7 +16,6 @@ from ..constants import (
 	UUID,
 )
 from ..funpay.orders import get_pending_orders_for_user, refund_order
-from ..pastebin.telegram import TelegramPastebinFlow
 from ..status import InvalidStatusCommand, parse_telegram_status_command, status_label, toggle_status
 from .blacklist import TelegramBlacklistFlow
 from .lots import TelegramLotsFlow
@@ -46,7 +46,7 @@ class TelegramCommands:
 		self.blacklist_flow = TelegramBlacklistFlow(host)
 		self.lots_flow = TelegramLotsFlow(host)
 		self.orders_flow = TelegramOrdersFlow(host, self.ask_refund_confirm)
-		self.pastebin_flow = TelegramPastebinFlow(host)
+		self.gist_flow = TelegramGistFlow(host)
 
 	def register(self) -> None:
 		if not self.host.tg:
@@ -63,14 +63,14 @@ class TelegramCommands:
 		self.blacklist_flow.register()
 		self.lots_flow.register()
 		self.orders_flow.register()
-		self.pastebin_flow.register()
+		self.gist_flow.register()
 		self.host.cardinal.add_telegram_commands(UUID, [
 			("refund", "Возврат: /refund [ID] или в топике без ID", True),
 			("bl", "Переключить ЧС: /bl [ник] или в топике без ника", True),
 			("bl_list", "Показать чёрный список", True),
 			("lot", "Информация о лоте: /lot [ID] или в топике", True),
 			("orders", "Заказы пользователя: /orders [ник] или в топике", True),
-			("pastebin", "Создать ссылку Pastebin: /pastebin <текст> или reply", True),
+			("gist", "Создать GitHub Gist: /gist <текст> или reply", True),
 			("status", "Статус: /status [0/1/2]", True),
 		])
 		self.host.tg.msg_handler(self.cmd_refund, commands=["refund"])
