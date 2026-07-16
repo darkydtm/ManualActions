@@ -72,6 +72,8 @@ CBT_PASTEBIN_EDIT_FOLDER = "ma_pb_edit_folder:"
 CBT_PASTEBIN_EDIT_CUSTOM_TITLE = "ma_pb_edit_title:"
 CBT_PASTEBIN_VISIBILITY_PAGE = "ma_pb_visibility_page:"
 CBT_PASTEBIN_SET_VISIBILITY = "ma_pb_set_visibility:"
+CBT_PASTEBIN_ORDER_SELECT = "ma_pb_order_select:"
+CBT_PASTEBIN_ORDER_CANCEL = "ma_pb_order_cancel:"
 
 CBT_UPDATER_PAGE = "ma_updater_page:"
 CBT_UPDATER_MODE = "ma_updater_mode:"
