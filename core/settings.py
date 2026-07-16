@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from .pastebin.settings import DEFAULT_PASTEBIN_SETTINGS, normalize_pastebin_settings
+from .gist.settings import DEFAULT_GIST_SETTINGS, normalize_gist_settings
 from .status import STATUS_IDS, normalize_status_id
 
 
@@ -42,7 +42,7 @@ DEFAULT_SETTINGS = {
 	"status": "1",
 	"status_response_texts": DEFAULT_STATUS_RESPONSE_TEXTS,
 	"status_auto_messages": DEFAULT_STATUS_AUTO_MESSAGES,
-	"pastebin": DEFAULT_PASTEBIN_SETTINGS,
+	"gist": DEFAULT_GIST_SETTINGS,
 	"updater": DEFAULT_UPDATER_SETTINGS,
 }
 
@@ -58,7 +58,7 @@ def normalize_settings(data: dict[str, Any] | None) -> dict[str, Any]:
 		DEFAULT_STATUS_RESPONSE_TEXTS,
 	)
 	settings["status_auto_messages"] = normalize_auto_messages(data.get("status_auto_messages"))
-	settings["pastebin"] = normalize_pastebin_settings(data.get("pastebin"))
+	settings["gist"] = normalize_gist_settings(data.get("gist"))
 	settings["updater"] = normalize_updater_settings(data.get("updater"))
 	return settings
 
