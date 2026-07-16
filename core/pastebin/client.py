@@ -78,10 +78,13 @@ def post_form(
 
 
 def http_error_message(exc: HTTPError) -> str:
-	body = exc.read().decode("utf-8", errors="replace").strip()
-	if body:
-		return body
-	return f"Pastebin вернул HTTP {exc.code}."
+	try:
+		body = exc.read().decode("utf-8", errors="replace").strip()
+		if body:
+			return body
+		return f"Pastebin вернул HTTP {exc.code}."
+	finally:
+		exc.close()
 
 
 def pastebin_url(url: str) -> str:
