@@ -18,7 +18,12 @@ from core.pastebin.telegram import (
 	pastebin_request_from_message,
 	pastebin_text_from_message,
 )
-from core.constants import CBT_PASTEBIN_ORDER_CANCEL, CBT_PASTEBIN_ORDER_SELECT
+from core.constants import (
+	CBT_PASTEBIN_ORDER_CANCEL,
+	CBT_PASTEBIN_ORDER_SELECT,
+	CBT_PASTEBIN_SEND,
+	CBT_PASTEBIN_SKIP_SEND,
+)
 
 
 class FakeButton:
@@ -134,6 +139,7 @@ class PastebinTelegramTest(unittest.TestCase):
 		self.assertEqual(bot.replies[0][1], "⏳ Создаю Pastebin...")
 		self.assertIn("Pastebin ссылка", bot.edits[0][0])
 		self.assertIn("https://pastebin.com/key", bot.edits[0][0])
+		self.assertIsNone(bot.edits[0][3]["reply_markup"])
 
 	def test_creates_pastebin_with_order_id_title(self):
 		bot = FakeBot()
@@ -193,7 +199,33 @@ class PastebinTelegramTest(unittest.TestCase):
 		callbacks = [button.callback_data for row in keyboard.rows for button in row if button.callback_data]
 		self.assertTrue(any(data.startswith(CBT_PASTEBIN_ORDER_SELECT) for data in callbacks))
 		self.assertIn(CBT_PASTEBIN_ORDER_CANCEL + next(iter(flow.pending_requests)), callbacks)
-		self.assertNotIn("ABC123", callbacks)
+
+	def test_reports_when_chat_sync_user_has_no_pending_orders(self):
+		bot = FakeBot()
+		host = SimpleNamespace(
+			tgbot=bot,
+			cardinal=SimpleNamespace(),
+			settings={"pastebin": {"api_dev_key": "dev", "title": {"mode": "order_id"}}},
+		)
+		message = SimpleNamespace(
+			text="/pastebin Body text",
+			reply_to_message=None,
+			chat=SimpleNamespace(id=1),
+			is_topic_message=True,
+			message_thread_id=2,
+		)
+		context = SimpleNamespace(username="buyer", fp_chat_id=3, thread_id=2)
+
+		with (
+			patch("core.pastebin.telegram.is_in_sync_chat", return_value=True),
+			patch("core.pastebin.telegram.get_topic_context", return_value=context),
+			patch("core.pastebin.telegram.get_pending_orders_for_user", return_value=[]),
+		):
+			flow = TelegramPastebinFlow(host)
+			flow.cmd_pastebin(message)
+
+		self.assertEqual(flow.pending_requests, {})
+		self.assertIn("нет неподтверждённых заказов", bot.edits[0][0])
 
 	def test_cancels_pending_chat_sync_order_selection(self):
 		bot = FakeBot()
@@ -238,6 +270,144 @@ class PastebinTelegramTest(unittest.TestCase):
 		create.assert_called_once_with(host.settings["pastebin"], "Body text", title="ABC123")
 		self.assertNotIn("token", flow.pending_requests)
 		self.assertIn(result.url, bot.edits[0][0])
+		keyboard = bot.edits[0][3]["reply_markup"]
+		callbacks = [button.callback_data for row in keyboard.rows for button in row]
+		self.assertTrue(any(data.startswith(CBT_PASTEBIN_SEND) for data in callbacks))
+		self.assertTrue(any(data.startswith(CBT_PASTEBIN_SKIP_SEND) for data in callbacks))
+
+	def test_explicit_order_id_in_chat_sync_includes_result_actions(self):
+		bot = FakeBot()
+		host = SimpleNamespace(
+			tgbot=bot,
+			cardinal=SimpleNamespace(),
+			settings={"pastebin": {"api_dev_key": "dev", "title": {"mode": "order_id"}}},
+		)
+		message = SimpleNamespace(
+			text="/pastebin #ABC123 Body text",
+			reply_to_message=None,
+			chat=SimpleNamespace(id=1),
+			is_topic_message=True,
+			message_thread_id=2,
+		)
+		context = SimpleNamespace(username="buyer", fp_chat_id=3, thread_id=2)
+		result = SimpleNamespace(url="https://pastebin.com/raw/key")
+
+		with (
+			patch("core.pastebin.telegram.is_in_sync_chat", return_value=True),
+			patch("core.pastebin.telegram.get_topic_context", return_value=context),
+			patch("core.pastebin.telegram.create_pastebin", return_value=result),
+		):
+			flow = TelegramPastebinFlow(host)
+			flow.cmd_pastebin(message)
+
+		self.assertEqual(len(flow.pending_results), 1)
+		self.assertIsNotNone(bot.edits[0][3]["reply_markup"])
+
+	def test_sends_generated_link_to_funpay_chat(self):
+		bot = FakeBot()
+		cardinal = SimpleNamespace(send_message=lambda **kwargs: True)
+		host = SimpleNamespace(tgbot=bot, cardinal=cardinal, settings={})
+		flow = TelegramPastebinFlow(host)
+		flow.pending_results["token"] = SimpleNamespace(url="https://pastebin.com/raw/key", fp_chat_id=3)
+		call = SimpleNamespace(
+			id="callback-id",
+			data=f"{CBT_PASTEBIN_SEND}token",
+			message=SimpleNamespace(
+				chat=SimpleNamespace(id=1),
+				message_id=99,
+				text="✅ Pastebin ссылка:\nhttps://pastebin.com/raw/key",
+			),
+		)
+
+		with patch.object(cardinal, "send_message", return_value=True) as send:
+			flow.send_result(call)
+
+		send.assert_called_once_with(chat_id=3, message_text="https://pastebin.com/raw/key")
+		self.assertNotIn("token", flow.pending_results)
+		self.assertIn("отправлена", bot.edits[0][0])
+		self.assertIsNone(bot.edits[0][3]["reply_markup"])
+
+	def test_skips_generated_link_delivery(self):
+		bot = FakeBot()
+		cardinal = SimpleNamespace()
+		host = SimpleNamespace(tgbot=bot, cardinal=cardinal, settings={})
+		flow = TelegramPastebinFlow(host)
+		flow.pending_results["token"] = SimpleNamespace(url="https://pastebin.com/raw/key", fp_chat_id=3)
+		call = SimpleNamespace(
+			id="callback-id",
+			data=f"{CBT_PASTEBIN_SKIP_SEND}token",
+			message=SimpleNamespace(
+				chat=SimpleNamespace(id=1),
+				message_id=99,
+				text="✅ Pastebin ссылка:\nhttps://pastebin.com/raw/key",
+			),
+		)
+
+		flow.skip_result(call)
+
+		self.assertNotIn("token", flow.pending_results)
+		self.assertIn("не отправлена", bot.edits[0][0])
+		self.assertIsNone(bot.edits[0][3]["reply_markup"])
+
+	def test_keeps_link_visible_when_funpay_delivery_fails(self):
+		bot = FakeBot()
+		cardinal = SimpleNamespace(send_message=lambda **kwargs: True)
+		host = SimpleNamespace(tgbot=bot, cardinal=cardinal, settings={})
+		flow = TelegramPastebinFlow(host)
+		flow.pending_results["token"] = SimpleNamespace(url="https://pastebin.com/raw/key", fp_chat_id=3)
+		call = SimpleNamespace(
+			id="callback-id",
+			data=f"{CBT_PASTEBIN_SEND}token",
+			message=SimpleNamespace(
+				chat=SimpleNamespace(id=1),
+				message_id=99,
+				text="✅ Pastebin ссылка:\nhttps://pastebin.com/raw/key",
+			),
+		)
+
+		with patch.object(cardinal, "send_message", side_effect=RuntimeError("HTTP 422")):
+			flow.send_result(call)
+
+		self.assertIn("https://pastebin.com/raw/key", bot.edits[0][0])
+		self.assertIn("HTTP 422", bot.edits[0][0])
+
+	def test_reports_false_funpay_delivery_result(self):
+		bot = FakeBot()
+		cardinal = SimpleNamespace(send_message=lambda **kwargs: False)
+		host = SimpleNamespace(tgbot=bot, cardinal=cardinal, settings={})
+		flow = TelegramPastebinFlow(host)
+		flow.pending_results["token"] = SimpleNamespace(url="https://pastebin.com/raw/key", fp_chat_id=3)
+		call = SimpleNamespace(
+			id="callback-id",
+			data=f"{CBT_PASTEBIN_SEND}token",
+			message=SimpleNamespace(
+				chat=SimpleNamespace(id=1),
+				message_id=99,
+				text="✅ Pastebin ссылка:\nhttps://pastebin.com/raw/key",
+			),
+		)
+
+		flow.send_result(call)
+
+		self.assertIn("не подтвердил отправку", bot.edits[0][0])
+
+	def test_reports_expired_result_action(self):
+		bot = FakeBot()
+		host = SimpleNamespace(tgbot=bot, cardinal=SimpleNamespace(), settings={})
+		flow = TelegramPastebinFlow(host)
+		call = SimpleNamespace(
+			id="callback-id",
+			data=f"{CBT_PASTEBIN_SEND}missing",
+			message=SimpleNamespace(
+				chat=SimpleNamespace(id=1),
+				message_id=99,
+				text="✅ Pastebin ссылка:\nhttps://pastebin.com/raw/key",
+			),
+		)
+
+		flow.send_result(call)
+
+		self.assertIn("Действие истекло", bot.edits[0][0])
 
 	def test_reports_expired_order_selection(self):
 		bot = FakeBot()

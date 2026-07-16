@@ -8,9 +8,14 @@ from typing import TYPE_CHECKING, Any, Protocol
 import telebot
 from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 
-from ..funpay.chat_sync import get_topic_context, is_in_sync_chat
+from ..funpay.chat_sync import TopicContext, get_topic_context, is_in_sync_chat
 from ..funpay.orders import get_pending_orders_for_user, format_order_price
-from ..constants import CBT_PASTEBIN_ORDER_CANCEL, CBT_PASTEBIN_ORDER_SELECT
+from ..constants import (
+	CBT_PASTEBIN_ORDER_CANCEL,
+	CBT_PASTEBIN_ORDER_SELECT,
+	CBT_PASTEBIN_SEND,
+	CBT_PASTEBIN_SKIP_SEND,
+)
 from .service import create_pastebin, pastebin_config_errors, pastebin_error_text, resolve_paste_title
 from .settings import normalize_pastebin_settings
 
@@ -28,14 +33,21 @@ class PastebinCommandHost(Protocol):
 @dataclass(frozen=True)
 class PendingPasteRequest:
 	text: str
-	context: Any
+	context: TopicContext
 	order_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PendingPasteResult:
+	url: str
+	fp_chat_id: int
 
 
 class TelegramPastebinFlow:
 	def __init__(self, host: PastebinCommandHost):
 		self.host = host
 		self.pending_requests: dict[str, PendingPasteRequest] = {}
+		self.pending_results: dict[str, PendingPasteResult] = {}
 
 	def register(self) -> None:
 		self.host.tg.msg_handler(self.cmd_pastebin, commands=["pastebin"])
@@ -46,6 +58,14 @@ class TelegramPastebinFlow:
 		self.host.tg.cbq_handler(
 			self.cancel_order_selection,
 			lambda c: (c.data or "").startswith(CBT_PASTEBIN_ORDER_CANCEL),
+		)
+		self.host.tg.cbq_handler(
+			self.send_result,
+			lambda c: (c.data or "").startswith(CBT_PASTEBIN_SEND),
+		)
+		self.host.tg.cbq_handler(
+			self.skip_result,
+			lambda c: (c.data or "").startswith(CBT_PASTEBIN_SKIP_SEND),
 		)
 
 	def cmd_pastebin(self, message: telebot.types.Message) -> None:
@@ -71,7 +91,8 @@ class TelegramPastebinFlow:
 
 		wait_message = self.host.tgbot.reply_to(message, "⏳ Создаю Pastebin...")
 		try:
-			username = self.chat_sync_username(message)
+			context = self.chat_sync_context(message)
+			username = context.username if context else None
 			title = resolve_paste_title(pastebin_settings, username, request.order_id)
 			result = create_pastebin(pastebin_settings, request.text, title=title)
 		except Exception as exc:
@@ -82,12 +103,7 @@ class TelegramPastebinFlow:
 			)
 			return
 
-		self.host.tgbot.edit_message_text(
-			self.format_result(result.url),
-			wait_message.chat.id,
-			wait_message.message_id,
-			disable_web_page_preview=True,
-		)
+		self.show_result(wait_message, result.url, context)
 
 	def start_order_selection(
 		self,
@@ -151,7 +167,7 @@ class TelegramPastebinFlow:
 			)
 			return
 
-		self.create_from_request(call.message, request.text, order_id)
+		self.create_from_request(call.message, request, order_id)
 
 	def cancel_order_selection(self, call: telebot.types.CallbackQuery) -> None:
 		token = call.data.replace(CBT_PASTEBIN_ORDER_CANCEL, "", 1)
@@ -164,10 +180,15 @@ class TelegramPastebinFlow:
 			reply_markup=None,
 		)
 
-	def create_from_request(self, message: telebot.types.Message, text: str, order_id: str) -> None:
+	def create_from_request(
+		self,
+		message: telebot.types.Message,
+		request: PendingPasteRequest,
+		order_id: str,
+	) -> None:
 		pastebin_settings = self.host.settings.get("pastebin", {})
 		try:
-			result = create_pastebin(pastebin_settings, text, title=order_id)
+			result = create_pastebin(pastebin_settings, request.text, title=order_id)
 		except Exception as exc:
 			self.host.tgbot.edit_message_text(
 				f"❌ {html_escape(pastebin_error_text(exc))}",
@@ -177,22 +198,95 @@ class TelegramPastebinFlow:
 			)
 			return
 
+		self.show_result(message, result.url, request.context)
+
+	def show_result(
+		self,
+		message: telebot.types.Message,
+		url: str,
+		context: TopicContext | None = None,
+	) -> None:
+		keyboard = None
+		if context:
+			token = token_urlsafe(8)
+			self.pending_results[token] = PendingPasteResult(url=url, fp_chat_id=context.fp_chat_id)
+			keyboard = K(row_width=2)
+			keyboard.add(
+				B("📤 Отправить в чат", callback_data=f"{CBT_PASTEBIN_SEND}{token}"),
+				B("❌ Не отправлять", callback_data=f"{CBT_PASTEBIN_SKIP_SEND}{token}"),
+			)
+
 		self.host.tgbot.edit_message_text(
-			self.format_result(result.url),
+			self.format_result(url),
 			message.chat.id,
 			message.message_id,
 			disable_web_page_preview=True,
+			reply_markup=keyboard,
+		)
+
+	def send_result(self, call: telebot.types.CallbackQuery) -> None:
+		token = call.data.replace(CBT_PASTEBIN_SEND, "", 1)
+		result = self.pending_results.pop(token, None)
+		self.host.tgbot.answer_callback_query(call.id)
+		if not result:
+			self.expire_result(call)
+			return
+
+		try:
+			sent = self.host.cardinal.send_message(chat_id=result.fp_chat_id, message_text=result.url)
+			if sent is False:
+				raise RuntimeError("Cardinal не подтвердил отправку.")
+		except Exception as exc:
+			self.host.tgbot.edit_message_text(
+				f"{self.format_result(result.url)}\n\n❌ Не удалось отправить ссылку в чат: {html_escape(str(exc))}",
+				call.message.chat.id,
+				call.message.message_id,
+				disable_web_page_preview=True,
+				reply_markup=None,
+			)
+			return
+
+		self.host.tgbot.edit_message_text(
+			f"{self.format_result(result.url)}\n\n✅ Ссылка отправлена в чат.",
+			call.message.chat.id,
+			call.message.message_id,
+			disable_web_page_preview=True,
+			reply_markup=None,
+		)
+
+	def skip_result(self, call: telebot.types.CallbackQuery) -> None:
+		token = call.data.replace(CBT_PASTEBIN_SKIP_SEND, "", 1)
+		result = self.pending_results.pop(token, None)
+		self.host.tgbot.answer_callback_query(call.id, "Не отправлено.")
+		if not result:
+			self.expire_result(call)
+			return
+
+		self.host.tgbot.edit_message_text(
+			f"{self.format_result(result.url)}\n\nℹ️ Ссылка не отправлена.",
+			call.message.chat.id,
+			call.message.message_id,
+			disable_web_page_preview=True,
+			reply_markup=None,
+		)
+
+	def expire_result(self, call: telebot.types.CallbackQuery) -> None:
+		text = getattr(call.message, "text", None) or "✅ Pastebin ссылка создана."
+		self.host.tgbot.edit_message_text(
+			f"{text}\n\n❌ Действие истекло.",
+			call.message.chat.id,
+			call.message.message_id,
+			reply_markup=None,
 		)
 
 	def format_order_button(self, order: object) -> str:
 		order_id = str(getattr(order, "id", ""))
 		return f"#{order_id} - {format_order_price(order)}"
 
-	def chat_sync_username(self, message: telebot.types.Message) -> str | None:
+	def chat_sync_context(self, message: telebot.types.Message) -> TopicContext | None:
 		if not is_in_sync_chat(message):
 			return None
-		context = get_topic_context(self.host.cardinal, message)
-		return context.username if context else None
+		return get_topic_context(self.host.cardinal, message)
 
 	def format_result(self, url: str) -> str:
 		return f"✅ Pastebin ссылка:\n{html_escape(url)}"

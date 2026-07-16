@@ -74,6 +74,8 @@ CBT_PASTEBIN_VISIBILITY_PAGE = "ma_pb_visibility_page:"
 CBT_PASTEBIN_SET_VISIBILITY = "ma_pb_set_visibility:"
 CBT_PASTEBIN_ORDER_SELECT = "ma_pb_order_select:"
 CBT_PASTEBIN_ORDER_CANCEL = "ma_pb_order_cancel:"
+CBT_PASTEBIN_SEND = "ma_pb_send:"
+CBT_PASTEBIN_SKIP_SEND = "ma_pb_skip_send:"
 
 CBT_UPDATER_PAGE = "ma_updater_page:"
 CBT_UPDATER_MODE = "ma_updater_mode:"
