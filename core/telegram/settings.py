@@ -11,8 +11,8 @@ from tg_bot.utils import escape
 from ..funpay.blacklist import unblock_user
 from ..constants import (
 	CBT_BLACKLIST_PAGE,
-	CBT_PASTEBIN_PAGE,
 	CBT_BL_UNBL,
+	CBT_GIST_PAGE,
 	CBT_STATUS_DETAIL,
 	CBT_STATUS_EDIT_AUTO,
 	CBT_STATUS_EDIT_RESPONSE,
@@ -31,7 +31,7 @@ from ..constants import (
 	UUID,
 	VERSION,
 )
-from ..pastebin.ui import TelegramPastebinSettingsUI
+from ..gist.ui import TelegramGistSettingsUI
 from ..status import STATUS_IDS, status_label
 from ..updater import MODE_ASK, MODE_DISABLED, MODE_ENABLED
 
@@ -78,13 +78,13 @@ class SettingsHost(Protocol):
 class TelegramSettingsUI:
 	def __init__(self, host: SettingsHost):
 		self.host = host
-		self.pastebin_ui = TelegramPastebinSettingsUI(host)
+		self.gist_ui = TelegramGistSettingsUI(host)
 
 	def register(self) -> None:
 		if not self.host.tg:
 			return
 
-		self.pastebin_ui.register()
+		self.gist_ui.register()
 		self.host.tg.msg_handler(
 			self.save_response_text,
 			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_STATUS_RESPONSE),
@@ -162,7 +162,7 @@ class TelegramSettingsUI:
 		offset = self.get_offset(call.data)
 		keyboard = K(row_width=1)
 		keyboard.add(B("Статусы", callback_data=f"{CBT_STATUS_PAGE}{offset}"))
-		keyboard.add(B("Pastebin", callback_data=f"{CBT_PASTEBIN_PAGE}{offset}"))
+		keyboard.add(B("GitHub Gists", callback_data=f"{CBT_GIST_PAGE}{offset}"))
 		keyboard.add(B("Автообновление", callback_data=f"{CBT_UPDATER_PAGE}{offset}"))
 		keyboard.add(B("Чёрный список", callback_data=f"{CBT_BLACKLIST_PAGE}{offset}"))
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.EDIT_PLUGIN}:{UUID}:{offset}"))

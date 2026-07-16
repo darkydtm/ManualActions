@@ -35,7 +35,7 @@ utils_module.cardinal_tools = SimpleNamespace(cache_blacklist=lambda blacklist: 
 sys.modules.setdefault("Utils", utils_module)
 
 from core import settings as settings_module
-from core.constants import CBT_UPDATER_CUSTOM_INTERVAL, CBT_UPDATER_INTERVAL, CBT_UPDATER_MODE, CBT_UPDATER_PAGE
+from core.constants import CBT_GIST_PAGE, CBT_UPDATER_CUSTOM_INTERVAL, CBT_UPDATER_INTERVAL, CBT_UPDATER_MODE, CBT_UPDATER_PAGE
 from core.telegram import settings as telegram_settings_module
 from core.telegram.settings import TelegramSettingsUI
 from core.updater import MODE_ASK
@@ -125,6 +125,7 @@ class TelegramSettingsUITest(unittest.TestCase):
 		keyboard = bot.edits[0][3]
 		callbacks = [row[0].callback_data for row in keyboard.rows]
 		self.assertIn(f"{CBT_UPDATER_PAGE}0", callbacks)
+		self.assertIn(f"{CBT_GIST_PAGE}0", callbacks)
 
 	def test_set_updater_mode_saves_and_refreshes_updater(self):
 		bot = FakeBot()
