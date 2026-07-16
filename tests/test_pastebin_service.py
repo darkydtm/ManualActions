@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 import unittest
+from urllib.error import HTTPError
 from urllib.parse import parse_qs
 
-from core.pastebin.client import PastebinError, extract_paste_key, login, pastebin_url
+from core.pastebin.client import PastebinError, extract_paste_key, login, pastebin_url, post_form
 from core.pastebin.service import (
 	PastebinConfigError,
 	build_paste_payload,
@@ -145,13 +147,33 @@ class PastebinServiceTest(unittest.TestCase):
 		)
 		body = parse_qs(requests[0].data.decode("utf-8"))
 
-		self.assertEqual(result.url, "https://pastebin.com/AbCd1234")
+		self.assertEqual(result.url, "https://pastebin.com/raw/AbCd1234")
 		self.assertEqual(body["api_paste_code"], ["Body"])
 
 	def test_extracts_url_from_pastebin_response(self):
 		self.assertEqual(extract_paste_key("https://pastebin.com/AbCd1234"), "AbCd1234")
 		self.assertEqual(extract_paste_key("https://pastebin.com/raw/AbCd1234"), "AbCd1234")
-		self.assertEqual(pastebin_url("https://pastebin.com/AbCd1234"), "https://pastebin.com/AbCd1234")
+		self.assertEqual(pastebin_url("https://pastebin.com/AbCd1234"), "https://pastebin.com/raw/AbCd1234")
+
+	def test_preserves_http_error_response_body(self):
+		def request_func(request, timeout=15):
+			raise HTTPError(
+				request.full_url,
+				422,
+				"Unprocessable Entity",
+				None,
+				io.BytesIO(b"Bad API request, invalid api_dev_key\n"),
+			)
+
+		with self.assertRaisesRegex(PastebinError, "Bad API request, invalid api_dev_key"):
+			post_form("https://pastebin.com/api/api_post.php", {}, request_func, 15, "create paste")
+
+	def test_falls_back_to_http_status_for_empty_error_body(self):
+		def request_func(request, timeout=15):
+			raise HTTPError(request.full_url, 422, "Unprocessable Entity", None, io.BytesIO(b""))
+
+		with self.assertRaisesRegex(PastebinError, "Pastebin вернул HTTP 422\\."):
+			post_form("https://pastebin.com/api/api_post.php", {}, request_func, 15, "create paste")
 
 	def test_rejects_unknown_url_format(self):
 		with self.assertRaises(PastebinError):

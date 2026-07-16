@@ -8,7 +8,7 @@ from urllib.request import Request, urlopen
 
 PASTEBIN_API_URL = "https://pastebin.com/api/api_post.php"
 PASTEBIN_LOGIN_URL = "https://pastebin.com/api/api_login.php"
-PASTEBIN_URL = "https://pastebin.com/{key}"
+PASTEBIN_URL = "https://pastebin.com/raw/{key}"
 USER_AGENT = "ManualActionsPastebin/1.0"
 
 
@@ -70,11 +70,18 @@ def post_form(
 		with request_func(request, timeout=timeout) as response:
 			return response.read().decode("utf-8", errors="replace").strip()
 	except HTTPError as exc:
-		raise PastebinError(f"Pastebin вернул HTTP {exc.code}.") from exc
+		raise PastebinError(http_error_message(exc)) from exc
 	except URLError as exc:
 		raise PastebinError(f"Не удалось подключиться к Pastebin: {exc.reason}") from exc
 	except Exception as exc:
 		raise PastebinError(f"Не удалось {action}: {exc}") from exc
+
+
+def http_error_message(exc: HTTPError) -> str:
+	body = exc.read().decode("utf-8", errors="replace").strip()
+	if body:
+		return body
+	return f"Pastebin вернул HTTP {exc.code}."
 
 
 def pastebin_url(url: str) -> str:
