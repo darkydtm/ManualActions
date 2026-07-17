@@ -60,7 +60,14 @@ class GistServiceTest(unittest.TestCase):
 
 		def request_func(request, timeout=15):
 			requests.append((request, timeout))
-			return FakeResponse('{"html_url":"https://gist.github.com/user/id"}')
+			return FakeResponse(json.dumps({
+				"html_url": "https://gist.github.com/user/id",
+				"files": {
+					"notes.txt": {
+						"raw_url": "https://gist.githubusercontent.com/user/id/raw/revision/notes.txt",
+					},
+				},
+			}))
 
 		result = create_gist_result(
 			{"token": "token", "visibility": "secret"},
@@ -71,7 +78,10 @@ class GistServiceTest(unittest.TestCase):
 		request, timeout = requests[0]
 		body = json.loads(request.data.decode("utf-8"))
 
-		self.assertEqual(result.url, "https://gist.github.com/user/id")
+		self.assertEqual(
+			result.url,
+			"https://gist.githubusercontent.com/user/id/raw/revision/notes.txt",
+		)
 		self.assertEqual(request.full_url, "https://api.github.com/gists")
 		self.assertEqual(request.get_method(), "POST")
 		self.assertEqual(request.get_header("Authorization"), "Bearer token")
@@ -81,9 +91,15 @@ class GistServiceTest(unittest.TestCase):
 		self.assertEqual(body["files"], {"notes.txt": {"content": "Текст"}})
 		self.assertEqual(timeout, 15)
 
-	def test_rejects_missing_html_url(self):
-		with self.assertRaisesRegex(GistError, "не вернул ссылку"):
+	def test_rejects_missing_raw_url(self):
+		with self.assertRaisesRegex(GistError, "raw-ссылку"):
 			create_gist({}, "token", lambda request, timeout=15: FakeResponse("{}"))
+
+	def test_rejects_invalid_raw_url(self):
+		response = json.dumps({"files": {"notes.txt": {"raw_url": ""}}})
+
+		with self.assertRaisesRegex(GistError, "raw-ссылку"):
+			create_gist({}, "token", lambda request, timeout=15: FakeResponse(response))
 
 	def test_rejects_malformed_json(self):
 		with self.assertRaisesRegex(GistError, "некорректный JSON"):

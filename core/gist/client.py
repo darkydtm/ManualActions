@@ -50,10 +50,16 @@ def create_gist(
 	if not isinstance(data, dict):
 		raise GistError("GitHub вернул некорректный ответ.")
 
-	url = data.get("html_url")
-	if not isinstance(url, str) or not url.strip():
-		raise GistError("GitHub не вернул ссылку на gist.")
-	return url.strip()
+	files = data.get("files")
+	if isinstance(files, dict):
+		for file_data in files.values():
+			if not isinstance(file_data, dict):
+				continue
+			raw_url = file_data.get("raw_url")
+			if isinstance(raw_url, str) and raw_url.strip():
+				return raw_url.strip()
+
+	raise GistError("GitHub не вернул raw-ссылку на файл gist.")
 
 
 def http_error_message(exc: HTTPError) -> str:
