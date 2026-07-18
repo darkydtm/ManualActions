@@ -20,6 +20,9 @@ class CallbackPayloadCache:
 	def get(self, token: str) -> Any | None:
 		return self.payloads.get(token)
 
+	def pop(self, token: str) -> Any | None:
+		return self.payloads.pop(token, None)
+
 
 def parse_blacklist_payload(payload: str) -> tuple[str, str, int | str | None]:
 	parts = payload.split("|", 2)

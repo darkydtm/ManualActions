@@ -10,6 +10,7 @@ class ManualActionsSettingsTest(unittest.TestCase):
 		settings = normalize_settings({})
 
 		self.assertEqual(settings["status"], "1")
+		self.assertEqual(settings["templates"], [])
 		self.assertIn("0", settings["status_response_texts"])
 		self.assertIn("2", settings["status_auto_messages"])
 		self.assertEqual(settings["updater"]["mode"], "disabled")
@@ -17,6 +18,24 @@ class ManualActionsSettingsTest(unittest.TestCase):
 		self.assertEqual(settings["updater"]["skipped_version"], "")
 		self.assertEqual(settings["updater"]["installed_version"], "")
 		self.assertEqual(settings["updater"]["last_checked_version"], "")
+
+	def test_normalizes_message_templates(self):
+		settings = normalize_settings({
+			"templates": [
+				{"id": " first ", "title": " Greeting ", "text": "Hello"},
+				{"id": "first", "title": "Duplicate", "text": "Ignored"},
+				{"id": "draft", "title": "Draft", "text": ""},
+				{"id": "", "title": "Missing ID", "text": "Body"},
+				{"id": "missing-title", "title": " ", "text": "Body"},
+				{"id": "missing-text", "title": "Title"},
+				"invalid",
+			],
+		})
+
+		self.assertEqual(settings["templates"], [
+			{"id": "first", "title": "Greeting", "text": "Hello"},
+			{"id": "draft", "title": "Draft", "text": ""},
+		])
 
 	def test_keeps_valid_status_values(self):
 		settings = normalize_settings({

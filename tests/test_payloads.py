@@ -23,6 +23,13 @@ class PayloadsTest(unittest.TestCase):
 		self.assertIsNone(cache.get(first))
 		self.assertEqual(cache.get(second), ("second",))
 
+	def test_callback_payload_cache_pops_payload_once(self):
+		cache = CallbackPayloadCache()
+		token = cache.put(("template", "chat"))
+
+		self.assertEqual(cache.pop(token), ("template", "chat"))
+		self.assertIsNone(cache.pop(token))
+
 
 if __name__ == "__main__":
 	unittest.main()

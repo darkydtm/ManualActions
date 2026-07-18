@@ -42,6 +42,7 @@ DEFAULT_SETTINGS = {
 	"status": "1",
 	"status_response_texts": DEFAULT_STATUS_RESPONSE_TEXTS,
 	"status_auto_messages": DEFAULT_STATUS_AUTO_MESSAGES,
+	"templates": [],
 	"gist": DEFAULT_GIST_SETTINGS,
 	"updater": DEFAULT_UPDATER_SETTINGS,
 }
@@ -58,6 +59,7 @@ def normalize_settings(data: dict[str, Any] | None) -> dict[str, Any]:
 		DEFAULT_STATUS_RESPONSE_TEXTS,
 	)
 	settings["status_auto_messages"] = normalize_auto_messages(data.get("status_auto_messages"))
+	settings["templates"] = normalize_templates(data.get("templates"))
 	settings["gist"] = normalize_gist_settings(data.get("gist"))
 	settings["updater"] = normalize_updater_settings(data.get("updater"))
 	return settings
@@ -94,6 +96,37 @@ def normalize_auto_messages(data: Any) -> dict[str, dict[str, bool | str]]:
 			messages[status_id]["text"] = text
 
 	return messages
+
+
+def normalize_templates(data: Any) -> list[dict[str, str]]:
+	if not isinstance(data, list):
+		return []
+
+	templates = []
+	seen_ids = set()
+	for item in data:
+		if not isinstance(item, dict):
+			continue
+
+		template_id = item.get("id")
+		title = item.get("title")
+		text = item.get("text")
+		if not isinstance(template_id, str) or not isinstance(title, str) or not isinstance(text, str):
+			continue
+
+		template_id = template_id.strip()
+		title = title.strip()
+		if not template_id or not title or template_id in seen_ids:
+			continue
+
+		seen_ids.add(template_id)
+		templates.append({
+			"id": template_id,
+			"title": title,
+			"text": text,
+		})
+
+	return templates
 
 
 def normalize_updater_settings(data: Any) -> dict[str, Any]:
