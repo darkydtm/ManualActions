@@ -20,6 +20,7 @@ from ..status import InvalidStatusCommand, parse_telegram_status_command, status
 from .blacklist import TelegramBlacklistFlow
 from .lots import TelegramLotsFlow
 from .orders import TelegramOrdersFlow
+from .templates import TelegramTemplatesFlow
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal
@@ -47,6 +48,7 @@ class TelegramCommands:
 		self.lots_flow = TelegramLotsFlow(host)
 		self.orders_flow = TelegramOrdersFlow(host, self.ask_refund_confirm)
 		self.gist_flow = TelegramGistFlow(host)
+		self.templates_flow = TelegramTemplatesFlow(host)
 
 	def register(self) -> None:
 		if not self.host.tg:
@@ -64,6 +66,7 @@ class TelegramCommands:
 		self.lots_flow.register()
 		self.orders_flow.register()
 		self.gist_flow.register()
+		self.templates_flow.register()
 		self.host.cardinal.add_telegram_commands(UUID, [
 			("refund", "Возврат: /refund [ID] или в топике без ID", True),
 			("bl", "Переключить ЧС: /bl [ник] или в топике без ника", True),
@@ -71,6 +74,7 @@ class TelegramCommands:
 			("lot", "Информация о лоте: /lot [ID] или в топике", True),
 			("orders", "Заказы пользователя: /orders [ник] или в топике", True),
 			("gist", "Создать GitHub Gist: /gist <текст> или reply", True),
+			("templates", "Отправить заготовку в топике Chat Sync", True),
 			("status", "Статус: /status [0/1/2]", True),
 		])
 		self.host.tg.msg_handler(self.cmd_refund, commands=["refund"])

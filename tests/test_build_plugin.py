@@ -38,6 +38,13 @@ class BuildPluginTest(unittest.TestCase):
 		)
 		self.assertNotIn("\timport telebot", lines)
 
+	def test_includes_templates_flow_before_command_registration(self):
+		templates_index = build_plugin.PACKAGE_MODULES.index("telegram/templates")
+		commands_index = build_plugin.PACKAGE_MODULES.index("telegram/commands")
+
+		self.assertLess(templates_index, commands_index)
+		self.assertIn("class TelegramTemplatesFlow", build_plugin.build_source())
+
 	@staticmethod
 	def is_import_header_statement(statement: ast.stmt) -> bool:
 		if isinstance(statement, (ast.Import, ast.ImportFrom)):

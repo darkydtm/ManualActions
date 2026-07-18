@@ -16,6 +16,7 @@ DESCRIPTION = (
 	"/lot [ID] - показать информацию о лоте\n"
 	"/orders [ник] - показать заказы пользователя\n"
 	"/gist <текст> - создать GitHub Gist\n"
+	"/templates - отправить заготовку в топике Chat Sync\n"
 	"/status [0/1/2] - переключить текущий статус\n"
 	"!status - показать статус в FunPay"
 )
@@ -65,6 +66,9 @@ CBT_TEMPLATE_EDIT_TEXT = "ma_template_edit_text:"
 CBT_TEMPLATE_DELETE = "ma_template_delete:"
 CBT_TEMPLATE_DELETE_CONFIRM = "ma_template_delete_confirm:"
 CBT_TEMPLATE_DELETE_CANCEL = "ma_template_delete_cancel:"
+CBT_TEMPLATES_SELECT = "ma_templates_select:"
+CBT_TEMPLATES_SEND = "ma_templates_send:"
+CBT_TEMPLATES_CANCEL = "ma_templates_cancel:"
 
 CBT_GIST_PAGE = "ma_gist_page:"
 CBT_GIST_TOKEN_PAGE = "ma_gist_token_page:"

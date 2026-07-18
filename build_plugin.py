@@ -30,6 +30,7 @@ PACKAGE_MODULES = [
 	"gist/ui",
 	"gist/telegram",
 	"telegram/settings",
+	"telegram/templates",
 	"telegram/commands",
 	"plugin",
 ]
