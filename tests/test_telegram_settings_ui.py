@@ -126,6 +126,7 @@ class TelegramSettingsUITest(unittest.TestCase):
 	def setUp(self):
 		telegram_settings_module.B = FakeButton
 		telegram_settings_module.K = FakeKeyboard
+		telegram_settings_module.escape = html_escape
 
 	def test_settings_page_links_to_updater_page(self):
 		bot = FakeBot()
