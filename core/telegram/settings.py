@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Protocol
+from uuid import uuid4
 
 import telebot
 import tg_bot.static_keyboards
@@ -19,6 +20,14 @@ from ..constants import (
 	CBT_STATUS_PAGE,
 	CBT_STATUS_SET,
 	CBT_STATUS_TOGGLE_AUTO,
+	CBT_TEMPLATE_ADD,
+	CBT_TEMPLATE_DELETE,
+	CBT_TEMPLATE_DELETE_CANCEL,
+	CBT_TEMPLATE_DELETE_CONFIRM,
+	CBT_TEMPLATE_DETAIL,
+	CBT_TEMPLATE_EDIT_TEXT,
+	CBT_TEMPLATE_EDIT_TITLE,
+	CBT_TEMPLATES_PAGE,
 	CBT_UPDATER_CUSTOM_INTERVAL,
 	CBT_UPDATER_INSTALL,
 	CBT_UPDATER_INTERVAL,
@@ -27,6 +36,10 @@ from ..constants import (
 	CBT_UPDATER_SKIP,
 	STATE_STATUS_AUTO,
 	STATE_STATUS_RESPONSE,
+	STATE_TEMPLATE_CREATE_TEXT,
+	STATE_TEMPLATE_CREATE_TITLE,
+	STATE_TEMPLATE_EDIT_TEXT,
+	STATE_TEMPLATE_EDIT_TITLE,
 	STATE_UPDATER_CUSTOM_INTERVAL,
 	UUID,
 	VERSION,
@@ -94,6 +107,22 @@ class TelegramSettingsUI:
 			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_STATUS_AUTO),
 		)
 		self.host.tg.msg_handler(
+			self.save_template_create_title,
+			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_TEMPLATE_CREATE_TITLE),
+		)
+		self.host.tg.msg_handler(
+			self.save_template_create_text,
+			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_TEMPLATE_CREATE_TEXT),
+		)
+		self.host.tg.msg_handler(
+			self.save_template_title,
+			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_TEMPLATE_EDIT_TITLE),
+		)
+		self.host.tg.msg_handler(
+			self.save_template_text,
+			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_TEMPLATE_EDIT_TEXT),
+		)
+		self.host.tg.msg_handler(
 			self.save_custom_updater_interval,
 			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_UPDATER_CUSTOM_INTERVAL),
 		)
@@ -124,6 +153,38 @@ class TelegramSettingsUI:
 		self.host.tg.cbq_handler(
 			self.toggle_auto_message,
 			lambda c: (c.data or "").startswith(CBT_STATUS_TOGGLE_AUTO),
+		)
+		self.host.tg.cbq_handler(
+			self.open_templates_page,
+			lambda c: (c.data or "").startswith(CBT_TEMPLATES_PAGE),
+		)
+		self.host.tg.cbq_handler(
+			self.open_template_detail,
+			lambda c: (c.data or "").startswith(CBT_TEMPLATE_DETAIL),
+		)
+		self.host.tg.cbq_handler(
+			self.start_template_create,
+			lambda c: (c.data or "").startswith(CBT_TEMPLATE_ADD),
+		)
+		self.host.tg.cbq_handler(
+			self.edit_template_title,
+			lambda c: (c.data or "").startswith(CBT_TEMPLATE_EDIT_TITLE),
+		)
+		self.host.tg.cbq_handler(
+			self.edit_template_text,
+			lambda c: (c.data or "").startswith(CBT_TEMPLATE_EDIT_TEXT),
+		)
+		self.host.tg.cbq_handler(
+			self.delete_template,
+			lambda c: (c.data or "").startswith(CBT_TEMPLATE_DELETE),
+		)
+		self.host.tg.cbq_handler(
+			self.confirm_template_delete,
+			lambda c: (c.data or "").startswith(CBT_TEMPLATE_DELETE_CONFIRM),
+		)
+		self.host.tg.cbq_handler(
+			self.cancel_template_delete,
+			lambda c: (c.data or "").startswith(CBT_TEMPLATE_DELETE_CANCEL),
 		)
 		self.host.tg.cbq_handler(
 			self.open_updater_page,
@@ -162,6 +223,7 @@ class TelegramSettingsUI:
 		offset = self.get_offset(call.data)
 		keyboard = K(row_width=1)
 		keyboard.add(B("Статусы", callback_data=f"{CBT_STATUS_PAGE}{offset}"))
+		keyboard.add(B("Заготовки сообщений", callback_data=f"{CBT_TEMPLATES_PAGE}{offset}"))
 		keyboard.add(B("GitHub Gists", callback_data=f"{CBT_GIST_PAGE}{offset}"))
 		keyboard.add(B("Автообновление", callback_data=f"{CBT_UPDATER_PAGE}{offset}"))
 		keyboard.add(B("Чёрный список", callback_data=f"{CBT_BLACKLIST_PAGE}{offset}"))
@@ -177,6 +239,270 @@ class TelegramSettingsUI:
 			reply_markup=keyboard,
 		)
 		self.host.tgbot.answer_callback_query(call.id)
+
+	def open_templates_page(self, call: telebot.types.CallbackQuery) -> None:
+		offset = self.get_offset(call.data)
+		self.show_templates_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def show_templates_page(
+		self,
+		chat_id: int,
+		message_id: int | None = None,
+		offset: str = "0",
+		edit: bool = False,
+	) -> None:
+		templates = self.host.settings["templates"]
+		text = f"<b>Заготовки сообщений</b>\n\nВсего: <b>{len(templates)}</b>"
+		if not templates:
+			text += "\n\nСоздайте первую заготовку."
+
+		keyboard = K(row_width=1)
+		keyboard.add(B("➕ Добавить заготовку", callback_data=f"{CBT_TEMPLATE_ADD}{offset}"))
+		for template in templates:
+			keyboard.add(B(
+				template["title"][:64],
+				callback_data=f"{CBT_TEMPLATE_DETAIL}{template['id']}:{offset}",
+			))
+		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.PLUGIN_SETTINGS}:{UUID}:{offset}"))
+		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
+
+	def open_template_detail(self, call: telebot.types.CallbackQuery) -> None:
+		template_id, offset = self.parse_two_part_callback(call.data, CBT_TEMPLATE_DETAIL)
+		if not self.find_template(template_id):
+			self.host.tgbot.answer_callback_query(call.id, "Заготовка не найдена.", show_alert=True)
+			return
+		self.show_template_detail(call.message.chat.id, call.message.id, template_id, offset=offset, edit=True)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def show_template_detail(
+		self,
+		chat_id: int,
+		message_id: int | None,
+		template_id: str,
+		offset: str = "0",
+		edit: bool = False,
+	) -> None:
+		template = self.find_template(template_id)
+		if not template:
+			self.show_templates_page(chat_id, message_id, offset=offset, edit=edit)
+			return
+
+		text = (
+			f"<b>{escape(template['title'])}</b>\n\n"
+			f"<code>{escape(self.preview(template['text'].strip() or 'не задан'))}</code>"
+		)
+		keyboard = K(row_width=1)
+		keyboard.add(B(
+			"✏️ Изменить название",
+			callback_data=f"{CBT_TEMPLATE_EDIT_TITLE}{template_id}:{offset}",
+		))
+		keyboard.add(B(
+			"✏️ Изменить текст",
+			callback_data=f"{CBT_TEMPLATE_EDIT_TEXT}{template_id}:{offset}",
+		))
+		keyboard.add(B(
+			"🗑 Удалить",
+			callback_data=f"{CBT_TEMPLATE_DELETE}{template_id}:{offset}",
+		))
+		keyboard.add(B("◀️ К заготовкам", callback_data=f"{CBT_TEMPLATES_PAGE}{offset}"))
+		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
+
+	def start_template_create(self, call: telebot.types.CallbackQuery) -> None:
+		offset = self.get_offset(call.data)
+		result = self.host.tgbot.send_message(
+			call.message.chat.id,
+			"Введите название заготовки.",
+			reply_markup=tg_bot.static_keyboards.CLEAR_STATE_BTN(),
+		)
+		self.host.tg.set_state(
+			call.message.chat.id,
+			result.id,
+			call.from_user.id,
+			STATE_TEMPLATE_CREATE_TITLE,
+			{"offset": offset},
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def save_template_create_title(self, message: telebot.types.Message) -> None:
+		state = self.host.tg.get_state(message.chat.id, message.from_user.id) or {}
+		data = state.get("data", {})
+		offset = data.get("offset", "0")
+		title = (message.text or "").strip()
+		if not title:
+			self.host.tgbot.reply_to(message, "Название не может быть пустым.")
+			return
+
+		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
+		result = self.host.tgbot.send_message(
+			message.chat.id,
+			f"Введите текст заготовки «{escape(title)}». Отправьте - чтобы сохранить пустой текст.",
+			reply_markup=tg_bot.static_keyboards.CLEAR_STATE_BTN(),
+		)
+		self.host.tg.set_state(
+			message.chat.id,
+			result.id,
+			message.from_user.id,
+			STATE_TEMPLATE_CREATE_TEXT,
+			{"title": title, "offset": offset},
+		)
+
+	def save_template_create_text(self, message: telebot.types.Message) -> None:
+		state = self.host.tg.get_state(message.chat.id, message.from_user.id) or {}
+		data = state.get("data", {})
+		title = str(data.get("title", "")).strip()
+		offset = data.get("offset", "0")
+		if not title:
+			self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
+			self.host.tgbot.reply_to(message, "Не удалось определить название заготовки.")
+			return
+
+		template = {
+			"id": uuid4().hex,
+			"title": title,
+			"text": self.clean_text(message.text),
+		}
+		self.host.settings["templates"].append(template)
+		self.host.save_settings()
+		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
+		keyboard = K().row(
+			B("◀️ К заготовке", callback_data=f"{CBT_TEMPLATE_DETAIL}{template['id']}:{offset}"),
+			B("✏️ Изменить текст", callback_data=f"{CBT_TEMPLATE_EDIT_TEXT}{template['id']}:{offset}"),
+		)
+		self.host.tgbot.reply_to(message, "Заготовка сохранена.", reply_markup=keyboard)
+
+	def edit_template_title(self, call: telebot.types.CallbackQuery) -> None:
+		template_id, offset = self.parse_two_part_callback(call.data, CBT_TEMPLATE_EDIT_TITLE)
+		template = self.find_template(template_id)
+		if not template:
+			self.host.tgbot.answer_callback_query(call.id, "Заготовка не найдена.", show_alert=True)
+			return
+
+		result = self.host.tgbot.send_message(
+			call.message.chat.id,
+			f"Введите новое название для «{escape(template['title'])}».",
+			reply_markup=tg_bot.static_keyboards.CLEAR_STATE_BTN(),
+		)
+		self.host.tg.set_state(
+			call.message.chat.id,
+			result.id,
+			call.from_user.id,
+			STATE_TEMPLATE_EDIT_TITLE,
+			{"template_id": template_id, "offset": offset},
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def save_template_title(self, message: telebot.types.Message) -> None:
+		state = self.host.tg.get_state(message.chat.id, message.from_user.id) or {}
+		data = state.get("data", {})
+		template_id = data.get("template_id", "")
+		offset = data.get("offset", "0")
+		title = (message.text or "").strip()
+		if not title:
+			self.host.tgbot.reply_to(message, "Название не может быть пустым.")
+			return
+
+		template = self.find_template(template_id)
+		if not template:
+			self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
+			self.host.tgbot.reply_to(message, "Заготовка не найдена.")
+			return
+
+		template["title"] = title
+		self.host.save_settings()
+		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
+		keyboard = K().row(
+			B("◀️ К заготовке", callback_data=f"{CBT_TEMPLATE_DETAIL}{template_id}:{offset}"),
+			B("✏️ Изменить", callback_data=f"{CBT_TEMPLATE_EDIT_TITLE}{template_id}:{offset}"),
+		)
+		self.host.tgbot.reply_to(message, "Название заготовки сохранено.", reply_markup=keyboard)
+
+	def edit_template_text(self, call: telebot.types.CallbackQuery) -> None:
+		template_id, offset = self.parse_two_part_callback(call.data, CBT_TEMPLATE_EDIT_TEXT)
+		template = self.find_template(template_id)
+		if not template:
+			self.host.tgbot.answer_callback_query(call.id, "Заготовка не найдена.", show_alert=True)
+			return
+
+		result = self.host.tgbot.send_message(
+			call.message.chat.id,
+			f"Введите новый текст для «{escape(template['title'])}». Отправьте - чтобы очистить.",
+			reply_markup=tg_bot.static_keyboards.CLEAR_STATE_BTN(),
+		)
+		self.host.tg.set_state(
+			call.message.chat.id,
+			result.id,
+			call.from_user.id,
+			STATE_TEMPLATE_EDIT_TEXT,
+			{"template_id": template_id, "offset": offset},
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def save_template_text(self, message: telebot.types.Message) -> None:
+		state = self.host.tg.get_state(message.chat.id, message.from_user.id) or {}
+		data = state.get("data", {})
+		template_id = data.get("template_id", "")
+		offset = data.get("offset", "0")
+		template = self.find_template(template_id)
+		if not template:
+			self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
+			self.host.tgbot.reply_to(message, "Заготовка не найдена.")
+			return
+
+		template["text"] = self.clean_text(message.text)
+		self.host.save_settings()
+		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
+		keyboard = K().row(
+			B("◀️ К заготовке", callback_data=f"{CBT_TEMPLATE_DETAIL}{template_id}:{offset}"),
+			B("✏️ Изменить", callback_data=f"{CBT_TEMPLATE_EDIT_TEXT}{template_id}:{offset}"),
+		)
+		self.host.tgbot.reply_to(message, "Текст заготовки сохранён.", reply_markup=keyboard)
+
+	def delete_template(self, call: telebot.types.CallbackQuery) -> None:
+		template_id, offset = self.parse_two_part_callback(call.data, CBT_TEMPLATE_DELETE)
+		template = self.find_template(template_id)
+		if not template:
+			self.host.tgbot.answer_callback_query(call.id, "Заготовка не найдена.", show_alert=True)
+			return
+
+		keyboard = K(row_width=2)
+		keyboard.add(
+			B("🗑 Удалить", callback_data=f"{CBT_TEMPLATE_DELETE_CONFIRM}{template_id}:{offset}"),
+			B("❌ Отмена", callback_data=f"{CBT_TEMPLATE_DELETE_CANCEL}{template_id}:{offset}"),
+		)
+		self.host.tgbot.edit_message_text(
+			f"Удалить заготовку «{escape(template['title'])}»?",
+			call.message.chat.id,
+			call.message.id,
+			reply_markup=keyboard,
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def confirm_template_delete(self, call: telebot.types.CallbackQuery) -> None:
+		template_id, offset = self.parse_two_part_callback(call.data, CBT_TEMPLATE_DELETE_CONFIRM)
+		template = self.find_template(template_id)
+		if not template:
+			self.host.tgbot.answer_callback_query(call.id, "Заготовка не найдена.", show_alert=True)
+			return
+
+		self.host.settings["templates"].remove(template)
+		self.host.save_settings()
+		self.show_templates_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
+		self.host.tgbot.answer_callback_query(call.id, "Заготовка удалена.")
+
+	def cancel_template_delete(self, call: telebot.types.CallbackQuery) -> None:
+		template_id, offset = self.parse_two_part_callback(call.data, CBT_TEMPLATE_DELETE_CANCEL)
+		if not self.find_template(template_id):
+			self.host.tgbot.answer_callback_query(call.id, "Заготовка не найдена.", show_alert=True)
+			return
+		self.show_template_detail(call.message.chat.id, call.message.id, template_id, offset=offset, edit=True)
+		self.host.tgbot.answer_callback_query(call.id, "Удаление отменено.")
+
+	def find_template(self, template_id: str) -> dict[str, str] | None:
+		return next(
+			(template for template in self.host.settings["templates"] if template["id"] == template_id),
+			None,
+		)
 
 	def open_status_page(self, call: telebot.types.CallbackQuery) -> None:
 		offset = self.get_offset(call.data)
