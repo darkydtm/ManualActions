@@ -30,8 +30,10 @@ from ..constants import (
 	CBT_TEMPLATE_EDIT_TITLE,
 	CBT_TEMPLATES_PAGE,
 	CBT_UPDATER_CUSTOM_INTERVAL,
+	CBT_UPDATER_INTERVAL_PAGE,
 	CBT_UPDATER_INSTALL,
 	CBT_UPDATER_INTERVAL,
+	CBT_UPDATER_MODE_PAGE,
 	CBT_UPDATER_MODE,
 	CBT_UPDATER_PAGE,
 	CBT_UPDATER_SKIP,
@@ -193,6 +195,14 @@ class TelegramSettingsUI:
 		self.host.tg.cbq_handler(
 			self.open_updater_page,
 			lambda c: (c.data or "").startswith(CBT_UPDATER_PAGE),
+		)
+		self.host.tg.cbq_handler(
+			self.open_updater_mode_page,
+			lambda c: (c.data or "").startswith(CBT_UPDATER_MODE_PAGE),
+		)
+		self.host.tg.cbq_handler(
+			self.open_updater_interval_page,
+			lambda c: (c.data or "").startswith(CBT_UPDATER_INTERVAL_PAGE),
 		)
 		self.host.tg.cbq_handler(
 			self.set_updater_mode,
@@ -682,6 +692,16 @@ class TelegramSettingsUI:
 		self.show_updater_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
 		self.host.tgbot.answer_callback_query(call.id)
 
+	def open_updater_mode_page(self, call: telebot.types.CallbackQuery) -> None:
+		offset = self.get_offset(call.data)
+		self.show_updater_mode_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def open_updater_interval_page(self, call: telebot.types.CallbackQuery) -> None:
+		offset = self.get_offset(call.data)
+		self.show_updater_interval_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
+		self.host.tgbot.answer_callback_query(call.id)
+
 	def show_updater_page(self, chat_id: int, message_id: int | None = None, offset: str = "0", edit: bool = False) -> None:
 		config = self.host.settings["updater"]
 		text = (
@@ -694,15 +714,38 @@ class TelegramSettingsUI:
 		)
 
 		keyboard = K(row_width=1)
+		keyboard.add(B("Режим обновления", callback_data=f"{CBT_UPDATER_MODE_PAGE}{offset}"))
+		keyboard.add(B("Интервал проверки", callback_data=f"{CBT_UPDATER_INTERVAL_PAGE}{offset}"))
+		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.PLUGIN_SETTINGS}:{UUID}:{offset}"))
+		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
+
+	def show_updater_mode_page(self, chat_id: int, message_id: int | None = None, offset: str = "0", edit: bool = False) -> None:
+		config = self.host.settings["updater"]
+		text = (
+			"<b>Режим обновления</b>\n\n"
+			f"Текущий: <b>{escape(self.updater_mode_label(config['mode']))}</b>"
+		)
+
+		keyboard = K(row_width=1)
 		for mode in (MODE_ENABLED, MODE_DISABLED, MODE_ASK):
 			marker = "✅ " if config["mode"] == mode else ""
 			keyboard.add(B(
 				f"{marker}{self.updater_mode_label(mode)}",
 				callback_data=f"{CBT_UPDATER_MODE}{mode}:{offset}",
 			))
-		text += (
-			"\n\n<b>Интервал проверки обновлений</b>\n"
+		keyboard.add(B("◀️ Назад", callback_data=f"{CBT_UPDATER_PAGE}{offset}"))
+		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
+
+	def show_updater_interval_page(self, chat_id: int, message_id: int | None = None, offset: str = "0", edit: bool = False) -> None:
+		config = self.host.settings["updater"]
+		text = (
+			"<b>Интервал проверки</b>\n\n"
 			f"Текущий: <b>{escape(self.updater_interval_label(config['check_interval_seconds']))}</b>"
+		)
+
+		keyboard = K(row_width=1)
+		text += (
+			"\n\nВыберите интервал проверки обновлений."
 		)
 		for interval, label in UPDATER_INTERVAL_PRESETS:
 			marker = "✅ " if config["check_interval_seconds"] == interval else ""
@@ -711,7 +754,7 @@ class TelegramSettingsUI:
 				callback_data=f"{CBT_UPDATER_INTERVAL}{interval}:{offset}",
 			))
 		keyboard.add(B("✏️ Свой интервал", callback_data=f"{CBT_UPDATER_CUSTOM_INTERVAL}{offset}"))
-		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.PLUGIN_SETTINGS}:{UUID}:{offset}"))
+		keyboard.add(B("◀️ Назад", callback_data=f"{CBT_UPDATER_PAGE}{offset}"))
 		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
 
 	def set_updater_mode(self, call: telebot.types.CallbackQuery) -> None:

@@ -48,7 +48,9 @@ from core.constants import (
 	CBT_TEMPLATE_EDIT_TITLE,
 	CBT_TEMPLATES_PAGE,
 	CBT_UPDATER_CUSTOM_INTERVAL,
+	CBT_UPDATER_INTERVAL_PAGE,
 	CBT_UPDATER_INTERVAL,
+	CBT_UPDATER_MODE_PAGE,
 	CBT_UPDATER_MODE,
 	CBT_UPDATER_PAGE,
 	STATE_TEMPLATE_CREATE_TEXT,
@@ -358,7 +360,35 @@ class TelegramSettingsUITest(unittest.TestCase):
 
 		text, _, _, keyboard = bot.edits[0]
 		callbacks = [row[0].callback_data for row in keyboard.rows]
-		self.assertIn("<b>Интервал проверки обновлений</b>", text)
+		self.assertIn("<b>Автообновление</b>", text)
+		self.assertIn(f"{CBT_UPDATER_MODE_PAGE}0", callbacks)
+		self.assertIn(f"{CBT_UPDATER_INTERVAL_PAGE}0", callbacks)
+
+	def test_updater_mode_page_shows_mode_controls(self):
+		bot = FakeBot()
+		host = SimpleNamespace(tgbot=bot, settings=settings_module.normalize_settings({}))
+		ui = TelegramSettingsUI(host)
+
+		ui.show_updater_mode_page(1, 2, edit=True)
+
+		text, _, _, keyboard = bot.edits[0]
+		callbacks = [row[0].callback_data for row in keyboard.rows]
+		self.assertIn("<b>Режим обновления</b>", text)
+		self.assertIn(f"{CBT_UPDATER_MODE}enabled:0", callbacks)
+		self.assertIn(f"{CBT_UPDATER_MODE}disabled:0", callbacks)
+		self.assertIn(f"{CBT_UPDATER_MODE}ask:0", callbacks)
+		self.assertIn(f"{CBT_UPDATER_PAGE}0", callbacks)
+
+	def test_updater_interval_page_shows_interval_controls(self):
+		bot = FakeBot()
+		host = SimpleNamespace(tgbot=bot, settings=settings_module.normalize_settings({}))
+		ui = TelegramSettingsUI(host)
+
+		ui.show_updater_interval_page(1, 2, edit=True)
+
+		text, _, _, keyboard = bot.edits[0]
+		callbacks = [row[0].callback_data for row in keyboard.rows]
+		self.assertIn("<b>Интервал проверки</b>", text)
 		self.assertIn("Текущий: <b>Час</b>", text)
 		self.assertIn(f"{CBT_UPDATER_INTERVAL}60:0", callbacks)
 		self.assertIn(f"{CBT_UPDATER_INTERVAL}1800:0", callbacks)
@@ -366,6 +396,7 @@ class TelegramSettingsUITest(unittest.TestCase):
 		self.assertIn(f"{CBT_UPDATER_INTERVAL}86400:0", callbacks)
 		self.assertIn(f"{CBT_UPDATER_INTERVAL}604800:0", callbacks)
 		self.assertIn(f"{CBT_UPDATER_CUSTOM_INTERVAL}0", callbacks)
+		self.assertIn(f"{CBT_UPDATER_PAGE}0", callbacks)
 
 	def test_set_updater_interval_saves_and_refreshes_updater(self):
 		bot = FakeBot()
