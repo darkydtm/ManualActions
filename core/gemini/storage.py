@@ -119,6 +119,16 @@ class GeminiDeliveryStorage:
 
 		return self.mutate(mutate)
 
+	def remove_stock_link(self, link: str) -> bool:
+		def mutate(state: dict[str, Any]) -> bool:
+			try:
+				state["stock"].remove(link)
+			except ValueError:
+				return False
+			return True
+
+		return self.mutate(mutate)
+
 	def clear_stock(self) -> int:
 		def mutate(state: dict[str, Any]) -> int:
 			count = len(state["stock"])
