@@ -221,28 +221,36 @@ class GeminiDeliveryStorage:
 
 		self.mutate(mutate)
 
-	def mark_error(self, order_id: str, error: str) -> None:
-		def mutate(state: dict[str, Any]) -> None:
+	def record_error(self, request: OrderReservationRequest, error: str) -> bool:
+		order_id = str(request.order_id).strip().lstrip("#")
+
+		def mutate(state: dict[str, Any]) -> bool:
 			order = state["orders"].get(order_id)
+			changed = not order or order.get("last_error") != error
 			if not order:
 				now = self.time_func()
 				order = {
 					"order_id": order_id,
 					"status": STATUS_RETRYABLE,
-					"requested_amount": 1,
+					"requested_amount": max(int(request.requested_amount), 1),
 					"delivered_amount": 0,
-					"buyer_username": "",
-					"fp_chat_id": None,
+					"buyer_username": request.buyer_username,
+					"fp_chat_id": request.fp_chat_id,
 					"reserved_links": [],
 					"raw_url": "",
 					"shortage_notified": False,
 					"created_at": now,
 				}
 				state["orders"][order_id] = order
+			else:
+				order["buyer_username"] = request.buyer_username or order.get("buyer_username", "")
+				if request.fp_chat_id is not None:
+					order["fp_chat_id"] = request.fp_chat_id
 			order["last_error"] = error
 			order["updated_at"] = self.time_func()
+			return changed
 
-		self.mutate(mutate)
+		return self.mutate(mutate)
 
 	def mark_shortage_notified(self, order_id: str) -> bool:
 		def mutate(state: dict[str, Any]) -> bool:
