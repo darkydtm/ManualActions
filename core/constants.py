@@ -4,7 +4,7 @@ import os
 
 
 NAME = "Manual Actions"
-VERSION = "1.3.6"
+VERSION = "1.4.0"
 DESCRIPTION = (
 	"Ручное управление заказами прямо из Telegram.\n\n"
 	"Работает в двух режимах:\n"
