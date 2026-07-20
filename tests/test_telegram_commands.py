@@ -55,6 +55,11 @@ class FakeCardinal:
 
 
 class TelegramCommandsTest(unittest.TestCase):
+	def test_escapes_gist_placeholder_in_menu_description(self):
+		command = next(command for command in TelegramCommands.COMMANDS if command[0] == "gist")
+		self.assertIn("/gist &lt;текст&gt;", command[1])
+		self.assertNotIn("/gist <текст>", command[1])
+
 	def test_registers_all_menu_commands_and_update_handler(self):
 		tg = FakeTelegram()
 		cardinal = FakeCardinal()

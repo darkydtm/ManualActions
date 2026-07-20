@@ -53,7 +53,7 @@ class TelegramCommands:
 		("bl_list", "Показать чёрный список", True),
 		("lot", "Информация о лоте: /lot [ID] или в топике", True),
 		("orders", "Заказы пользователя: /orders [ник] или в топике", True),
-		("gist", "Создать GitHub Gist: /gist <текст> или reply", True),
+		("gist", "Создать GitHub Gist: /gist &lt;текст&gt; или reply", True),
 		("templates", "Отправить заготовку в топике Chat Sync", True),
 		("status", "Статус: /status [0/1/2]", True),
 		("update", "Проверить обновления Manual Actions", True),
