@@ -29,6 +29,7 @@ LOGGER_PREFIX = "[MANUAL]"
 
 PLUGIN_FOLDER = "storage/plugins/manual_actions"
 SETTINGS_FILE = os.path.join(PLUGIN_FOLDER, "settings.json")
+GEMINI_DELIVERY_FILE = os.path.join(PLUGIN_FOLDER, "gemini_delivery.json")
 
 SYNC_PLUGIN_UUID = "745ed27e-3196-47c3-9483-e382c09fd2d8"
 
