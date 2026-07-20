@@ -46,6 +46,10 @@ class FakeUpdater:
 	def start(self):
 		self.calls.append("start")
 
+	def check_manually(self):
+		self.calls.append("check")
+		return "result"
+
 
 class PluginUpdaterTest(unittest.TestCase):
 	def test_refresh_updater_restarts_active_updater(self):
@@ -63,6 +67,15 @@ class PluginUpdaterTest(unittest.TestCase):
 		ManualActionsPlugin.refresh_updater(plugin)
 
 		self.assertEqual(updater.calls, ["stop"])
+
+	def test_manual_update_check_uses_configured_updater(self):
+		updater = FakeUpdater()
+		plugin = SimpleNamespace(updater=updater)
+
+		result = ManualActionsPlugin.check_updates_manually(plugin)
+
+		self.assertEqual(result, "result")
+		self.assertEqual(updater.calls, ["check"])
 
 
 if __name__ == "__main__":

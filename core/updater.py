@@ -83,8 +83,14 @@ class ManualActionsUpdater:
 			self._thread.join(timeout=2)
 
 	def check_once(self) -> ReleaseCheckResult:
+		return self._check_once(force=False)
+
+	def check_manually(self) -> ReleaseCheckResult:
+		return self._check_once(force=True)
+
+	def _check_once(self, force: bool) -> ReleaseCheckResult:
 		mode = self.mode()
-		if mode == MODE_DISABLED:
+		if mode == MODE_DISABLED and not force:
 			return ReleaseCheckResult(None, False, "disabled")
 
 		release = fetch_latest_release(self.request_func)

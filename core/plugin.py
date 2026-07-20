@@ -115,6 +115,13 @@ class ManualActionsPlugin:
 		self.settings["updater"]["skipped_version"] = version.strip()
 		self.save_settings()
 
+	def check_updates_manually(self):
+		if not self.updater:
+			self.configure_updater()
+		if not self.updater:
+			raise RuntimeError("Updater is not configured.")
+		return self.updater.check_manually()
+
 	def message_hook(self, c: Cardinal, e: object) -> None:
 		context = extract_message_context(c, e)
 		if not context:
