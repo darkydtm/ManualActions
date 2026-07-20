@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from .gemini.settings import DEFAULT_GEMINI_DELIVERY_SETTINGS, normalize_gemini_delivery_settings
 from .gist.settings import DEFAULT_GIST_SETTINGS, normalize_gist_settings
 from .status import STATUS_IDS, normalize_status_id
 
@@ -43,6 +44,7 @@ DEFAULT_SETTINGS = {
 	"status_response_texts": DEFAULT_STATUS_RESPONSE_TEXTS,
 	"status_auto_messages": DEFAULT_STATUS_AUTO_MESSAGES,
 	"templates": [],
+	"gemini_delivery": DEFAULT_GEMINI_DELIVERY_SETTINGS,
 	"gist": DEFAULT_GIST_SETTINGS,
 	"updater": DEFAULT_UPDATER_SETTINGS,
 }
@@ -60,6 +62,7 @@ def normalize_settings(data: dict[str, Any] | None) -> dict[str, Any]:
 	)
 	settings["status_auto_messages"] = normalize_auto_messages(data.get("status_auto_messages"))
 	settings["templates"] = normalize_templates(data.get("templates"))
+	settings["gemini_delivery"] = normalize_gemini_delivery_settings(data.get("gemini_delivery"))
 	settings["gist"] = normalize_gist_settings(data.get("gist"))
 	settings["updater"] = normalize_updater_settings(data.get("updater"))
 	return settings
