@@ -98,6 +98,7 @@ CBT_GEMINI_WAITING = "ma_gemini_waiting:"
 CBT_GEMINI_RETRY = "ma_gemini_retry:"
 
 CBT_UPDATER_PAGE = "ma_updater_page:"
+CBT_UPDATER_CHECK = "ma_updater_check:"
 CBT_UPDATER_MODE_PAGE = "ma_updater_mode_page:"
 CBT_UPDATER_INTERVAL_PAGE = "ma_updater_interval_page:"
 CBT_UPDATER_MODE = "ma_updater_mode:"

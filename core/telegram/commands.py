@@ -9,6 +9,7 @@ from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 from ..funpay.chat_sync import get_topic_context, is_in_sync_chat
 from ..gist.telegram import TelegramGistFlow
 from ..constants import (
+	CBT_UPDATER_CHECK,
 	CBT_REFUND_CANCEL,
 	CBT_REFUND_CNF,
 	LOGGER_NAME,
@@ -17,6 +18,7 @@ from ..constants import (
 )
 from ..funpay.orders import get_pending_orders_for_user, refund_order
 from ..status import InvalidStatusCommand, parse_telegram_status_command, status_label, toggle_status
+from ..updater import ReleaseCheckResult
 from .blacklist import TelegramBlacklistFlow
 from .lots import TelegramLotsFlow
 from .orders import TelegramOrdersFlow
@@ -40,8 +42,23 @@ class CommandHost(Protocol):
 	def save_settings(self) -> None:
 		...
 
+	def check_updates_manually(self) -> ReleaseCheckResult:
+		...
+
 
 class TelegramCommands:
+	COMMANDS = [
+		("refund", "Возврат: /refund [ID] или в топике без ID", True),
+		("bl", "Переключить ЧС: /bl [ник] или в топике без ника", True),
+		("bl_list", "Показать чёрный список", True),
+		("lot", "Информация о лоте: /lot [ID] или в топике", True),
+		("orders", "Заказы пользователя: /orders [ник] или в топике", True),
+		("gist", "Создать GitHub Gist: /gist <текст> или reply", True),
+		("templates", "Отправить заготовку в топике Chat Sync", True),
+		("status", "Статус: /status [0/1/2]", True),
+		("update", "Проверить обновления Manual Actions", True),
+	]
+
 	def __init__(self, host: CommandHost):
 		self.host = host
 		self.blacklist_flow = TelegramBlacklistFlow(host)
@@ -67,18 +84,25 @@ class TelegramCommands:
 		self.orders_flow.register()
 		self.gist_flow.register()
 		self.templates_flow.register()
-		self.host.cardinal.add_telegram_commands(UUID, [
-			("refund", "Возврат: /refund [ID] или в топике без ID", True),
-			("bl", "Переключить ЧС: /bl [ник] или в топике без ника", True),
-			("bl_list", "Показать чёрный список", True),
-			("lot", "Информация о лоте: /lot [ID] или в топике", True),
-			("orders", "Заказы пользователя: /orders [ник] или в топике", True),
-			("gist", "Создать GitHub Gist: /gist <текст> или reply", True),
-			("templates", "Отправить заготовку в топике Chat Sync", True),
-			("status", "Статус: /status [0/1/2]", True),
-		])
+		self.host.cardinal.add_telegram_commands(UUID, self.COMMANDS)
 		self.host.tg.msg_handler(self.cmd_refund, commands=["refund"])
 		self.host.tg.msg_handler(self.cmd_status, commands=["status"])
+		self.host.tg.msg_handler(self.cmd_update, commands=["update"])
+
+	def cmd_update(self, message: telebot.types.Message) -> None:
+		try:
+			result = self.host.check_updates_manually()
+			if result.message == "not_new":
+				text = "✅ Новых обновлений нет."
+			elif result.message == "available" and result.release:
+				text = f"🆕 Доступно обновление: <code>{result.release.version}</code>."
+			elif result.message == "installed" and result.release:
+				text = f"✅ Обновление <code>{result.release.version}</code> установлено. Перезапустите Cardinal."
+			else:
+				text = "ℹ️ Проверка обновлений завершена."
+		except Exception as exc:
+			text = f"❌ Не удалось проверить обновления:\n<code>{exc}</code>"
+		self.host.tgbot.reply_to(message, text)
 
 	def cmd_refund(self, message: telebot.types.Message) -> None:
 		args = (message.text or "").split()
