@@ -101,6 +101,8 @@ class ManualActionsUpdater:
 				self.on_update_installed(release, path)
 			return ReleaseCheckResult(release, True, "installed")
 
+		config["notified_version"] = release.version
+		self.save_settings()
 		if self.on_update_available:
 			self.on_update_available(release)
 		return ReleaseCheckResult(release, True, "available")
@@ -326,7 +328,11 @@ def should_offer_release(current_version: str, settings: dict[str, str], release
 	version = release_version.strip()
 	if not version:
 		return False
-	if version in (settings.get("installed_version", ""), settings.get("skipped_version", "")):
+	if version in (
+		settings.get("installed_version", ""),
+		settings.get("skipped_version", ""),
+		settings.get("notified_version", ""),
+	):
 		return False
 	if is_newer_version(current_version, version):
 		return True

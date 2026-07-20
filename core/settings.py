@@ -37,6 +37,7 @@ DEFAULT_UPDATER_SETTINGS = {
 	"skipped_version": "",
 	"installed_version": "",
 	"last_checked_version": "",
+	"notified_version": "",
 }
 
 DEFAULT_SETTINGS = {
@@ -145,7 +146,7 @@ def normalize_updater_settings(data: Any) -> dict[str, Any]:
 	if isinstance(interval, int) and not isinstance(interval, bool) and interval > 0:
 		settings["check_interval_seconds"] = interval
 
-	for key in ("skipped_version", "installed_version", "last_checked_version"):
+	for key in ("skipped_version", "installed_version", "last_checked_version", "notified_version"):
 		value = data.get(key)
 		if isinstance(value, str):
 			settings[key] = value.strip()

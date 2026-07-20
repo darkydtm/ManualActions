@@ -179,7 +179,7 @@ class UpdaterTest(unittest.TestCase):
 			self.assertTrue(saved)
 
 	def test_ask_mode_notifies_without_installing(self):
-		settings = {"updater": {"mode": "ask", "installed_version": "", "skipped_version": ""}}
+		settings = {"updater": {"mode": "ask", "installed_version": "", "skipped_version": "", "notified_version": ""}}
 		available = []
 
 		def request_func(request, timeout=15):
@@ -197,6 +197,12 @@ class UpdaterTest(unittest.TestCase):
 		result = updater.check_once()
 
 		self.assertTrue(result.update_available)
+		self.assertEqual(available, ["1.3.1"])
+		self.assertEqual(settings["updater"]["notified_version"], "1.3.1")
+
+		result = updater.check_once()
+
+		self.assertFalse(result.update_available)
 		self.assertEqual(available, ["1.3.1"])
 
 	def test_disabled_mode_does_not_poll_github(self):
