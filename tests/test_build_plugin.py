@@ -34,7 +34,7 @@ class BuildPluginTest(unittest.TestCase):
 		self.assertEqual(lines.count("from dataclasses import dataclass"), 1)
 		self.assertEqual(
 			[line for line in lines if line.startswith("from typing import ")],
-			["from typing import TYPE_CHECKING, Any, Callable, Protocol"],
+			["from typing import TYPE_CHECKING, Any, Callable, Iterable, Protocol"],
 		)
 		self.assertNotIn("\timport telebot", lines)
 
@@ -44,6 +44,22 @@ class BuildPluginTest(unittest.TestCase):
 
 		self.assertLess(templates_index, commands_index)
 		self.assertIn("class TelegramTemplatesFlow", build_plugin.build_source())
+
+	def test_includes_gemini_modules_in_dependency_order(self):
+		settings_index = build_plugin.PACKAGE_MODULES.index("gemini/settings")
+		storage_index = build_plugin.PACKAGE_MODULES.index("gemini/storage")
+		service_index = build_plugin.PACKAGE_MODULES.index("gemini/service")
+		ui_index = build_plugin.PACKAGE_MODULES.index("gemini/ui")
+		plugin_index = build_plugin.PACKAGE_MODULES.index("plugin")
+
+		self.assertLess(settings_index, storage_index)
+		self.assertLess(storage_index, service_index)
+		self.assertLess(service_index, ui_index)
+		self.assertLess(ui_index, plugin_index)
+		source = build_plugin.build_source()
+		self.assertIn("class GeminiDeliveryStorage", source)
+		self.assertIn("class GeminiDeliveryService", source)
+		self.assertIn("class TelegramGeminiDeliveryUI", source)
 
 	@staticmethod
 	def is_import_header_statement(statement: ast.stmt) -> bool:

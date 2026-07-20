@@ -9,6 +9,8 @@ from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 
 from .constants import CBT_UPDATER_INSTALL, CBT_UPDATER_SKIP, LOGGER_NAME, LOGGER_PREFIX, UUID, VERSION
 from .funpay import MessageContext, extract_message_context, should_send_auto_status_message
+from .gemini.service import GeminiDeliveryService
+from .gemini.storage import GeminiDeliveryStorage
 from .settings import DEFAULT_SETTINGS
 from .status import auto_message_text, parse_funpay_status_command, response_text
 from .storage import PluginStorage
@@ -43,6 +45,12 @@ class ManualActionsPlugin:
 		self.storage = PluginStorage()
 		self.settings: dict[str, Any] = DEFAULT_SETTINGS.copy()
 		self.updater: ManualActionsUpdater | None = None
+		self.gemini_storage = GeminiDeliveryStorage()
+		self.gemini_service = GeminiDeliveryService(
+			self.cardinal,
+			lambda: self.settings,
+			self.gemini_storage,
+		)
 		self.telegram_ui = TelegramSettingsUI(self)
 		self.telegram_commands = TelegramCommands(self)
 
@@ -51,9 +59,11 @@ class ManualActionsPlugin:
 			self.tgbot = self.tg.bot
 
 		setattr(ManualActionsPlugin.message_hook, "plugin_uuid", UUID)
+		setattr(ManualActionsPlugin.new_order_hook, "plugin_uuid", UUID)
 
 	def load(self) -> None:
 		self.settings = self.storage.load_settings()
+		self.gemini_storage.load()
 		self.configure_updater()
 
 	def save_settings(self) -> None:
@@ -64,6 +74,7 @@ class ManualActionsPlugin:
 		self.telegram_commands.register()
 		self.cardinal.new_message_handlers.append(self.message_hook)
 		self.cardinal.last_chat_message_changed_handlers.append(self.message_hook)
+		self.cardinal.new_order_handlers.append(self.new_order_hook)
 		self.refresh_updater()
 
 	def configure_updater(self) -> None:
@@ -119,6 +130,13 @@ class ManualActionsPlugin:
 			if self.is_blacklisted(context):
 				return
 			self.send_funpay_message(context.chat_id, auto_message_text(self.settings))
+
+	def new_order_hook(self, c: Cardinal, e: object) -> None:
+		try:
+			self.gemini_service.handle_new_order(e)
+		except Exception as exc:
+			logger.error(f"{LOGGER_PREFIX} Gemini auto-delivery failed: {exc}")
+			logger.debug("TRACEBACK", exc_info=True)
 
 	def is_blacklisted(self, context: MessageContext) -> bool:
 		return bool(
