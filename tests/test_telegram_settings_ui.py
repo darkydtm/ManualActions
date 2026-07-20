@@ -55,6 +55,7 @@ from core.constants import (
 	CBT_UPDATER_MODE,
 	CBT_UPDATER_PAGE,
 	STATE_TEMPLATE_CREATE_TEXT,
+	VERSION,
 )
 from core.telegram import settings as telegram_settings_module
 from core.telegram.settings import TelegramSettingsUI
@@ -167,7 +168,7 @@ class TelegramSettingsUITest(unittest.TestCase):
 		ui.open_settings(call)
 
 		text = bot.edits[0][0]
-		self.assertIn("Версия: <code>1.4.1</code>", text)
+		self.assertIn(f"Версия: <code>{VERSION}</code>", text)
 		self.assertIn("Последняя проверка обновлений: <code>1.5.0</code>", text)
 
 	def test_templates_page_lists_saved_titles(self):
