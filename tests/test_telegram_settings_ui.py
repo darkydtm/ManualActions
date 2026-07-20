@@ -48,6 +48,7 @@ from core.constants import (
 	CBT_TEMPLATE_EDIT_TITLE,
 	CBT_TEMPLATES_PAGE,
 	CBT_UPDATER_CUSTOM_INTERVAL,
+	CBT_UPDATER_CHECK,
 	CBT_UPDATER_INTERVAL_PAGE,
 	CBT_UPDATER_INTERVAL,
 	CBT_UPDATER_MODE_PAGE,
@@ -147,6 +148,27 @@ class TelegramSettingsUITest(unittest.TestCase):
 		self.assertIn(f"{CBT_UPDATER_PAGE}0", callbacks)
 		self.assertIn(f"{CBT_GIST_PAGE}0", callbacks)
 		self.assertIn(f"{CBT_TEMPLATES_PAGE}0", callbacks)
+
+	def test_settings_page_shows_version_and_last_checked_release(self):
+		bot = FakeBot()
+		host = SimpleNamespace(
+			tgbot=bot,
+			settings=settings_module.normalize_settings({
+				"updater": {"last_checked_version": "1.5.0"},
+			}),
+		)
+		ui = TelegramSettingsUI(host)
+		call = SimpleNamespace(
+			data="plugin_settings:uuid:0",
+			id="call-1",
+			message=SimpleNamespace(chat=SimpleNamespace(id=1), id=2),
+		)
+
+		ui.open_settings(call)
+
+		text = bot.edits[0][0]
+		self.assertIn("Версия: <code>1.4.1</code>", text)
+		self.assertIn("Последняя проверка обновлений: <code>1.5.0</code>", text)
 
 	def test_templates_page_lists_saved_titles(self):
 		bot = FakeBot()
@@ -363,6 +385,29 @@ class TelegramSettingsUITest(unittest.TestCase):
 		self.assertIn("<b>Автообновление</b>", text)
 		self.assertIn(f"{CBT_UPDATER_MODE_PAGE}0", callbacks)
 		self.assertIn(f"{CBT_UPDATER_INTERVAL_PAGE}0", callbacks)
+		self.assertIn(f"{CBT_UPDATER_CHECK}0", callbacks)
+		self.assertNotIn("Текущая версия", text)
+
+	def test_manual_update_check_shows_result(self):
+		bot = FakeBot()
+		host = SimpleNamespace(
+			tgbot=bot,
+			settings=settings_module.normalize_settings({}),
+			check_updates_manually=lambda: SimpleNamespace(
+				message="not_new",
+				release=None,
+			),
+		)
+		ui = TelegramSettingsUI(host)
+		call = SimpleNamespace(
+			data=f"{CBT_UPDATER_CHECK}0",
+			id="call-1",
+			message=SimpleNamespace(chat=SimpleNamespace(id=1), id=2),
+		)
+
+		ui.check_updates(call)
+
+		self.assertEqual(bot.answers[-1], ("call-1", "✅ Новых обновлений нет.", True))
 
 	def test_updater_mode_page_shows_mode_controls(self):
 		bot = FakeBot()

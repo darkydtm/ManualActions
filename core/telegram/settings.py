@@ -30,6 +30,7 @@ from ..constants import (
 	CBT_TEMPLATE_EDIT_TITLE,
 	CBT_TEMPLATES_PAGE,
 	CBT_UPDATER_CUSTOM_INTERVAL,
+	CBT_UPDATER_CHECK,
 	CBT_UPDATER_INTERVAL_PAGE,
 	CBT_UPDATER_INSTALL,
 	CBT_UPDATER_INTERVAL,
@@ -50,7 +51,7 @@ from ..constants import (
 from ..gemini.ui import TelegramGeminiDeliveryUI
 from ..gist.ui import TelegramGistSettingsUI
 from ..status import STATUS_IDS, status_label
-from ..updater import MODE_ASK, MODE_DISABLED, MODE_ENABLED
+from ..updater import MODE_ASK, MODE_DISABLED, MODE_ENABLED, ReleaseCheckResult
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal
@@ -89,6 +90,9 @@ class SettingsHost(Protocol):
 		...
 
 	def skip_update_version(self, version: str) -> None:
+		...
+
+	def check_updates_manually(self) -> ReleaseCheckResult:
 		...
 
 
@@ -217,6 +221,10 @@ class TelegramSettingsUI:
 			lambda c: (c.data or "").startswith(CBT_UPDATER_CUSTOM_INTERVAL),
 		)
 		self.host.tg.cbq_handler(
+			self.check_updates,
+			lambda c: (c.data or "").startswith(CBT_UPDATER_CHECK),
+		)
+		self.host.tg.cbq_handler(
 			self.install_update,
 			lambda c: (c.data or "").startswith(CBT_UPDATER_INSTALL),
 		)
@@ -245,7 +253,9 @@ class TelegramSettingsUI:
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.EDIT_PLUGIN}:{UUID}:{offset}"))
 		text = (
 			"<b>Manual Actions</b>\n\n"
-			f"Текущий статус: <b>{escape(status_label(self.host.settings['status']))}</b>"
+			f"Текущий статус: <b>{escape(status_label(self.host.settings['status']))}</b>\n"
+			f"Версия: <code>{escape(VERSION)}</code>\n"
+			f"Последняя проверка обновлений: <code>{escape(self.host.settings['updater']['last_checked_version'] or 'не было')}</code>"
 		)
 		self.host.tgbot.edit_message_text(
 			text,
@@ -706,18 +716,34 @@ class TelegramSettingsUI:
 		config = self.host.settings["updater"]
 		text = (
 			"<b>Автообновление</b>\n\n"
-			f"Текущая версия: <code>{escape(VERSION)}</code>\n"
 			f"Режим: <b>{escape(self.updater_mode_label(config['mode']))}</b>\n"
-			f"Последняя проверка: <code>{escape(config['last_checked_version'] or 'не было')}</code>\n"
 			f"Установленный релиз: <code>{escape(config['installed_version'] or 'не задан')}</code>\n"
 			f"Пропущенный релиз: <code>{escape(config['skipped_version'] or 'не задан')}</code>"
 		)
 
 		keyboard = K(row_width=1)
+		keyboard.add(B("🔄 Проверить обновления", callback_data=f"{CBT_UPDATER_CHECK}{offset}"))
 		keyboard.add(B("Режим обновления", callback_data=f"{CBT_UPDATER_MODE_PAGE}{offset}"))
 		keyboard.add(B("Интервал проверки", callback_data=f"{CBT_UPDATER_INTERVAL_PAGE}{offset}"))
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.PLUGIN_SETTINGS}:{UUID}:{offset}"))
 		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
+
+	def check_updates(self, call: telebot.types.CallbackQuery) -> None:
+		offset = self.get_offset(call.data)
+		try:
+			result = self.host.check_updates_manually()
+			if result.message == "not_new":
+				notice = "✅ Новых обновлений нет."
+			elif result.message == "available" and result.release:
+				notice = f"🆕 Доступно обновление: <code>{escape(result.release.version)}</code>."
+			elif result.message == "installed" and result.release:
+				notice = f"✅ Обновление <code>{escape(result.release.version)}</code> установлено. Перезапустите Cardinal."
+			else:
+				notice = "ℹ️ Проверка обновлений завершена."
+		except Exception as exc:
+			notice = f"❌ Не удалось проверить обновления: <code>{escape(str(exc))}</code>"
+		self.show_updater_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
+		self.host.tgbot.answer_callback_query(call.id, notice, show_alert=True)
 
 	def show_updater_mode_page(self, chat_id: int, message_id: int | None = None, offset: str = "0", edit: bool = False) -> None:
 		config = self.host.settings["updater"]
