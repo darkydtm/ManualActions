@@ -14,7 +14,10 @@ from ..config.constants import (
 	CBT_GEMINI_CLEAR,
 	CBT_GEMINI_CLEAR_CONFIRM,
 	CBT_GEMINI_DELETE,
+	CBT_GEMINI_DELETE_CANCEL,
+	CBT_GEMINI_DELETE_CONFIRM,
 	CBT_GEMINI_EDIT_TEMPLATE,
+	CBT_GEMINI_LINK,
 	CBT_GEMINI_PAGE,
 	CBT_GEMINI_RETRY,
 	CBT_GEMINI_SET_SHORTAGE,
@@ -74,7 +77,10 @@ class TelegramGeminiDeliveryUI:
 			(self.toggle_enabled, CBT_GEMINI_TOGGLE),
 			(self.ask_stock, CBT_GEMINI_ADD),
 			(self.open_stock_page, CBT_GEMINI_STOCK),
-			(self.delete_stock_item, CBT_GEMINI_DELETE),
+			(self.show_stock_link, CBT_GEMINI_LINK),
+			(self.confirm_delete_stock_item, CBT_GEMINI_DELETE),
+			(self.delete_stock_item, CBT_GEMINI_DELETE_CONFIRM),
+			(self.cancel_delete_stock_item, CBT_GEMINI_DELETE_CANCEL),
 			(self.confirm_clear_page, CBT_GEMINI_CLEAR),
 			(self.confirm_clear_stock, CBT_GEMINI_CLEAR_CONFIRM),
 			(self.open_shortage_page, CBT_GEMINI_SHORTAGE),
@@ -144,7 +150,7 @@ class TelegramGeminiDeliveryUI:
 		offset = self.get_offset(call.data)
 		result = self.host.tgbot.send_message(
 			call.message.chat.id,
-			"Отправьте Gemini-ссылки, по одной на строку.",
+			"Отправьте Gemini-ссылки по одной на строку или прикрепите файл .txt.",
 			reply_markup=tg_bot.static_keyboards.CLEAR_STATE_BTN(),
 		)
 		self.host.tg.set_state(
@@ -159,8 +165,11 @@ class TelegramGeminiDeliveryUI:
 	def save_stock(self, message: telebot.types.Message) -> None:
 		state = self.host.tg.get_state(message.chat.id, message.from_user.id) or {}
 		offset = state.get("data", {}).get("offset", "0")
+		text = self.stock_text_from_message(message)
+		if text is None:
+			return
 		result = parse_gemini_link_batch(
-			message.text or "",
+			text,
 			self.host.gemini_storage.existing_active_links(),
 		)
 		added = self.host.gemini_storage.add_links(result.links)
@@ -198,8 +207,8 @@ class TelegramGeminiDeliveryUI:
 		for index, link in enumerate(items, start=start + 1):
 			token = self.stock_payloads.put(link)
 			keyboard.add(B(
-				f"🗑 {index}. {self.preview(link, 42)}",
-				callback_data=f"{CBT_GEMINI_DELETE}{token}:{page}:{offset}",
+				f"🔗 {index}. {self.preview(link, 42)}",
+				callback_data=f"{CBT_GEMINI_LINK}{token}:{page}:{offset}",
 			))
 		self.add_pagination(
 			keyboard,
@@ -212,8 +221,48 @@ class TelegramGeminiDeliveryUI:
 		keyboard.add(B("◀️ К автовыдаче", callback_data=f"{CBT_GEMINI_PAGE}{offset}"))
 		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
 
-	def delete_stock_item(self, call: telebot.types.CallbackQuery) -> None:
+	def show_stock_link(self, call: telebot.types.CallbackQuery, payload: str | None = None) -> None:
+		payload = payload if payload is not None else call.data.replace(CBT_GEMINI_LINK, "", 1)
+		token, page, offset = self.parse_three_parts(payload)
+		link = self.stock_payloads.get(token)
+		if not isinstance(link, str):
+			self.host.tgbot.answer_callback_query(call.id, "Действие истекло.", show_alert=True)
+			return
+		keyboard = K(row_width=1)
+		keyboard.add(B("🗑 Удалить", callback_data=f"{CBT_GEMINI_DELETE}{token}:{page}:{offset}"))
+		keyboard.add(B("◀️ К стоку", callback_data=f"{CBT_GEMINI_STOCK}{page}:{offset}"))
+		self.send_or_edit(
+			f"<b>Gemini-ссылка</b>\n\n<code>{escape(link)}</code>",
+			call.message.chat.id,
+			call.message.id,
+			keyboard,
+			True,
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def confirm_delete_stock_item(self, call: telebot.types.CallbackQuery) -> None:
 		payload = call.data.replace(CBT_GEMINI_DELETE, "", 1)
+		token, page, offset = self.parse_three_parts(payload)
+		link = self.stock_payloads.get(token)
+		if not isinstance(link, str):
+			self.host.tgbot.answer_callback_query(call.id, "Действие истекло.", show_alert=True)
+			return
+		keyboard = K(row_width=2)
+		keyboard.add(
+			B("✅ Удалить", callback_data=f"{CBT_GEMINI_DELETE_CONFIRM}{token}:{page}:{offset}"),
+			B("❌ Отмена", callback_data=f"{CBT_GEMINI_DELETE_CANCEL}{token}:{page}:{offset}"),
+		)
+		self.send_or_edit(
+			"Удалить эту Gemini-ссылку?",
+			call.message.chat.id,
+			call.message.id,
+			keyboard,
+			True,
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def delete_stock_item(self, call: telebot.types.CallbackQuery) -> None:
+		payload = call.data.replace(CBT_GEMINI_DELETE_CONFIRM, "", 1)
 		token, page, offset = self.parse_three_parts(payload)
 		link = self.stock_payloads.pop(token)
 		if isinstance(link, str) and self.host.gemini_storage.remove_stock_link(link):
@@ -228,6 +277,35 @@ class TelegramGeminiDeliveryUI:
 			edit=True,
 		)
 		self.host.tgbot.answer_callback_query(call.id, answer)
+
+	def cancel_delete_stock_item(self, call: telebot.types.CallbackQuery) -> None:
+		payload = call.data.replace(CBT_GEMINI_DELETE_CANCEL, "", 1)
+		self.show_stock_link(call, payload)
+
+	def stock_text_from_message(self, message: telebot.types.Message) -> str | None:
+		text = message.text or ""
+		if text.strip():
+			return text
+
+		document = getattr(message, "document", None)
+		if not document:
+			self.host.tgbot.reply_to(message, "Отправьте Gemini-ссылки или файл .txt.")
+			return None
+		filename = str(getattr(document, "file_name", ""))
+		if not filename.lower().endswith(".txt"):
+			self.host.tgbot.reply_to(message, "Поддерживаются только файлы .txt.")
+			return None
+		try:
+			file_info = self.host.tgbot.get_file(document.file_id)
+			content = self.host.tgbot.download_file(file_info.file_path)
+			text = content.decode("utf-8")
+		except Exception:
+			self.host.tgbot.reply_to(message, "Не удалось прочитать файл .txt.")
+			return None
+		if not text.strip():
+			self.host.tgbot.reply_to(message, "Файл .txt пуст.")
+			return None
+		return text
 
 	def confirm_clear_page(self, call: telebot.types.CallbackQuery) -> None:
 		offset = self.get_offset(call.data)
