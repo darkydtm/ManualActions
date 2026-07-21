@@ -61,6 +61,13 @@ class BuildPluginTest(unittest.TestCase):
 		self.assertIn("class GeminiDeliveryService", source)
 		self.assertIn("class TelegramGeminiDeliveryUI", source)
 
+	def test_includes_two_factor_modules_before_plugin(self):
+		service_index = build_plugin.PACKAGE_MODULES.index("two_factor/service")
+		plugin_index = build_plugin.PACKAGE_MODULES.index("plugin")
+
+		self.assertLess(service_index, plugin_index)
+		self.assertIn("class TwoFactorService", build_plugin.build_source())
+
 	@staticmethod
 	def is_import_header_statement(statement: ast.stmt) -> bool:
 		if isinstance(statement, (ast.Import, ast.ImportFrom)):

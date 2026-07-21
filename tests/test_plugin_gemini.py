@@ -56,6 +56,8 @@ class PluginGeminiIntegrationTest(unittest.TestCase):
 		self.assertIsNotNone(plugin.gemini_storage)
 		self.assertIsNotNone(plugin.gemini_service)
 		self.assertIs(plugin.telegram_ui.gemini_ui.host, plugin)
+		self.assertIsNotNone(plugin.two_factor_storage)
+		self.assertIsNotNone(plugin.two_factor_service)
 
 	def test_registers_new_order_hook(self):
 		plugin = ManualActionsPlugin(self.cardinal)
@@ -68,15 +70,18 @@ class PluginGeminiIntegrationTest(unittest.TestCase):
 	def test_new_order_hook_delegates_to_service(self):
 		plugin = ManualActionsPlugin(self.cardinal)
 		plugin.gemini_service = Mock()
+		plugin.two_factor_service = Mock()
 		event = object()
 
 		plugin.new_order_hook(self.cardinal, event)
 
 		plugin.gemini_service.handle_new_order.assert_called_once_with(event)
+		plugin.two_factor_service.handle_new_order.assert_called_once_with(event)
 
 	def test_new_order_hook_logs_unexpected_error_without_raising(self):
 		plugin = ManualActionsPlugin(self.cardinal)
 		plugin.gemini_service = Mock()
+		plugin.two_factor_service = Mock()
 		plugin.gemini_service.handle_new_order.side_effect = RuntimeError("failed")
 
 		plugin.new_order_hook(self.cardinal, object())
