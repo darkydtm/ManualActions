@@ -6,6 +6,10 @@ python3 build_plugin.py
 ```
 2. Install plugin manual_actions.py in folder dist/ by Cardinal
 
+## 2FA codes
+
+Add `2FA: <TOTP secret>` to an order description - the label can be changed in the plugin settings. Once the order is created, either chat participant can request a code with `!code` or `!code <order id>`.
+
 <details>
 <summary>Screenshots</summary>
 <img width="568" height="330" alt="image" src="https://github.com/user-attachments/assets/acd1389c-c7a4-4727-9d86-ec8a625acc73" />

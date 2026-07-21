@@ -29,6 +29,8 @@ from ..constants import (
 	CBT_TEMPLATE_EDIT_TEXT,
 	CBT_TEMPLATE_EDIT_TITLE,
 	CBT_TEMPLATES_PAGE,
+	CBT_TWO_FACTOR_EDIT_LABEL,
+	CBT_TWO_FACTOR_PAGE,
 	CBT_UPDATER_CUSTOM_INTERVAL,
 	CBT_UPDATER_CHECK,
 	CBT_UPDATER_INTERVAL_PAGE,
@@ -44,6 +46,7 @@ from ..constants import (
 	STATE_TEMPLATE_CREATE_TITLE,
 	STATE_TEMPLATE_EDIT_TEXT,
 	STATE_TEMPLATE_EDIT_TITLE,
+	STATE_TWO_FACTOR_LABEL,
 	STATE_UPDATER_CUSTOM_INTERVAL,
 	UUID,
 	VERSION,
@@ -135,6 +138,10 @@ class TelegramSettingsUI:
 		self.host.tg.msg_handler(
 			self.save_custom_updater_interval,
 			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_UPDATER_CUSTOM_INTERVAL),
+		)
+		self.host.tg.msg_handler(
+			self.save_two_factor_label,
+			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_TWO_FACTOR_LABEL),
 		)
 		self.host.tg.cbq_handler(
 			self.open_settings,
@@ -237,6 +244,14 @@ class TelegramSettingsUI:
 			lambda c: (c.data or "").startswith(CBT_BLACKLIST_PAGE),
 		)
 		self.host.tg.cbq_handler(
+			self.open_two_factor_page,
+			lambda c: (c.data or "").startswith(CBT_TWO_FACTOR_PAGE),
+		)
+		self.host.tg.cbq_handler(
+			self.edit_two_factor_label,
+			lambda c: (c.data or "").startswith(CBT_TWO_FACTOR_EDIT_LABEL),
+		)
+		self.host.tg.cbq_handler(
 			self.unblock_user,
 			lambda c: (c.data or "").startswith(CBT_BL_UNBL),
 		)
@@ -244,12 +259,13 @@ class TelegramSettingsUI:
 	def open_settings(self, call: telebot.types.CallbackQuery) -> None:
 		offset = self.get_offset(call.data)
 		keyboard = K(row_width=1)
-		keyboard.add(B("Статусы", callback_data=f"{CBT_STATUS_PAGE}{offset}"))
-		keyboard.add(B("Заготовки сообщений", callback_data=f"{CBT_TEMPLATES_PAGE}{offset}"))
-		keyboard.add(B("Gemini автовыдача", callback_data=f"{CBT_GEMINI_PAGE}{offset}"))
-		keyboard.add(B("GitHub Gists", callback_data=f"{CBT_GIST_PAGE}{offset}"))
-		keyboard.add(B("Автообновление", callback_data=f"{CBT_UPDATER_PAGE}{offset}"))
-		keyboard.add(B("Чёрный список", callback_data=f"{CBT_BLACKLIST_PAGE}{offset}"))
+		keyboard.add(B("📊 Статусы", callback_data=f"{CBT_STATUS_PAGE}{offset}"))
+		keyboard.add(B("💬 Заготовки сообщений", callback_data=f"{CBT_TEMPLATES_PAGE}{offset}"))
+		keyboard.add(B("🤖 Gemini автовыдача", callback_data=f"{CBT_GEMINI_PAGE}{offset}"))
+		keyboard.add(B("🔐 2FA-коды", callback_data=f"{CBT_TWO_FACTOR_PAGE}{offset}"))
+		keyboard.add(B("📄 GitHub Gists", callback_data=f"{CBT_GIST_PAGE}{offset}"))
+		keyboard.add(B("🔄 Автообновление", callback_data=f"{CBT_UPDATER_PAGE}{offset}"))
+		keyboard.add(B("🚫 Чёрный список", callback_data=f"{CBT_BLACKLIST_PAGE}{offset}"))
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.EDIT_PLUGIN}:{UUID}:{offset}"))
 		text = (
 			"<b>Manual Actions</b>\n\n"
@@ -545,7 +561,7 @@ class TelegramSettingsUI:
 			auto_state = "авто вкл" if auto_config["enabled"] else "авто выкл"
 			marker = "✅ " if current == status_id else ""
 			keyboard.add(B(
-				f"{marker}{status_id}. {label} - {auto_state}",
+				f"{marker}📊 {status_id}. {label} - {auto_state}",
 				callback_data=f"{CBT_STATUS_DETAIL}{status_id}:{offset}",
 			))
 
@@ -697,6 +713,62 @@ class TelegramSettingsUI:
 		self.show_status_detail(call.message.chat.id, call.message.id, status_id, offset=offset, edit=True)
 		self.host.tgbot.answer_callback_query(call.id)
 
+	def open_two_factor_page(self, call: telebot.types.CallbackQuery) -> None:
+		offset = self.get_offset(call.data)
+		self.show_two_factor_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def show_two_factor_page(
+		self,
+		chat_id: int,
+		message_id: int | None = None,
+		offset: str = "0",
+		edit: bool = False,
+	) -> None:
+		label = self.host.settings["two_factor"]["label"]
+		text = (
+			"<b>🔐 2FA-коды</b>\n\n"
+			f"Метка в описании заказа: <code>{escape(label)}</code>\n\n"
+			"Добавьте после метки секрет TOTP. В чате используйте !code или !code &lt;номер заказа&gt;."
+		)
+		keyboard = K(row_width=1)
+		keyboard.add(B("✏️ Изменить метку", callback_data=f"{CBT_TWO_FACTOR_EDIT_LABEL}{offset}"))
+		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.PLUGIN_SETTINGS}:{UUID}:{offset}"))
+		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
+
+	def edit_two_factor_label(self, call: telebot.types.CallbackQuery) -> None:
+		offset = self.get_offset(call.data)
+		result = self.host.tgbot.send_message(
+			call.message.chat.id,
+			"Введите метку для секрета 2FA. Пример: 2FA:",
+			reply_markup=tg_bot.static_keyboards.CLEAR_STATE_BTN(),
+		)
+		self.host.tg.set_state(
+			call.message.chat.id,
+			result.id,
+			call.from_user.id,
+			STATE_TWO_FACTOR_LABEL,
+			{"offset": offset},
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def save_two_factor_label(self, message: telebot.types.Message) -> None:
+		label = (message.text or "").strip()
+		if not label:
+			self.host.tgbot.reply_to(message, "Метка не может быть пустой.")
+			return
+
+		state = self.host.tg.get_state(message.chat.id, message.from_user.id) or {}
+		offset = state.get("data", {}).get("offset", "0")
+		self.host.settings["two_factor"]["label"] = label
+		self.host.save_settings()
+		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
+		keyboard = K().row(
+			B("◀️ К 2FA-кодам", callback_data=f"{CBT_TWO_FACTOR_PAGE}{offset}"),
+			B("✏️ Изменить", callback_data=f"{CBT_TWO_FACTOR_EDIT_LABEL}{offset}"),
+		)
+		self.host.tgbot.reply_to(message, "Метка 2FA сохранена.", reply_markup=keyboard)
+
 	def open_updater_page(self, call: telebot.types.CallbackQuery) -> None:
 		offset = self.get_offset(call.data)
 		self.show_updater_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
@@ -723,8 +795,8 @@ class TelegramSettingsUI:
 
 		keyboard = K(row_width=1)
 		keyboard.add(B("🔄 Проверить обновления", callback_data=f"{CBT_UPDATER_CHECK}{offset}"))
-		keyboard.add(B("Режим обновления", callback_data=f"{CBT_UPDATER_MODE_PAGE}{offset}"))
-		keyboard.add(B("Интервал проверки", callback_data=f"{CBT_UPDATER_INTERVAL_PAGE}{offset}"))
+		keyboard.add(B("⚙️ Режим обновления", callback_data=f"{CBT_UPDATER_MODE_PAGE}{offset}"))
+		keyboard.add(B("⏱️ Интервал проверки", callback_data=f"{CBT_UPDATER_INTERVAL_PAGE}{offset}"))
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.PLUGIN_SETTINGS}:{UUID}:{offset}"))
 		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
 
@@ -756,7 +828,7 @@ class TelegramSettingsUI:
 		for mode in (MODE_ENABLED, MODE_DISABLED, MODE_ASK):
 			marker = "✅ " if config["mode"] == mode else ""
 			keyboard.add(B(
-				f"{marker}{self.updater_mode_label(mode)}",
+				f"{marker}⚙️ {self.updater_mode_label(mode)}",
 				callback_data=f"{CBT_UPDATER_MODE}{mode}:{offset}",
 			))
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT_UPDATER_PAGE}{offset}"))
@@ -776,7 +848,7 @@ class TelegramSettingsUI:
 		for interval, label in UPDATER_INTERVAL_PRESETS:
 			marker = "✅ " if config["check_interval_seconds"] == interval else ""
 			keyboard.add(B(
-				f"{marker}{label}",
+				f"{marker}⏱️ {label}",
 				callback_data=f"{CBT_UPDATER_INTERVAL}{interval}:{offset}",
 			))
 		keyboard.add(B("✏️ Свой интервал", callback_data=f"{CBT_UPDATER_CUSTOM_INTERVAL}{offset}"))

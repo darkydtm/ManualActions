@@ -47,6 +47,8 @@ from core.constants import (
 	CBT_TEMPLATE_EDIT_TEXT,
 	CBT_TEMPLATE_EDIT_TITLE,
 	CBT_TEMPLATES_PAGE,
+	CBT_TWO_FACTOR_EDIT_LABEL,
+	CBT_TWO_FACTOR_PAGE,
 	CBT_UPDATER_CUSTOM_INTERVAL,
 	CBT_UPDATER_CHECK,
 	CBT_UPDATER_INTERVAL_PAGE,
@@ -55,6 +57,7 @@ from core.constants import (
 	CBT_UPDATER_MODE,
 	CBT_UPDATER_PAGE,
 	STATE_TEMPLATE_CREATE_TEXT,
+	STATE_TWO_FACTOR_LABEL,
 	VERSION,
 )
 from core.telegram import settings as telegram_settings_module
@@ -149,6 +152,70 @@ class TelegramSettingsUITest(unittest.TestCase):
 		self.assertIn(f"{CBT_UPDATER_PAGE}0", callbacks)
 		self.assertIn(f"{CBT_GIST_PAGE}0", callbacks)
 		self.assertIn(f"{CBT_TEMPLATES_PAGE}0", callbacks)
+		self.assertIn(f"{CBT_TWO_FACTOR_PAGE}0", callbacks)
+
+	def test_two_factor_page_shows_label_and_edit_button(self):
+		bot = FakeBot()
+		host = SimpleNamespace(tgbot=bot, settings=settings_module.normalize_settings({}))
+		ui = TelegramSettingsUI(host)
+
+		ui.show_two_factor_page(1, 2, edit=True)
+
+		text, _, _, keyboard = bot.edits[0]
+		self.assertIn("2FA: ", text)
+		self.assertIn(f"{CBT_TWO_FACTOR_EDIT_LABEL}0", [row[0].callback_data for row in keyboard.rows])
+
+	def test_editing_two_factor_label_sets_state(self):
+		bot = FakeBot()
+		tg = FakeTelegram()
+		host = SimpleNamespace(tg=tg, tgbot=bot, settings=settings_module.normalize_settings({}))
+		ui = TelegramSettingsUI(host)
+		call = SimpleNamespace(
+			data=f"{CBT_TWO_FACTOR_EDIT_LABEL}0",
+			id="call-1",
+			message=SimpleNamespace(chat=SimpleNamespace(id=1), id=2),
+			from_user=SimpleNamespace(id=3),
+		)
+
+		ui.edit_two_factor_label(call)
+
+		self.assertEqual(tg.set_states[-1][3], STATE_TWO_FACTOR_LABEL)
+
+	def test_saves_two_factor_label(self):
+		bot = FakeBot()
+		tg = FakeTelegram({"data": {"offset": "0"}})
+		events = []
+		host = SimpleNamespace(
+			tg=tg,
+			tgbot=bot,
+			settings=settings_module.normalize_settings({}),
+			save_settings=lambda: events.append("save"),
+		)
+		ui = TelegramSettingsUI(host)
+
+		ui.save_two_factor_label(SimpleNamespace(
+			text=" Secret: ",
+			chat=SimpleNamespace(id=1),
+			from_user=SimpleNamespace(id=3),
+		))
+
+		self.assertEqual(host.settings["two_factor"]["label"], "Secret:")
+		self.assertEqual(events, ["save"])
+
+	def test_rejects_empty_two_factor_label(self):
+		bot = FakeBot()
+		tg = FakeTelegram({"data": {"offset": "0"}})
+		host = SimpleNamespace(tg=tg, tgbot=bot, settings=settings_module.normalize_settings({}))
+		ui = TelegramSettingsUI(host)
+
+		ui.save_two_factor_label(SimpleNamespace(
+			text=" ",
+			chat=SimpleNamespace(id=1),
+			from_user=SimpleNamespace(id=3),
+		))
+
+		self.assertEqual(bot.replies[-1][1], "Метка не может быть пустой.")
+		self.assertFalse(tg.cleared)
 
 	def test_settings_page_shows_version_and_last_checked_release(self):
 		bot = FakeBot()
