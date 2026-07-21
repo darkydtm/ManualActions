@@ -172,7 +172,7 @@ class GeminiDeliveryService:
 		try:
 			result = self.gist_creator(
 				gist_settings,
-				"\n".join(reservation.links),
+				"\n\n".join(reservation.links),
 				filename=filename,
 			)
 		except Exception as exc:

@@ -140,7 +140,7 @@ class GeminiDeliveryServiceTest(unittest.TestCase):
 		gist_settings, text = self.gist_creator.call_args.args[:2]
 		self.assertEqual(gist_settings["token"], "token")
 		self.assertEqual(gist_settings["visibility"], "secret")
-		self.assertEqual(text, f"{LINK_ONE}\n{LINK_TWO}")
+		self.assertEqual(text, f"{LINK_ONE}\n\n{LINK_TWO}")
 		self.assertEqual(self.gist_creator.call_args.kwargs["filename"], "ORDER-1.txt")
 		self.cardinal.send_message.assert_called_once_with(
 			chat_id=77,
