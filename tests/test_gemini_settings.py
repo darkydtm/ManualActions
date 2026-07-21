@@ -16,6 +16,11 @@ VALID_TWO = "https://serviceactivation.google.com/subscription/new/value#fragmen
 
 
 class GeminiSettingsTest(unittest.TestCase):
+	def test_normalizes_quantity_and_delay(self):
+		settings = normalize_gemini_delivery_settings({"quantity": 3, "delay_seconds": 15})
+		self.assertEqual(settings["quantity"], 3)
+		self.assertEqual(settings["delay_seconds"], 15)
+
 	def test_uses_defaults_for_missing_settings(self):
 		settings = normalize_gemini_delivery_settings({})
 
