@@ -51,12 +51,14 @@ class GeminiDeliveryService:
 		storage: GeminiDeliveryStorage,
 		gist_creator: Callable[..., Any] = create_gist_result,
 		topic_notifier: Callable[[dict[str, Any], str], bool] | None = None,
+		admin_notifier: Callable[[str], None] | None = None,
 	):
 		self.cardinal = cardinal
 		self.settings_getter = settings_getter
 		self.storage = storage
 		self.gist_creator = gist_creator
 		self.topic_notifier = topic_notifier or self.notify_chat_sync
+		self.admin_notifier = admin_notifier or (lambda text: None)
 		self.lock = RLock()
 
 	def handle_new_order(self, event: object) -> DeliveryOutcome:
@@ -219,13 +221,33 @@ class GeminiDeliveryService:
 		if not self.storage.mark_shortage_notified(order_id):
 			return
 		record = self.storage.get_order(order_id) or {}
-		self.topic_notifier(
-			record,
+		warning = (
 			f"⚠️ Нехватка Gemini-ссылок для заказа #{order_id}.\n"
 			f"Требуется: {reservation.requested_amount}\n"
 			f"Выдано: {len(reservation.links)}\n"
-			f"Осталось в стоке: {stock_left}",
+			f"Осталось в стоке: {stock_left}"
 		)
+		self.notify_buyer_shortage(record, warning)
+		try:
+			self.topic_notifier(record, warning)
+		except Exception as exc:
+			logger.warning(f"{LOGGER_PREFIX} Failed to notify Chat Sync about Gemini shortage: {exc}")
+			logger.debug("TRACEBACK", exc_info=True)
+		try:
+			self.admin_notifier(warning)
+		except Exception as exc:
+			logger.warning(f"{LOGGER_PREFIX} Failed to notify administrators about Gemini shortage: {exc}")
+			logger.debug("TRACEBACK", exc_info=True)
+
+	def notify_buyer_shortage(self, record: dict[str, Any], warning: str) -> None:
+		try:
+			chat_id = self.resolve_chat_id(record)
+			if chat_id is None:
+				raise RuntimeError("Не удалось определить чат покупателя.")
+			self.cardinal.send_message(chat_id=chat_id, message_text=warning)
+		except Exception as exc:
+			logger.warning(f"{LOGGER_PREFIX} Failed to notify buyer about Gemini shortage: {exc}")
+			logger.debug("TRACEBACK", exc_info=True)
 
 	def notify_chat_sync(self, record: dict[str, Any], text: str) -> bool:
 		topic = find_chat_sync_topic(
