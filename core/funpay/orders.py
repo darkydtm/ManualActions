@@ -21,10 +21,10 @@ ORDER_FILTERS = {
 }
 
 ORDER_FILTER_LABELS = {
-	"all": "Все",
-	"paid": "Оплаченные",
-	"closed": "Закрытые",
-	"refunded": "Возвраты",
+	"all": "📦 Все",
+	"paid": "💳 Оплаченные",
+	"closed": "✅ Закрытые",
+	"refunded": "💸 Возвраты",
 }
 
 
