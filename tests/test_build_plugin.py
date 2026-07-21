@@ -68,6 +68,13 @@ class BuildPluginTest(unittest.TestCase):
 		self.assertLess(service_index, plugin_index)
 		self.assertIn("class TwoFactorService", build_plugin.build_source())
 
+	def test_includes_lot_scheduling_before_settings(self):
+		scheduling_index = build_plugin.PACKAGE_MODULES.index("lots/scheduling")
+		settings_index = build_plugin.PACKAGE_MODULES.index("config/settings")
+
+		self.assertLess(scheduling_index, settings_index)
+		self.assertIn("DEFAULT_LOT_SCHEDULING_SETTINGS", build_plugin.build_source())
+
 	@staticmethod
 	def is_import_header_statement(statement: ast.stmt) -> bool:
 		if isinstance(statement, (ast.Import, ast.ImportFrom)):
