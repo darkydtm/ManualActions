@@ -19,6 +19,7 @@ class ManualActionsSettingsTest(unittest.TestCase):
 		self.assertEqual(settings["updater"]["installed_version"], "")
 		self.assertEqual(settings["updater"]["last_checked_version"], "")
 		self.assertEqual(settings["updater"]["notified_version"], "")
+		self.assertEqual(settings["two_factor"]["label"], "2FA: ")
 
 	def test_normalizes_message_templates(self):
 		settings = normalize_settings({
@@ -113,6 +114,10 @@ class ManualActionsSettingsTest(unittest.TestCase):
 		self.assertEqual(settings["updater"]["installed_version"], "")
 		self.assertEqual(settings["updater"]["last_checked_version"], "")
 		self.assertEqual(settings["updater"]["notified_version"], "")
+
+	def test_normalizes_two_factor_label(self):
+		self.assertEqual(normalize_settings({"two_factor": {"label": " Secret: "}})["two_factor"]["label"], "Secret:")
+		self.assertEqual(normalize_settings({"two_factor": {"label": " "}})["two_factor"]["label"], "2FA: ")
 
 
 if __name__ == "__main__":

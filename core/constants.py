@@ -4,7 +4,7 @@ import os
 
 
 NAME = "Manual Actions"
-VERSION = "1.4.4"
+VERSION = "1.5.0"
 DESCRIPTION = (
 	"Ручное управление заказами прямо из Telegram.\n\n"
 	"Работает в двух режимах:\n"
@@ -18,6 +18,7 @@ DESCRIPTION = (
 	"/gist <текст> - создать GitHub Gist\n"
 	"/templates - отправить заготовку в топике Chat Sync\n"
 	"/status [0/1/2] - переключить текущий статус\n"
+	"!code [ID] - показать код 2FA для заказа\n"
 	"!status - показать статус в FunPay"
 )
 CREDITS = "beavers_best"
@@ -30,6 +31,7 @@ LOGGER_PREFIX = "[MANUAL]"
 PLUGIN_FOLDER = "storage/plugins/manual_actions"
 SETTINGS_FILE = os.path.join(PLUGIN_FOLDER, "settings.json")
 GEMINI_DELIVERY_FILE = os.path.join(PLUGIN_FOLDER, "gemini_delivery.json")
+TWO_FACTOR_FILE = os.path.join(PLUGIN_FOLDER, "two_factor.json")
 
 SYNC_PLUGIN_UUID = "745ed27e-3196-47c3-9483-e382c09fd2d8"
 
@@ -107,6 +109,9 @@ CBT_UPDATER_CUSTOM_INTERVAL = "ma_updater_custom_interval:"
 CBT_UPDATER_INSTALL = "ma_updater_install:"
 CBT_UPDATER_SKIP = "ma_updater_skip:"
 
+CBT_TWO_FACTOR_PAGE = "ma_two_factor_page:"
+CBT_TWO_FACTOR_EDIT_LABEL = "ma_two_factor_edit_label:"
+
 STATE_STATUS_RESPONSE = "ma_status_response_text"
 STATE_STATUS_AUTO = "ma_status_auto_text"
 STATE_TEMPLATE_CREATE_TITLE = "ma_template_create_title"
@@ -118,3 +123,4 @@ STATE_GIST_TOKEN = "ma_gist_token"
 STATE_GIST_CUSTOM_FILENAME = "ma_gist_custom_filename"
 STATE_GEMINI_ADD = "ma_gemini_add"
 STATE_GEMINI_TEMPLATE = "ma_gemini_template"
+STATE_TWO_FACTOR_LABEL = "ma_two_factor_label"
