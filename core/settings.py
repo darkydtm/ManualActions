@@ -40,6 +40,10 @@ DEFAULT_UPDATER_SETTINGS = {
 	"notified_version": "",
 }
 
+DEFAULT_TWO_FACTOR_SETTINGS = {
+	"label": "2FA: ",
+}
+
 DEFAULT_SETTINGS = {
 	"status": "1",
 	"status_response_texts": DEFAULT_STATUS_RESPONSE_TEXTS,
@@ -48,6 +52,7 @@ DEFAULT_SETTINGS = {
 	"gemini_delivery": DEFAULT_GEMINI_DELIVERY_SETTINGS,
 	"gist": DEFAULT_GIST_SETTINGS,
 	"updater": DEFAULT_UPDATER_SETTINGS,
+	"two_factor": DEFAULT_TWO_FACTOR_SETTINGS,
 }
 
 
@@ -66,6 +71,7 @@ def normalize_settings(data: dict[str, Any] | None) -> dict[str, Any]:
 	settings["gemini_delivery"] = normalize_gemini_delivery_settings(data.get("gemini_delivery"))
 	settings["gist"] = normalize_gist_settings(data.get("gist"))
 	settings["updater"] = normalize_updater_settings(data.get("updater"))
+	settings["two_factor"] = normalize_two_factor_settings(data.get("two_factor"))
 	return settings
 
 
@@ -151,4 +157,15 @@ def normalize_updater_settings(data: Any) -> dict[str, Any]:
 		if isinstance(value, str):
 			settings[key] = value.strip()
 
+	return settings
+
+
+def normalize_two_factor_settings(data: Any) -> dict[str, str]:
+	settings = DEFAULT_TWO_FACTOR_SETTINGS.copy()
+	if not isinstance(data, dict):
+		return settings
+
+	label = data.get("label")
+	if isinstance(label, str) and label.strip():
+		settings["label"] = label.strip()
 	return settings

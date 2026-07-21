@@ -14,6 +14,9 @@ from .gemini.storage import GeminiDeliveryStorage
 from .settings import DEFAULT_SETTINGS
 from .status import auto_message_text, parse_funpay_status_command, response_text
 from .storage import PluginStorage
+
+from .two_factor.service import TwoFactorService
+from .two_factor.storage import TwoFactorStorage
 from .telegram.commands import TelegramCommands
 from .telegram.settings import TelegramSettingsUI
 from .updater import MODE_DISABLED, ManualActionsUpdater, UpdaterRelease
@@ -46,6 +49,12 @@ class ManualActionsPlugin:
 		self.settings: dict[str, Any] = DEFAULT_SETTINGS.copy()
 		self.updater: ManualActionsUpdater | None = None
 		self.gemini_storage = GeminiDeliveryStorage()
+		self.two_factor_storage = TwoFactorStorage()
+		self.two_factor_service = TwoFactorService(
+			self.cardinal,
+			lambda: self.settings,
+			self.two_factor_storage,
+		)
 		self.gemini_service = GeminiDeliveryService(
 			self.cardinal,
 			lambda: self.settings,
@@ -64,6 +73,7 @@ class ManualActionsPlugin:
 	def load(self) -> None:
 		self.settings = self.storage.load_settings()
 		self.gemini_storage.load()
+		self.two_factor_storage.load()
 		self.configure_updater()
 
 	def save_settings(self) -> None:
@@ -126,6 +136,9 @@ class ManualActionsPlugin:
 		context = extract_message_context(c, e)
 		if not context:
 			return
+		if self.two_factor_service.handle_code_request(context):
+			return
+		self.two_factor_service.handle_seller_message(context)
 
 		if parse_funpay_status_command(context.text):
 			if self.is_blacklisted(context):
