@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any
 
 from ..gemini.settings import DEFAULT_GEMINI_DELIVERY_SETTINGS, normalize_gemini_delivery_settings
+from ..gpt_accounts.settings import DEFAULT_GPT_ACCOUNTS_DELIVERY_SETTINGS, normalize_gpt_accounts_delivery_settings
 from ..gist.settings import DEFAULT_GIST_SETTINGS, normalize_gist_settings
 from ..lots.scheduling import DEFAULT_LOT_SCHEDULING_SETTINGS, normalize_lot_scheduling_settings
 from ..status.status import STATUS_IDS, normalize_status_id
@@ -51,6 +52,7 @@ DEFAULT_SETTINGS = {
 	"status_auto_messages": DEFAULT_STATUS_AUTO_MESSAGES,
 	"templates": [],
 	"gemini_delivery": DEFAULT_GEMINI_DELIVERY_SETTINGS,
+	"gpt_accounts_delivery": DEFAULT_GPT_ACCOUNTS_DELIVERY_SETTINGS,
 	"gist": DEFAULT_GIST_SETTINGS,
 	"updater": DEFAULT_UPDATER_SETTINGS,
 	"two_factor": DEFAULT_TWO_FACTOR_SETTINGS,
@@ -71,6 +73,7 @@ def normalize_settings(data: dict[str, Any] | None) -> dict[str, Any]:
 	settings["status_auto_messages"] = normalize_auto_messages(data.get("status_auto_messages"))
 	settings["templates"] = normalize_templates(data.get("templates"))
 	settings["gemini_delivery"] = normalize_gemini_delivery_settings(data.get("gemini_delivery"))
+	settings["gpt_accounts_delivery"] = normalize_gpt_accounts_delivery_settings(data.get("gpt_accounts_delivery"))
 	settings["gist"] = normalize_gist_settings(data.get("gist"))
 	settings["updater"] = normalize_updater_settings(data.get("updater"))
 	settings["two_factor"] = normalize_two_factor_settings(data.get("two_factor"))

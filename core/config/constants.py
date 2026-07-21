@@ -31,6 +31,7 @@ LOGGER_PREFIX = "[MANUAL]"
 PLUGIN_FOLDER = "storage/plugins/manual_actions"
 SETTINGS_FILE = os.path.join(PLUGIN_FOLDER, "settings.json")
 GEMINI_DELIVERY_FILE = os.path.join(PLUGIN_FOLDER, "gemini_delivery.json")
+GPT_ACCOUNTS_DELIVERY_FILE = os.path.join(PLUGIN_FOLDER, "gpt_accounts_delivery.json")
 TWO_FACTOR_FILE = os.path.join(PLUGIN_FOLDER, "two_factor.json")
 
 SYNC_PLUGIN_UUID = "745ed27e-3196-47c3-9483-e382c09fd2d8"
@@ -102,6 +103,22 @@ CBT_GEMINI_EDIT_TEMPLATE = "ma_gemini_edit_template:"
 CBT_GEMINI_WAITING = "ma_gemini_waiting:"
 CBT_GEMINI_RETRY = "ma_gemini_retry:"
 
+CBT_AUTO_DELIVERY_PAGE = "ma_auto_delivery:"
+CBT_GPT_ACCOUNTS_PAGE = "ma_gpt_accounts:"
+CBT_GPT_ACCOUNTS_TOGGLE = "ma_gpt_accounts_toggle:"
+CBT_GPT_ACCOUNTS_ADD = "ma_gpt_accounts_add:"
+CBT_GPT_ACCOUNTS_STOCK = "ma_gpt_accounts_stock:"
+CBT_GPT_ACCOUNTS_ACCOUNT = "ma_gpt_accounts_account:"
+CBT_GPT_ACCOUNTS_DELETE = "ma_gpt_accounts_delete:"
+CBT_GPT_ACCOUNTS_DELETE_CONFIRM = "ma_gpt_accounts_delete_confirm:"
+CBT_GPT_ACCOUNTS_CLEAR = "ma_gpt_accounts_clear:"
+CBT_GPT_ACCOUNTS_CLEAR_CONFIRM = "ma_gpt_accounts_clear_confirm:"
+CBT_GPT_ACCOUNTS_SHORTAGE = "ma_gpt_accounts_shortage:"
+CBT_GPT_ACCOUNTS_SET_SHORTAGE = "ma_gpt_accounts_set_shortage:"
+CBT_GPT_ACCOUNTS_EDIT_TEMPLATE = "ma_gpt_accounts_edit_template:"
+CBT_GPT_ACCOUNTS_WAITING = "ma_gpt_accounts_waiting:"
+CBT_GPT_ACCOUNTS_RETRY = "ma_gpt_accounts_retry:"
+
 CBT_UPDATER_PAGE = "ma_updater_page:"
 CBT_UPDATER_CHECK = "ma_updater_check:"
 CBT_UPDATER_MODE_PAGE = "ma_updater_mode_page:"
@@ -126,4 +143,6 @@ STATE_GIST_TOKEN = "ma_gist_token"
 STATE_GIST_CUSTOM_FILENAME = "ma_gist_custom_filename"
 STATE_GEMINI_ADD = "ma_gemini_add"
 STATE_GEMINI_TEMPLATE = "ma_gemini_template"
+STATE_GPT_ACCOUNTS_ADD = "ma_gpt_accounts_add"
+STATE_GPT_ACCOUNTS_TEMPLATE = "ma_gpt_accounts_template"
 STATE_TWO_FACTOR_LABEL = "ma_two_factor_label"
