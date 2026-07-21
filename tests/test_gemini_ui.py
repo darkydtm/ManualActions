@@ -33,6 +33,9 @@ sys.modules.setdefault("tg_bot.utils", tg_bot_utils_module)
 from core.config.constants import (
 	CBT_GEMINI_CLEAR_CONFIRM,
 	CBT_GEMINI_DELETE,
+	CBT_GEMINI_DELETE_CANCEL,
+	CBT_GEMINI_DELETE_CONFIRM,
+	CBT_GEMINI_LINK,
 	CBT_GEMINI_RETRY,
 	CBT_GEMINI_SET_SHORTAGE,
 	CBT_GEMINI_STOCK,
@@ -76,6 +79,7 @@ class FakeBot:
 		self.edits = []
 		self.answers = []
 		self.replies = []
+		self.file_content = b""
 
 	def send_message(self, chat_id, text, reply_markup=None):
 		self.messages.append((chat_id, text, reply_markup))
@@ -89,6 +93,12 @@ class FakeBot:
 
 	def reply_to(self, message, text, reply_markup=None):
 		self.replies.append((message, text, reply_markup))
+
+	def get_file(self, file_id):
+		return SimpleNamespace(file_path=file_id)
+
+	def download_file(self, file_path):
+		return self.file_content
 
 
 class FakeTelegram:
@@ -149,9 +159,10 @@ class GeminiDeliveryUITest(unittest.TestCase):
 			message=SimpleNamespace(chat=SimpleNamespace(id=1), id=2),
 		)
 
-	def message(self, text):
+	def message(self, text="", document=None):
 		return SimpleNamespace(
 			text=text,
+			document=document,
 			chat=SimpleNamespace(id=1),
 			from_user=SimpleNamespace(id=3),
 		)
@@ -191,22 +202,56 @@ class GeminiDeliveryUITest(unittest.TestCase):
 		self.assertIn("Неверные строки: 2", text)
 		self.assertIn("Дубликаты: 2", text)
 
-	def test_stock_page_uses_compact_delete_payloads(self):
+	def test_imports_links_from_text_document(self):
+		self.bot.file_content = f"{LINK_ONE}\n{LINK_TWO}".encode()
+
+		self.ui.save_stock(self.message(document=SimpleNamespace(file_name="links.txt", file_id="file")))
+
+		self.assertEqual(self.storage.stock_links(), (LINK_ONE, LINK_TWO))
+
+	def test_rejects_non_text_document(self):
+		self.ui.save_stock(self.message(document=SimpleNamespace(file_name="links.csv", file_id="file")))
+
+		self.assertEqual(self.storage.stock_links(), ())
+		self.assertIn(".txt", self.bot.replies[0][1])
+
+	def test_stock_page_uses_compact_link_payloads(self):
 		self.storage.add_links((LINK_ONE, LINK_TWO))
 
 		self.ui.show_stock_page(1)
 
 		keyboard = self.bot.messages[0][2]
 		callbacks = self.callbacks(keyboard)
-		delete_callbacks = [value for value in callbacks if value.startswith(CBT_GEMINI_DELETE)]
-		self.assertEqual(len(delete_callbacks), 2)
-		self.assertTrue(all(len(value) < 64 for value in delete_callbacks))
+		link_callbacks = [value for value in callbacks if value.startswith(CBT_GEMINI_LINK)]
+		self.assertEqual(len(link_callbacks), 2)
+		self.assertTrue(all(len(value) < 64 for value in link_callbacks))
 
-	def test_deletes_stock_link_by_payload(self):
+	def test_opens_full_stock_link(self):
 		self.storage.add_links((LINK_ONE, LINK_TWO))
 		token = self.ui.stock_payloads.put(LINK_ONE)
 
-		self.ui.delete_stock_item(self.call(f"{CBT_GEMINI_DELETE}{token}:0:0"))
+		self.ui.show_stock_link(self.call(f"{CBT_GEMINI_LINK}{token}:0:0"))
+
+		text, _, _, keyboard = self.bot.edits[0]
+		self.assertIn(LINK_ONE, text)
+		self.assertIn(f"{CBT_GEMINI_DELETE}{token}:0:0", self.callbacks(keyboard))
+
+	def test_cancels_stock_link_deletion(self):
+		self.storage.add_links((LINK_ONE, LINK_TWO))
+		token = self.ui.stock_payloads.put(LINK_ONE)
+
+		self.ui.cancel_delete_stock_item(self.call(f"{CBT_GEMINI_DELETE_CANCEL}{token}:0:0"))
+
+		self.assertEqual(self.storage.stock_links(), (LINK_ONE, LINK_TWO))
+
+	def test_confirms_stock_link_deletion(self):
+		self.storage.add_links((LINK_ONE, LINK_TWO))
+		token = self.ui.stock_payloads.put(LINK_ONE)
+
+		self.ui.confirm_delete_stock_item(self.call(f"{CBT_GEMINI_DELETE}{token}:0:0"))
+
+		self.assertEqual(self.storage.stock_links(), (LINK_ONE, LINK_TWO))
+		self.ui.delete_stock_item(self.call(f"{CBT_GEMINI_DELETE_CONFIRM}{token}:0:0"))
 
 		self.assertEqual(self.storage.stock_links(), (LINK_TWO,))
 
