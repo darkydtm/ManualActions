@@ -12,8 +12,10 @@ from tg_bot.utils import escape
 from ..funpay.blacklist import unblock_user
 from ..config.constants import (
 	CBT_BLACKLIST_PAGE,
+	CBT_AUTO_DELIVERY_PAGE,
 	CBT_BL_UNBL,
 	CBT_GEMINI_PAGE,
+	CBT_GPT_ACCOUNTS_PAGE,
 	CBT_GIST_PAGE,
 	CBT_STATUS_DETAIL,
 	CBT_STATUS_EDIT_AUTO,
@@ -49,6 +51,7 @@ from ..config.constants import (
 	VERSION,
 )
 from ..gemini.ui import TelegramGeminiDeliveryUI
+from ..gpt_accounts.ui import TelegramGptAccountsDeliveryUI
 from ..gist.ui import TelegramGistSettingsUI
 from ..status.status import STATUS_IDS, status_label
 from ..application.updater import MODE_ASK, MODE_DISABLED, MODE_ENABLED, ReleaseCheckResult
@@ -100,6 +103,7 @@ class TelegramSettingsUI:
 	def __init__(self, host: SettingsHost):
 		self.host = host
 		self.gemini_ui = TelegramGeminiDeliveryUI(host)
+		self.gpt_accounts_ui = TelegramGptAccountsDeliveryUI(host)
 		self.gist_ui = TelegramGistSettingsUI(host)
 
 	def register(self) -> None:
@@ -107,6 +111,7 @@ class TelegramSettingsUI:
 			return
 
 		self.gemini_ui.register()
+		self.gpt_accounts_ui.register()
 		self.gist_ui.register()
 		self.host.tg.msg_handler(
 			self.save_response_text,
@@ -135,6 +140,10 @@ class TelegramSettingsUI:
 		self.host.tg.msg_handler(
 			self.save_custom_updater_interval,
 			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_UPDATER_CUSTOM_INTERVAL),
+		)
+		self.host.tg.cbq_handler(
+			self.open_auto_delivery_page,
+			lambda c: (c.data or "").startswith(CBT_AUTO_DELIVERY_PAGE),
 		)
 		self.host.tg.cbq_handler(
 			self.open_settings,
@@ -246,7 +255,7 @@ class TelegramSettingsUI:
 		keyboard = K(row_width=1)
 		keyboard.add(B("📊 Статусы", callback_data=f"{CBT_STATUS_PAGE}{offset}"))
 		keyboard.add(B("📝 Заготовки сообщений", callback_data=f"{CBT_TEMPLATES_PAGE}{offset}"))
-		keyboard.add(B("🤖 Gemini автовыдача", callback_data=f"{CBT_GEMINI_PAGE}{offset}"))
+		keyboard.add(B("🤖 Автовыдача", callback_data=f"{CBT_AUTO_DELIVERY_PAGE}{offset}"))
 		keyboard.add(B("🔑 GitHub Gists", callback_data=f"{CBT_GIST_PAGE}{offset}"))
 		keyboard.add(B("🔄 Автообновление", callback_data=f"{CBT_UPDATER_PAGE}{offset}"))
 		keyboard.add(B("🚫 Чёрный список", callback_data=f"{CBT_BLACKLIST_PAGE}{offset}"))
@@ -259,6 +268,20 @@ class TelegramSettingsUI:
 		)
 		self.host.tgbot.edit_message_text(
 			text,
+			call.message.chat.id,
+			call.message.id,
+			reply_markup=keyboard,
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def open_auto_delivery_page(self, call: telebot.types.CallbackQuery) -> None:
+		offset = self.get_offset(call.data)
+		keyboard = K(row_width=1)
+		keyboard.add(B("🤖 Gemini", callback_data=f"{CBT_GEMINI_PAGE}{offset}"))
+		keyboard.add(B("🤖 ChatGPT", callback_data=f"{CBT_GPT_ACCOUNTS_PAGE}{offset}"))
+		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.PLUGIN_SETTINGS}:{UUID}:{offset}"))
+		self.host.tgbot.edit_message_text(
+			"<b>Автовыдача</b>\n\nВыберите тип товара.",
 			call.message.chat.id,
 			call.message.id,
 			reply_markup=keyboard,

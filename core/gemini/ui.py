@@ -11,6 +11,7 @@ from tg_bot.utils import escape
 
 from ..config.constants import (
 	CBT_GEMINI_ADD,
+	CBT_AUTO_DELIVERY_PAGE,
 	CBT_GEMINI_CLEAR,
 	CBT_GEMINI_CLEAR_CONFIRM,
 	CBT_GEMINI_DELETE,
@@ -132,7 +133,7 @@ class TelegramGeminiDeliveryUI:
 		keyboard.add(B("✏️ Текст выдачи", callback_data=f"{CBT_GEMINI_EDIT_TEMPLATE}{offset}"))
 		keyboard.add(B("⏳ Ожидающие заказы", callback_data=f"{CBT_GEMINI_WAITING}0:{offset}"))
 		keyboard.add(B("🔑 GitHub Gists", callback_data=f"{CBT_GIST_PAGE}{offset}"))
-		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.PLUGIN_SETTINGS}:{UUID}:{offset}"))
+		keyboard.add(B("◀️ К автовыдаче", callback_data=f"{CBT_AUTO_DELIVERY_PAGE}{offset}"))
 		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
 
 	def toggle_enabled(self, call: telebot.types.CallbackQuery) -> None:
