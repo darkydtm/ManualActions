@@ -13,6 +13,7 @@ PACKAGE_MODULES = [
 	"status/status",
 	"gist/settings",
 	"gemini/settings",
+	"lots/scheduling",
 	"config/settings",
 	"storage/storage",
 	"application/updater",
