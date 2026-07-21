@@ -244,12 +244,12 @@ class TelegramSettingsUI:
 	def open_settings(self, call: telebot.types.CallbackQuery) -> None:
 		offset = self.get_offset(call.data)
 		keyboard = K(row_width=1)
-		keyboard.add(B("Статусы", callback_data=f"{CBT_STATUS_PAGE}{offset}"))
-		keyboard.add(B("Заготовки сообщений", callback_data=f"{CBT_TEMPLATES_PAGE}{offset}"))
-		keyboard.add(B("Gemini автовыдача", callback_data=f"{CBT_GEMINI_PAGE}{offset}"))
-		keyboard.add(B("GitHub Gists", callback_data=f"{CBT_GIST_PAGE}{offset}"))
-		keyboard.add(B("Автообновление", callback_data=f"{CBT_UPDATER_PAGE}{offset}"))
-		keyboard.add(B("Чёрный список", callback_data=f"{CBT_BLACKLIST_PAGE}{offset}"))
+		keyboard.add(B("📊 Статусы", callback_data=f"{CBT_STATUS_PAGE}{offset}"))
+		keyboard.add(B("📝 Заготовки сообщений", callback_data=f"{CBT_TEMPLATES_PAGE}{offset}"))
+		keyboard.add(B("🤖 Gemini автовыдача", callback_data=f"{CBT_GEMINI_PAGE}{offset}"))
+		keyboard.add(B("🔑 GitHub Gists", callback_data=f"{CBT_GIST_PAGE}{offset}"))
+		keyboard.add(B("🔄 Автообновление", callback_data=f"{CBT_UPDATER_PAGE}{offset}"))
+		keyboard.add(B("🚫 Чёрный список", callback_data=f"{CBT_BLACKLIST_PAGE}{offset}"))
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.EDIT_PLUGIN}:{UUID}:{offset}"))
 		text = (
 			"<b>Manual Actions</b>\n\n"
@@ -545,7 +545,7 @@ class TelegramSettingsUI:
 			auto_state = "авто вкл" if auto_config["enabled"] else "авто выкл"
 			marker = "✅ " if current == status_id else ""
 			keyboard.add(B(
-				f"{marker}{status_id}. {label} - {auto_state}",
+				f"{marker}📊 {status_id}. {label} - {auto_state}",
 				callback_data=f"{CBT_STATUS_DETAIL}{status_id}:{offset}",
 			))
 
