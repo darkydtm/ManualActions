@@ -11,6 +11,8 @@ from ..config.constants import CBT_UPDATER_INSTALL, CBT_UPDATER_SKIP, LOGGER_NAM
 from ..funpay import MessageContext, extract_message_context, should_send_auto_status_message
 from ..gemini.service import GeminiDeliveryService
 from ..gemini.storage import GeminiDeliveryStorage
+from ..gpt_accounts.service import GptAccountsDeliveryService
+from ..gpt_accounts.storage import GptAccountsDeliveryStorage
 from ..config.settings import DEFAULT_SETTINGS
 from ..status.status import auto_message_text, parse_funpay_status_command, response_text
 from ..storage.storage import PluginStorage
@@ -49,6 +51,7 @@ class ManualActionsPlugin:
 		self.settings: dict[str, Any] = DEFAULT_SETTINGS.copy()
 		self.updater: ManualActionsUpdater | None = None
 		self.gemini_storage = GeminiDeliveryStorage()
+		self.gpt_accounts_storage = GptAccountsDeliveryStorage()
 		self.two_factor_storage = TwoFactorStorage()
 		self.two_factor_service = TwoFactorService(
 			self.cardinal,
@@ -59,6 +62,12 @@ class ManualActionsPlugin:
 			self.cardinal,
 			lambda: self.settings,
 			self.gemini_storage,
+			admin_notifier=self.send_telegram_admin_message,
+		)
+		self.gpt_accounts_service = GptAccountsDeliveryService(
+			self.cardinal,
+			lambda: self.settings,
+			self.gpt_accounts_storage,
 			admin_notifier=self.send_telegram_admin_message,
 		)
 		self.telegram_ui = TelegramSettingsUI(self)
@@ -74,6 +83,7 @@ class ManualActionsPlugin:
 	def load(self) -> None:
 		self.settings = self.storage.load_settings()
 		self.gemini_storage.load()
+		self.gpt_accounts_storage.load()
 		self.two_factor_storage.load()
 		self.configure_updater()
 
@@ -157,6 +167,11 @@ class ManualActionsPlugin:
 			self.gemini_service.handle_new_order(e)
 		except Exception as exc:
 			logger.error(f"{LOGGER_PREFIX} Gemini auto-delivery failed: {exc}")
+			logger.debug("TRACEBACK", exc_info=True)
+		try:
+			self.gpt_accounts_service.handle_new_order(e)
+		except Exception as exc:
+			logger.error(f"{LOGGER_PREFIX} ChatGPT account auto-delivery failed: {exc}")
 			logger.debug("TRACEBACK", exc_info=True)
 
 	def is_blacklisted(self, context: MessageContext) -> bool:
