@@ -88,12 +88,14 @@ class TelegramGptAccountsDeliveryUI:
 
 	def ask_stock(self, call):
 		offset = self.offset(call.data)
-		message = self.host.tgbot.send_message(call.message.chat.id, "Отправьте аккаунты по одному на строку: email|pass или email|pass|2fa.", reply_markup=tg_bot.static_keyboards.CLEAR_STATE_BTN())
+		message = self.host.tgbot.send_message(call.message.chat.id, "Отправьте аккаунты по одному на строку: email|pass или email|pass|2fa. Можно прикрепить файл .txt.", reply_markup=tg_bot.static_keyboards.CLEAR_STATE_BTN())
 		self.host.tg.set_state(call.message.chat.id, message.id, call.from_user.id, STATE_GPT_ACCOUNTS_ADD, {"offset": offset})
 		self.host.tgbot.answer_callback_query(call.id)
 
 	def save_stock(self, message):
-		text = message.text or ""
+		text = self.stock_text(message)
+		if text is None:
+			return
 		if not text.strip():
 			self.host.tgbot.reply_to(message, "Отправьте текст с аккаунтами.")
 			return
@@ -106,6 +108,25 @@ class TelegramGptAccountsDeliveryUI:
 		if result.duplicate_count:
 			lines.append(f"Дубликаты: {result.duplicate_count}")
 		self.host.tgbot.reply_to(message, "\n".join(lines))
+
+	def stock_text(self, message):
+		text = message.text or ""
+		if text.strip():
+			return text
+		document = getattr(message, "document", None)
+		if not document or not str(getattr(document, "file_name", "")).lower().endswith(".txt"):
+			self.host.tgbot.reply_to(message, "Отправьте аккаунты текстом или файлом .txt.")
+			return None
+		try:
+			file_info = self.host.tgbot.get_file(document.file_id)
+			text = self.host.tgbot.download_file(file_info.file_path).decode("utf-8")
+		except Exception:
+			self.host.tgbot.reply_to(message, "Не удалось прочитать файл .txt.")
+			return None
+		if not text.strip():
+			self.host.tgbot.reply_to(message, "Файл .txt пуст.")
+			return None
+		return text
 
 	def open_stock(self, call):
 		offset = self.offset(call.data)
