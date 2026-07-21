@@ -18,6 +18,7 @@ DESCRIPTION = (
 	"/gist <текст> - создать GitHub Gist\n"
 	"/templates - отправить заготовку в топике Chat Sync\n"
 	"/status [0/1/2] - переключить текущий статус\n"
+	"!code [ID] - показать код 2FA для заказа\n"
 	"!status - показать статус в FunPay"
 )
 CREDITS = "beavers_best"
