@@ -98,7 +98,7 @@ class ManualActionsUpdater:
 		config["last_checked_version"] = release.version
 		self.save_settings()
 
-		if not should_offer_release(self.current_version, config, release.version):
+		if not should_offer_release(self.current_version, config, release.version, ignore_notified=force):
 			return ReleaseCheckResult(release, False, "not_new")
 
 		if mode == MODE_ENABLED:
@@ -330,15 +330,22 @@ def write_temp_plugin(directory: Path, source: str) -> Path:
 	return tmp_path
 
 
-def should_offer_release(current_version: str, settings: dict[str, str], release_version: str) -> bool:
+def should_offer_release(
+	current_version: str,
+	settings: dict[str, str],
+	release_version: str,
+	ignore_notified: bool = False,
+) -> bool:
 	version = release_version.strip()
-	if not version:
-		return False
-	if version in (
+	blocked_versions = (
 		settings.get("installed_version", ""),
 		settings.get("skipped_version", ""),
-		settings.get("notified_version", ""),
-	):
+	)
+	if not ignore_notified:
+		blocked_versions += (settings.get("notified_version", ""),)
+	if not version:
+		return False
+	if version in blocked_versions:
 		return False
 	if is_newer_version(current_version, version):
 		return True

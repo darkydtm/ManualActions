@@ -244,6 +244,24 @@ class UpdaterTest(unittest.TestCase):
 		self.assertEqual(result.message, "available")
 		self.assertEqual(settings["updater"]["last_checked_version"], "1.3.1")
 
+	def test_manual_check_reports_release_after_automatic_notification(self):
+		settings = {"updater": {"mode": "ask", "installed_version": "", "skipped_version": "", "notified_version": ""}}
+
+		def request_func(request, timeout=15):
+			return FakeResponse([release("1.5.3")])
+
+		updater = ManualActionsUpdater(
+			settings,
+			lambda: None,
+			"manual_actions.py",
+			"1.5.2",
+			request_func=request_func,
+		)
+
+		self.assertEqual(updater.check_once().message, "available")
+		self.assertEqual(settings["updater"]["notified_version"], "1.5.3")
+		self.assertEqual(updater.check_manually().message, "available")
+
 	def test_poll_interval_reads_settings_value(self):
 		settings = {"updater": {"mode": "ask", "check_interval_seconds": 1800}}
 		updater = ManualActionsUpdater(
