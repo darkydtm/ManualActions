@@ -115,7 +115,7 @@ class TelegramGeminiDeliveryUI:
 		)
 		keyboard = K(row_width=1)
 		keyboard.add(B(
-			"🟢 Выключено" if config["enabled"] else "🔴 Включено",
+			"🟢 Включено" if config["enabled"] else "🔴 Выключено",
 			callback_data=f"{CBT_GEMINI_TOGGLE}{offset}",
 		))
 		keyboard.add(B("➕ Добавить ссылки", callback_data=f"{CBT_GEMINI_ADD}{offset}"))
