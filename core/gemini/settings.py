@@ -16,6 +16,8 @@ DEFAULT_GEMINI_MESSAGE_TEMPLATE = "Спасибо за покупку!\nВаша
 DEFAULT_GEMINI_DELIVERY_SETTINGS = {
 	"enabled": False,
 	"shortage_mode": "partial",
+	"quantity": 1,
+	"delay_seconds": 0,
 	"message_template": DEFAULT_GEMINI_MESSAGE_TEMPLATE,
 }
 
@@ -39,6 +41,14 @@ def normalize_gemini_delivery_settings(data: Any) -> dict[str, Any]:
 	shortage_mode = data.get("shortage_mode")
 	if shortage_mode in GEMINI_SHORTAGE_MODES:
 		settings["shortage_mode"] = shortage_mode
+
+	quantity = data.get("quantity")
+	if isinstance(quantity, int) and not isinstance(quantity, bool) and quantity > 0:
+		settings["quantity"] = quantity
+
+	delay_seconds = data.get("delay_seconds")
+	if isinstance(delay_seconds, int) and not isinstance(delay_seconds, bool) and delay_seconds >= 0:
+		settings["delay_seconds"] = delay_seconds
 
 	message_template = data.get("message_template")
 	if isinstance(message_template, str) and "{link}" in message_template:
