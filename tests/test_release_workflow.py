@@ -12,7 +12,8 @@ class ReleaseWorkflowTest(unittest.TestCase):
 	def test_release_tag_comes_from_plugin_version(self):
 		source = WORKFLOW.read_text(encoding="utf-8")
 
-		self.assertIn('Path("core/constants.py")', source)
+		self.assertIn('Path("core/config/constants.py")', source)
+		self.assertNotIn('Path("core/constants.py")', source)
 		self.assertIn('target.id == "VERSION"', source)
 		self.assertNotIn("git tag --list '1.0.*'", source)
 

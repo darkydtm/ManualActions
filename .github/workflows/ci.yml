@@ -91,7 +91,7 @@ jobs:
           import ast
           from pathlib import Path
 
-          tree = ast.parse(Path("core/constants.py").read_text(encoding="utf-8"))
+          tree = ast.parse(Path("core/config/constants.py").read_text(encoding="utf-8"))
           for node in tree.body:
               if not isinstance(node, ast.Assign):
                   continue
@@ -135,7 +135,7 @@ jobs:
           from pathlib import Path
 
           next_version = sys.argv[1]
-          path = Path("core/constants.py")
+          path = Path("core/config/constants.py")
           source = path.read_text(encoding="utf-8")
           tree = ast.parse(source)
           lines = source.splitlines()
