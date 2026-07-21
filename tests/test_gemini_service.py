@@ -48,12 +48,14 @@ class GeminiDeliveryServiceTest(unittest.TestCase):
 		self.cardinal = SimpleNamespace(account=self.account, send_message=Mock(return_value=True), telegram=None)
 		self.gist_creator = Mock(return_value=SimpleNamespace(url="raw-url"))
 		self.topic_notifier = Mock(return_value=True)
+		self.admin_notifier = Mock()
 		self.service = GeminiDeliveryService(
 			self.cardinal,
 			lambda: self.settings,
 			self.storage,
 			gist_creator=self.gist_creator,
 			topic_notifier=self.topic_notifier,
+			admin_notifier=self.admin_notifier,
 		)
 
 	def tearDown(self):
@@ -155,6 +157,25 @@ class GeminiDeliveryServiceTest(unittest.TestCase):
 		warning = self.topic_notifier.call_args.args[1]
 		self.assertIn("Требуется: 2", warning)
 		self.assertIn("Выдано: 1", warning)
+
+	def test_shortage_warns_buyer_topic_and_administrators(self):
+		self.storage.add_links((LINK_ONE,))
+
+		self.service.handle_new_order(self.event(self.order(amount=2)))
+
+		warning = self.shortage_warning()
+		self.cardinal.send_message.assert_any_call(chat_id=77, message_text=warning)
+		self.assertEqual(self.topic_notifier.call_args.args[1], warning)
+		self.admin_notifier.assert_called_once_with(warning)
+
+	def test_shortage_continues_when_buyer_notification_fails(self):
+		self.storage.add_links((LINK_ONE,))
+		self.cardinal.send_message.side_effect = RuntimeError("offline")
+
+		self.service.handle_new_order(self.event(self.order(amount=2)))
+
+		self.assertEqual(self.topic_notifier.call_args_list[0].args[1], self.shortage_warning())
+		self.admin_notifier.assert_called_once()
 
 	def test_empty_stock_waits_and_warns_only_once(self):
 		event = self.event(self.order(amount=2))
@@ -278,6 +299,15 @@ class GeminiDeliveryServiceTest(unittest.TestCase):
 		self.cardinal.send_message.assert_called_once_with(
 			chat_id=88,
 			message_text="Delivery: raw-url",
+		)
+
+	@staticmethod
+	def shortage_warning():
+		return (
+			"⚠️ Нехватка Gemini-ссылок для заказа #ORDER-1.\n"
+			"Требуется: 2\n"
+			"Выдано: 1\n"
+			"Осталось в стоке: 0"
 		)
 
 

@@ -59,6 +59,7 @@ class ManualActionsPlugin:
 			self.cardinal,
 			lambda: self.settings,
 			self.gemini_storage,
+			admin_notifier=self.send_telegram_admin_message,
 		)
 		self.telegram_ui = TelegramSettingsUI(self)
 		self.telegram_commands = TelegramCommands(self)
