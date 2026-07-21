@@ -50,7 +50,7 @@ class BuildPluginTest(unittest.TestCase):
 		storage_index = build_plugin.PACKAGE_MODULES.index("gemini/storage")
 		service_index = build_plugin.PACKAGE_MODULES.index("gemini/service")
 		ui_index = build_plugin.PACKAGE_MODULES.index("gemini/ui")
-		plugin_index = build_plugin.PACKAGE_MODULES.index("plugin")
+		plugin_index = build_plugin.PACKAGE_MODULES.index("application/plugin")
 
 		self.assertLess(settings_index, storage_index)
 		self.assertLess(storage_index, service_index)
@@ -63,7 +63,7 @@ class BuildPluginTest(unittest.TestCase):
 
 	def test_includes_two_factor_modules_before_plugin(self):
 		service_index = build_plugin.PACKAGE_MODULES.index("two_factor/service")
-		plugin_index = build_plugin.PACKAGE_MODULES.index("plugin")
+		plugin_index = build_plugin.PACKAGE_MODULES.index("application/plugin")
 
 		self.assertLess(service_index, plugin_index)
 		self.assertIn("class TwoFactorService", build_plugin.build_source())

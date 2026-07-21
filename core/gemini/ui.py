@@ -9,7 +9,7 @@ from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 from tg_bot import CBT
 from tg_bot.utils import escape
 
-from ..constants import (
+from ..config.constants import (
 	CBT_GEMINI_ADD,
 	CBT_GEMINI_CLEAR,
 	CBT_GEMINI_CLEAR_CONFIRM,
@@ -27,7 +27,7 @@ from ..constants import (
 	STATE_GEMINI_TEMPLATE,
 	UUID,
 )
-from ..payloads import CallbackPayloadCache
+from ..common.payloads import CallbackPayloadCache
 from .service import OUTCOME_COMPLETED, OUTCOME_SEND_FAILED, OUTCOME_WAITING_STOCK
 from .settings import (
 	GEMINI_SHORTAGE_MODES,
@@ -115,7 +115,7 @@ class TelegramGeminiDeliveryUI:
 		)
 		keyboard = K(row_width=1)
 		keyboard.add(B(
-			"🟢 Выключить" if config["enabled"] else "🔴 Включить",
+			"🟢 Выключено" if config["enabled"] else "🔴 Включено",
 			callback_data=f"{CBT_GEMINI_TOGGLE}{offset}",
 		))
 		keyboard.add(B("➕ Добавить ссылки", callback_data=f"{CBT_GEMINI_ADD}{offset}"))

@@ -5,8 +5,8 @@ import logging
 import os
 from typing import Any
 
-from .constants import LOGGER_NAME, LOGGER_PREFIX, PLUGIN_FOLDER, SETTINGS_FILE
-from .settings import normalize_settings
+from ..config.constants import LOGGER_NAME, LOGGER_PREFIX, PLUGIN_FOLDER, SETTINGS_FILE
+from ..config.settings import normalize_settings
 
 
 logger = logging.getLogger(LOGGER_NAME)

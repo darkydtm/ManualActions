@@ -30,7 +30,7 @@ sys.modules.setdefault("tg_bot", tg_bot_module)
 sys.modules.setdefault("tg_bot.static_keyboards", tg_bot_static_keyboards_module)
 sys.modules.setdefault("tg_bot.utils", tg_bot_utils_module)
 
-from core.constants import (
+from core.config.constants import (
 	CBT_GEMINI_CLEAR_CONFIRM,
 	CBT_GEMINI_DELETE,
 	CBT_GEMINI_RETRY,
@@ -42,7 +42,7 @@ from core.gemini import ui as gemini_ui_module
 from core.gemini.service import DeliveryOutcome, OUTCOME_COMPLETED
 from core.gemini.storage import GeminiDeliveryStorage, OrderReservationRequest
 from core.gemini.ui import TelegramGeminiDeliveryUI
-from core.settings import normalize_settings
+from core.config.settings import normalize_settings
 
 
 LINK_ONE = "https://one.google.com/activate-plan/subscription/new/one"

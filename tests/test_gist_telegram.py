@@ -13,7 +13,7 @@ telebot_types_module = SimpleNamespace(
 sys.modules.setdefault("telebot", SimpleNamespace(types=telebot_types_module))
 sys.modules.setdefault("telebot.types", telebot_types_module)
 
-from core.constants import (
+from core.config.constants import (
 	CBT_GIST_ORDER_CANCEL,
 	CBT_GIST_ORDER_SELECT,
 	CBT_GIST_SEND,

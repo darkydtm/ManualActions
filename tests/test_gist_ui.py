@@ -27,8 +27,8 @@ sys.modules.setdefault("tg_bot", tg_bot_module)
 sys.modules.setdefault("tg_bot.static_keyboards", tg_bot_static_keyboards_module)
 sys.modules.setdefault("tg_bot.utils", tg_bot_utils_module)
 
-from core import settings as settings_module
-from core.constants import (
+from core.config import settings as settings_module
+from core.config.constants import (
 	CBT_GIST_FILENAME_PAGE,
 	CBT_GIST_SET_FILENAME_MODE,
 	CBT_GIST_SET_VISIBILITY,

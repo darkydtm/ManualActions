@@ -5,8 +5,8 @@ from threading import RLock
 import time
 from typing import Any
 
-from ..constants import TWO_FACTOR_FILE
-from ..storage import PluginStorage
+from ..config.constants import TWO_FACTOR_FILE
+from ..storage.storage import PluginStorage
 
 
 class TwoFactorStorage:

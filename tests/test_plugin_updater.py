@@ -32,8 +32,8 @@ utils_module = types.ModuleType("Utils")
 utils_module.cardinal_tools = SimpleNamespace(cache_blacklist=lambda blacklist: None)
 sys.modules.setdefault("Utils", utils_module)
 
-from core.plugin import ManualActionsPlugin
-from core.updater import MODE_ASK, MODE_DISABLED
+from core.application.plugin import ManualActionsPlugin
+from core.application.updater import MODE_ASK, MODE_DISABLED
 
 
 class FakeUpdater:

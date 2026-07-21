@@ -3,9 +3,9 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from .gemini.settings import DEFAULT_GEMINI_DELIVERY_SETTINGS, normalize_gemini_delivery_settings
-from .gist.settings import DEFAULT_GIST_SETTINGS, normalize_gist_settings
-from .status import STATUS_IDS, normalize_status_id
+from ..gemini.settings import DEFAULT_GEMINI_DELIVERY_SETTINGS, normalize_gemini_delivery_settings
+from ..gist.settings import DEFAULT_GIST_SETTINGS, normalize_gist_settings
+from ..status.status import STATUS_IDS, normalize_status_id
 
 
 DEFAULT_STATUS_RESPONSE_TEXTS = {

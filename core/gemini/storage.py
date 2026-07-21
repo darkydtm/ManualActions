@@ -11,7 +11,7 @@ from threading import RLock
 import time
 from typing import Any, Callable, Iterable
 
-from ..constants import GEMINI_DELIVERY_FILE, LOGGER_NAME, LOGGER_PREFIX
+from ..config.constants import GEMINI_DELIVERY_FILE, LOGGER_NAME, LOGGER_PREFIX
 
 
 logger = logging.getLogger(LOGGER_NAME)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from core.settings import normalize_settings
+from core.config.settings import normalize_settings
 
 
 class GistSettingsTest(unittest.TestCase):

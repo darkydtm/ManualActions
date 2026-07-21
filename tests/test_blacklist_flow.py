@@ -10,7 +10,7 @@ utils.cardinal_tools = SimpleNamespace(cache_blacklist=lambda blacklist: None)
 sys.modules.setdefault("Utils", utils)
 
 from core.funpay.blacklist import toggle_action_for_user
-from core.payloads import parse_blacklist_payload
+from core.common.payloads import parse_blacklist_payload
 
 
 class BlacklistFlowTest(unittest.TestCase):

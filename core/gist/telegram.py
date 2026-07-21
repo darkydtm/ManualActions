@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 import telebot
 from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 
-from ..constants import (
+from ..config.constants import (
 	CBT_GIST_ORDER_CANCEL,
 	CBT_GIST_ORDER_SELECT,
 	CBT_GIST_SEND,

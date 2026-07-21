@@ -36,8 +36,8 @@ utils_module = types.ModuleType("Utils")
 utils_module.cardinal_tools = SimpleNamespace(cache_blacklist=lambda blacklist: None)
 sys.modules.setdefault("Utils", utils_module)
 
-from core import settings as settings_module
-from core.constants import (
+from core.config import settings as settings_module
+from core.config.constants import (
 	CBT_GIST_PAGE,
 	CBT_TEMPLATE_ADD,
 	CBT_TEMPLATE_DELETE,
@@ -59,7 +59,7 @@ from core.constants import (
 )
 from core.telegram import settings as telegram_settings_module
 from core.telegram.settings import TelegramSettingsUI
-from core.updater import MODE_ASK
+from core.application.updater import MODE_ASK
 
 
 class FakeButton:
