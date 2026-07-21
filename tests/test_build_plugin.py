@@ -61,6 +61,19 @@ class BuildPluginTest(unittest.TestCase):
 		self.assertIn("class GeminiDeliveryService", source)
 		self.assertIn("class TelegramGeminiDeliveryUI", source)
 
+	def test_includes_gpt_account_modules_in_dependency_order(self):
+		settings_index = build_plugin.PACKAGE_MODULES.index("gpt_accounts/settings")
+		storage_index = build_plugin.PACKAGE_MODULES.index("gpt_accounts/storage")
+		service_index = build_plugin.PACKAGE_MODULES.index("gpt_accounts/service")
+		ui_index = build_plugin.PACKAGE_MODULES.index("gpt_accounts/ui")
+		plugin_index = build_plugin.PACKAGE_MODULES.index("application/plugin")
+
+		self.assertLess(settings_index, storage_index)
+		self.assertLess(storage_index, service_index)
+		self.assertLess(service_index, ui_index)
+		self.assertLess(ui_index, plugin_index)
+		self.assertIn("class GptAccountsDeliveryService", build_plugin.build_source())
+
 	def test_includes_two_factor_modules_before_plugin(self):
 		service_index = build_plugin.PACKAGE_MODULES.index("two_factor/service")
 		plugin_index = build_plugin.PACKAGE_MODULES.index("application/plugin")

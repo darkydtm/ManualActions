@@ -50,12 +50,15 @@ class PluginGeminiIntegrationTest(unittest.TestCase):
 	def tearDown(self):
 		ManualActionsPlugin._instance = None
 
-	def test_constructs_gemini_components_before_telegram_ui(self):
+	def test_constructs_auto_delivery_components_before_telegram_ui(self):
 		plugin = ManualActionsPlugin(self.cardinal)
 
 		self.assertIsNotNone(plugin.gemini_storage)
 		self.assertIsNotNone(plugin.gemini_service)
 		self.assertIs(plugin.telegram_ui.gemini_ui.host, plugin)
+		self.assertIsNotNone(plugin.gpt_accounts_storage)
+		self.assertIsNotNone(plugin.gpt_accounts_service)
+		self.assertIs(plugin.telegram_ui.gpt_accounts_ui.host, plugin)
 		self.assertIsNotNone(plugin.two_factor_storage)
 		self.assertIsNotNone(plugin.two_factor_service)
 
@@ -70,17 +73,20 @@ class PluginGeminiIntegrationTest(unittest.TestCase):
 	def test_new_order_hook_delegates_to_service(self):
 		plugin = ManualActionsPlugin(self.cardinal)
 		plugin.gemini_service = Mock()
+		plugin.gpt_accounts_service = Mock()
 		plugin.two_factor_service = Mock()
 		event = object()
 
 		plugin.new_order_hook(self.cardinal, event)
 
 		plugin.gemini_service.handle_new_order.assert_called_once_with(event)
+		plugin.gpt_accounts_service.handle_new_order.assert_called_once_with(event)
 		plugin.two_factor_service.handle_new_order.assert_not_called()
 
 	def test_new_order_hook_logs_unexpected_error_without_raising(self):
 		plugin = ManualActionsPlugin(self.cardinal)
 		plugin.gemini_service = Mock()
+		plugin.gpt_accounts_service = Mock()
 		plugin.two_factor_service = Mock()
 		plugin.gemini_service.handle_new_order.side_effect = RuntimeError("failed")
 

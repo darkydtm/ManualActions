@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import json
 from pathlib import Path
 import tempfile
@@ -84,7 +84,7 @@ class GptAccountsDeliveryStorage:
 			for account in accounts:
 				if account.email.casefold() in emails:
 					continue
-				state["stock"].append(asdict(account))
+				state["stock"].append(self.serialize_account(account))
 				emails.add(account.email.casefold())
 				added += 1
 			return added
@@ -223,7 +223,7 @@ class GptAccountsDeliveryStorage:
 				orders.pop(order_id)
 				continue
 			order["order_id"] = str(order.get("order_id") or order_id).lstrip("#")
-			order["reserved_accounts"] = [asdict(item) for item in self.normalize_accounts(order.get("reserved_accounts"))]
+			order["reserved_accounts"] = [self.serialize_account(item) for item in self.normalize_accounts(order.get("reserved_accounts"))]
 			order["requested_amount"] = max(int(order.get("requested_amount") or 1), 1)
 			order["status"] = order.get("status") if order.get("status") in (STATUS_RESERVED, STATUS_WAITING_STOCK, STATUS_COMPLETED, STATUS_SEND_FAILED, STATUS_RETRYABLE) else STATUS_RETRYABLE
 			order.setdefault("shortage_notified", False)
@@ -235,6 +235,14 @@ class GptAccountsDeliveryStorage:
 		if not isinstance(value, dict):
 			return Account("", "")
 		return Account(str(value.get("email") or "").strip(), str(value.get("password") or "").strip(), str(value.get("two_factor_secret") or "").strip())
+
+	@staticmethod
+	def serialize_account(account: Account) -> dict[str, str]:
+		return {
+			"email": account.email,
+			"password": account.password,
+			"two_factor_secret": account.two_factor_secret,
+		}
 
 	def normalize_accounts(self, values: Any) -> list[Account]:
 		if not isinstance(values, list):
