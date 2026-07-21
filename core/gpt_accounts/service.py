@@ -60,7 +60,7 @@ class GptAccountsDeliveryService:
 			order = self.get_full_order(event_order)
 			if not has_gpt_accounts_marker(self.order_description(order, event_order)):
 				return DeliveryOutcome(OUTCOME_IGNORED)
-			request = self.order_request(order, event_order, config["quantity"])
+			request = self.order_request(order, event_order)
 			if not request.order_id:
 				return DeliveryOutcome(OUTCOME_IGNORED)
 			existing = self.storage.get_order(request.order_id)
@@ -86,7 +86,7 @@ class GptAccountsDeliveryService:
 				return self.send_reserved(record, config)
 			request = OrderReservationRequest(
 				str(record.get("order_id") or order_id),
-				int(record.get("requested_amount") or config["quantity"]),
+				int(record.get("requested_amount") or 1),
 				str(record.get("buyer_username") or ""),
 				record.get("fp_chat_id"),
 			)
@@ -161,15 +161,15 @@ class GptAccountsDeliveryService:
 		except Exception:
 			return event_order
 
-	def order_request(self, order: object, fallback: object, quantity: int) -> OrderReservationRequest:
+	def order_request(self, order: object, fallback: object) -> OrderReservationRequest:
 		order_id = str(getattr(order, "id", None) or getattr(fallback, "id", "")).strip().lstrip("#")
 		buyer = str(getattr(order, "buyer_username", None) or getattr(fallback, "buyer_username", "") or "")
 		chat_id = getattr(order, "chat_id", None) or getattr(fallback, "chat_id", None)
 		amount = getattr(order, "amount", None) or getattr(fallback, "amount", None) or 1
 		try:
-			requested = max(int(amount), 1) * max(int(quantity), 1)
+			requested = max(int(amount), 1)
 		except (TypeError, ValueError):
-			requested = max(int(quantity), 1)
+			requested = 1
 		return OrderReservationRequest(order_id, requested, buyer, chat_id)
 
 	def resolve_chat_id(self, record: dict[str, Any]) -> int | str | None:

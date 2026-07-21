@@ -32,3 +32,12 @@ class GptAccountsServiceTest(unittest.TestCase):
 		outcome = self.service.handle_new_order(SimpleNamespace(order=order))
 		self.assertEqual(outcome.status, OUTCOME_COMPLETED)
 		self.assertIn("Email: one@example.com", self.cardinal.send_message.call_args.kwargs["message_text"])
+
+	def test_uses_order_amount_as_account_quantity(self):
+		self.storage.add_accounts((Account("one@example.com", "one"), Account("two@example.com", "two")))
+		order = SimpleNamespace(id="ORDER-2", amount=2, chat_id=1, full_description="#gptacc", buyer_username="buyer")
+		self.cardinal.account.get_order.return_value = order
+		self.service.handle_new_order(SimpleNamespace(order=order))
+		text = self.cardinal.send_message.call_args.kwargs["message_text"]
+		self.assertIn("Email: one@example.com", text)
+		self.assertIn("Email: two@example.com", text)
