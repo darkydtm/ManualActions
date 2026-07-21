@@ -5,6 +5,7 @@ from typing import Any
 
 from ..gemini.settings import DEFAULT_GEMINI_DELIVERY_SETTINGS, normalize_gemini_delivery_settings
 from ..gist.settings import DEFAULT_GIST_SETTINGS, normalize_gist_settings
+from ..lots.scheduling import DEFAULT_LOT_SCHEDULING_SETTINGS, normalize_lot_scheduling_settings
 from ..status.status import STATUS_IDS, normalize_status_id
 
 
@@ -53,6 +54,7 @@ DEFAULT_SETTINGS = {
 	"gist": DEFAULT_GIST_SETTINGS,
 	"updater": DEFAULT_UPDATER_SETTINGS,
 	"two_factor": DEFAULT_TWO_FACTOR_SETTINGS,
+	"lot_scheduling": DEFAULT_LOT_SCHEDULING_SETTINGS,
 }
 
 
@@ -72,6 +74,7 @@ def normalize_settings(data: dict[str, Any] | None) -> dict[str, Any]:
 	settings["gist"] = normalize_gist_settings(data.get("gist"))
 	settings["updater"] = normalize_updater_settings(data.get("updater"))
 	settings["two_factor"] = normalize_two_factor_settings(data.get("two_factor"))
+	settings["lot_scheduling"] = normalize_lot_scheduling_settings(data.get("lot_scheduling"))
 	return settings
 
 
