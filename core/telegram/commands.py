@@ -8,7 +8,7 @@ from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 
 from ..funpay.chat_sync import get_topic_context, is_in_sync_chat
 from ..gist.telegram import TelegramGistFlow
-from ..constants import (
+from ..config.constants import (
 	CBT_UPDATER_CHECK,
 	CBT_REFUND_CANCEL,
 	CBT_REFUND_CNF,
@@ -17,8 +17,8 @@ from ..constants import (
 	UUID,
 )
 from ..funpay.orders import get_pending_orders_for_user, refund_order
-from ..status import InvalidStatusCommand, parse_telegram_status_command, status_label, toggle_status
-from ..updater import ReleaseCheckResult
+from ..status.status import InvalidStatusCommand, parse_telegram_status_command, status_label, toggle_status
+from ..application.updater import ReleaseCheckResult
 from .blacklist import TelegramBlacklistFlow
 from .lots import TelegramLotsFlow
 from .orders import TelegramOrdersFlow
@@ -26,7 +26,7 @@ from .templates import TelegramTemplatesFlow
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal
-	from .settings import TelegramSettingsUI
+	from ..config.settings import TelegramSettingsUI
 
 
 logger = logging.getLogger(LOGGER_NAME)

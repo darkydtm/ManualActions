@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from Utils import cardinal_tools
 
-from ..constants import LOGGER_NAME, LOGGER_PREFIX
+from ..config.constants import LOGGER_NAME, LOGGER_PREFIX
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal

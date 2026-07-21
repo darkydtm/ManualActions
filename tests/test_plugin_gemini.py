@@ -33,8 +33,8 @@ utils_module = types.ModuleType("Utils")
 utils_module.cardinal_tools = SimpleNamespace(cache_blacklist=lambda blacklist: None)
 sys.modules.setdefault("Utils", utils_module)
 
-from core.constants import UUID
-from core.plugin import ManualActionsPlugin
+from core.config.constants import UUID
+from core.application.plugin import ManualActionsPlugin
 
 
 class PluginGeminiIntegrationTest(unittest.TestCase):

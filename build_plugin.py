@@ -9,14 +9,14 @@ ROOT = Path(__file__).resolve().parent
 ENTRY_FILE = ROOT / "main.py"
 OUTPUT_FILE = ROOT / "dist" / "manual_actions.py"
 PACKAGE_MODULES = [
-	"constants",
-	"status",
+	"config/constants",
+	"status/status",
 	"gist/settings",
 	"gemini/settings",
-	"settings",
-	"storage",
-	"updater",
-	"payloads",
+	"config/settings",
+	"storage/storage",
+	"application/updater",
+	"common/payloads",
 	"gemini/storage",
 	"two_factor/commands",
 	"two_factor/parser",
@@ -41,7 +41,7 @@ PACKAGE_MODULES = [
 	"telegram/settings",
 	"telegram/templates",
 	"telegram/commands",
-	"plugin",
+	"application/plugin",
 ]
 class ImportCollector:
 	def __init__(self):

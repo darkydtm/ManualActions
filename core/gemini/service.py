@@ -6,7 +6,7 @@ import re
 from threading import RLock
 from typing import Any, Callable
 
-from ..constants import LOGGER_NAME, LOGGER_PREFIX
+from ..config.constants import LOGGER_NAME, LOGGER_PREFIX
 from ..funpay.chat_sync import (
 	find_chat_sync_topic,
 	get_chat_sync_obj,
@@ -14,7 +14,7 @@ from ..funpay.chat_sync import (
 )
 from ..gist.service import create_gist_result, resolve_gist_filename
 from ..gist.settings import normalize_gist_settings
-from .settings import normalize_gemini_delivery_settings
+from ..config.settings import normalize_gemini_delivery_settings
 from .storage import (
 	GeminiDeliveryStorage,
 	OrderReservationRequest,

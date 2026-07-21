@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.updater import (
+from core.application.updater import (
 	ManualActionsUpdater,
 	UpdaterError,
 	asset_download_url,

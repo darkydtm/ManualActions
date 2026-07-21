@@ -15,7 +15,7 @@ telebot_types_module = SimpleNamespace(
 sys.modules.setdefault("telebot", SimpleNamespace(TeleBot=object, types=telebot_types_module))
 sys.modules.setdefault("telebot.types", telebot_types_module)
 
-from core.constants import (
+from core.config.constants import (
 	CBT_TEMPLATES_CANCEL,
 	CBT_TEMPLATES_SELECT,
 	CBT_TEMPLATES_SEND,

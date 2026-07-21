@@ -9,7 +9,7 @@ from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 
 from ..funpay.blacklist import block_user, list_blocked_users, toggle_action_for_user, unblock_user
 from ..funpay.chat_sync import get_topic_context, is_in_sync_chat
-from ..constants import (
+from ..config.constants import (
 	CBT_BL_CANCEL,
 	CBT_BL_CONFIRM,
 	CBT_BL_LIST,
@@ -18,7 +18,7 @@ from ..constants import (
 	LOGGER_NAME,
 	LOGGER_PREFIX,
 )
-from ..payloads import parse_blacklist_payload
+from ..common.payloads import parse_blacklist_payload
 from .ui import delete_controlled_message, message_thread_id, send_menu
 
 if TYPE_CHECKING:

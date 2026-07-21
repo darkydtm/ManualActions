@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, Any, Protocol
 import telebot
 from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 
-from ..constants import CBT_TEMPLATES_CANCEL, CBT_TEMPLATES_SELECT, CBT_TEMPLATES_SEND
+from ..config.constants import CBT_TEMPLATES_CANCEL, CBT_TEMPLATES_SELECT, CBT_TEMPLATES_SEND
 from ..funpay.chat_sync import get_topic_context, is_in_sync_chat
-from ..payloads import CallbackPayloadCache
+from ..common.payloads import CallbackPayloadCache
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal

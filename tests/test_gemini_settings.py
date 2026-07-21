@@ -8,7 +8,7 @@ from core.gemini.settings import (
 	normalize_gemini_delivery_settings,
 	validate_gemini_link,
 )
-from core.settings import normalize_settings
+from core.config.settings import normalize_settings
 
 
 VALID_ONE = "https://one.google.com/activate-plan/subscription/new/token?x=1"

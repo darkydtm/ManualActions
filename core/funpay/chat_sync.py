@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import logging
 from typing import TYPE_CHECKING
 
-from ..constants import LOGGER_NAME, LOGGER_PREFIX, SYNC_PLUGIN_UUID
+from ..config.constants import LOGGER_NAME, LOGGER_PREFIX, SYNC_PLUGIN_UUID
 
 if TYPE_CHECKING:
 	import telebot

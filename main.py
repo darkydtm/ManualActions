@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from core.constants import CREDITS, DESCRIPTION, NAME, SETTINGS_PAGE, UUID, VERSION
-from core.plugin import delete, pre_init
+from core.config.constants import CREDITS, DESCRIPTION, NAME, SETTINGS_PAGE, UUID, VERSION
+from core.application.plugin import delete, pre_init
 
 
 def bind_pre_init(c):

@@ -10,7 +10,7 @@ from tg_bot import CBT
 from tg_bot.utils import escape
 
 from ..funpay.blacklist import unblock_user
-from ..constants import (
+from ..config.constants import (
 	CBT_BLACKLIST_PAGE,
 	CBT_BL_UNBL,
 	CBT_GEMINI_PAGE,
@@ -50,8 +50,8 @@ from ..constants import (
 )
 from ..gemini.ui import TelegramGeminiDeliveryUI
 from ..gist.ui import TelegramGistSettingsUI
-from ..status import STATUS_IDS, status_label
-from ..updater import MODE_ASK, MODE_DISABLED, MODE_ENABLED, ReleaseCheckResult
+from ..status.status import STATUS_IDS, status_label
+from ..application.updater import MODE_ASK, MODE_DISABLED, MODE_ENABLED, ReleaseCheckResult
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal

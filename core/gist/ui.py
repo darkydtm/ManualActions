@@ -8,7 +8,7 @@ from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 from tg_bot import CBT
 from tg_bot.utils import escape
 
-from ..constants import (
+from ..config.constants import (
 	CBT_GIST_EDIT_CUSTOM_FILENAME,
 	CBT_GIST_EDIT_TOKEN,
 	CBT_GIST_FILENAME_PAGE,

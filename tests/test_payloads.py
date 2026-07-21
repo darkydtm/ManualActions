@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from core.payloads import CallbackPayloadCache
+from core.common.payloads import CallbackPayloadCache
 
 
 class PayloadsTest(unittest.TestCase):
