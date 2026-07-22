@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 import re
-from threading import RLock
+from threading import RLock, Timer
 from typing import Any, Callable
 
 from ..config.constants import LOGGER_NAME, LOGGER_PREFIX
@@ -53,6 +53,7 @@ class GeminiDeliveryService:
 		gist_creator: Callable[..., Any] = create_gist_result,
 		topic_notifier: Callable[[dict[str, Any], str], bool] | None = None,
 		admin_notifier: Callable[[str], None] | None = None,
+		timer_factory: Callable[[int, Callable[[], None]], Any] = Timer,
 	):
 		self.cardinal = cardinal
 		self.settings_getter = settings_getter
@@ -60,9 +61,29 @@ class GeminiDeliveryService:
 		self.gist_creator = gist_creator
 		self.topic_notifier = topic_notifier or self.notify_chat_sync
 		self.admin_notifier = admin_notifier or (lambda text: None)
+		self.timer_factory = timer_factory
 		self.lock = RLock()
 
 	def handle_new_order(self, event: object) -> DeliveryOutcome:
+		with self.lock:
+			config = normalize_gemini_delivery_settings(
+				self.settings_getter().get("gemini_delivery")
+			)
+			if not config["enabled"]:
+				return DeliveryOutcome(OUTCOME_IGNORED)
+			if config["delay_seconds"] <= 0:
+				return self.handle_new_order_locked(event)
+			if not self.is_matching_new_order(event):
+				return DeliveryOutcome(OUTCOME_IGNORED)
+			timer = self.timer_factory(
+				config["delay_seconds"],
+				lambda: self.handle_delayed_new_order(event),
+			)
+			timer.daemon = True
+			timer.start()
+			return DeliveryOutcome(OUTCOME_IGNORED)
+
+	def handle_delayed_new_order(self, event: object) -> DeliveryOutcome:
 		with self.lock:
 			return self.handle_new_order_locked(event)
 
@@ -95,6 +116,15 @@ class GeminiDeliveryService:
 				return DeliveryOutcome(OUTCOME_WAITING_STOCK, request.order_id)
 
 		return self.deliver(request, config, settings)
+
+	def is_matching_new_order(self, event: object) -> bool:
+		event_order = getattr(event, "order", None)
+		if not event_order:
+			return False
+		order = self.get_full_order(event_order)
+		if not has_gemini_marker(self.order_description(order, event_order)):
+			return False
+		return bool(self.order_request(order, event_order).order_id)
 
 	def retry_order(self, order_id: str) -> DeliveryOutcome:
 		with self.lock:

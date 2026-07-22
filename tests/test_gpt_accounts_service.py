@@ -42,6 +42,44 @@ class GptAccountsServiceTest(unittest.TestCase):
 		self.assertIn("Email: one@example.com", text)
 		self.assertIn("Email: two@example.com", text)
 
+	def test_schedules_delivery_after_configured_delay(self):
+		self.settings["gpt_accounts_delivery"]["delay_seconds"] = 15
+		timer = Mock()
+		self.service = GptAccountsDeliveryService(
+			self.cardinal,
+			lambda: self.settings,
+			self.storage,
+			timer_factory=lambda seconds, callback: timer,
+		)
+		self.storage.add_accounts((Account("one@example.com", "pass"),))
+		order = SimpleNamespace(id="ORDER-1", amount=1, chat_id=1, full_description="#gptacc", buyer_username="buyer")
+		self.cardinal.account.get_order.return_value = order
+
+		self.service.handle_new_order(SimpleNamespace(order=order))
+
+		timer.start.assert_called_once_with()
+		self.cardinal.send_message.assert_not_called()
+
+	def test_skips_delayed_delivery_when_disabled_before_execution(self):
+		self.settings["gpt_accounts_delivery"]["delay_seconds"] = 15
+		callbacks = []
+		self.service = GptAccountsDeliveryService(
+			self.cardinal,
+			lambda: self.settings,
+			self.storage,
+			timer_factory=lambda seconds, callback: callbacks.append(callback) or Mock(),
+		)
+		self.storage.add_accounts((Account("one@example.com", "pass"),))
+		order = SimpleNamespace(id="ORDER-1", amount=1, chat_id=1, full_description="#gptacc", buyer_username="buyer")
+		self.cardinal.account.get_order.return_value = order
+
+		self.service.handle_new_order(SimpleNamespace(order=order))
+		self.settings["gpt_accounts_delivery"]["enabled"] = False
+		callbacks[0]()
+
+		self.assertEqual(self.storage.stock_count(), 1)
+		self.cardinal.send_message.assert_not_called()
+
 	def test_shortage_continues_when_buyer_notification_fails(self):
 		topic_notifier = Mock()
 		admin_notifier = Mock()

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 import re
-from threading import RLock
+from threading import RLock, Timer
 from typing import Any, Callable
 
 from ..config.constants import LOGGER_NAME, LOGGER_PREFIX
@@ -43,12 +43,14 @@ class GptAccountsDeliveryService:
 		storage: GptAccountsDeliveryStorage,
 		topic_notifier: Callable[[dict[str, Any], str], bool] | None = None,
 		admin_notifier: Callable[[str], None] | None = None,
+		timer_factory: Callable[[int, Callable[[], None]], Any] = Timer,
 	):
 		self.cardinal = cardinal
 		self.settings_getter = settings_getter
 		self.storage = storage
 		self.topic_notifier = topic_notifier or self.notify_chat_sync
 		self.admin_notifier = admin_notifier or (lambda text: None)
+		self.timer_factory = timer_factory
 		self.lock = RLock()
 
 	def handle_new_order(self, event: object) -> DeliveryOutcome:
@@ -56,25 +58,54 @@ class GptAccountsDeliveryService:
 			config = normalize_gpt_accounts_delivery_settings(self.settings_getter().get("gpt_accounts_delivery"))
 			if not config["enabled"]:
 				return DeliveryOutcome(OUTCOME_IGNORED)
-			event_order = getattr(event, "order", None)
-			if not event_order:
+			if config["delay_seconds"] <= 0:
+				return self.handle_new_order_locked(event)
+			if not self.is_matching_new_order(event):
 				return DeliveryOutcome(OUTCOME_IGNORED)
-			order = self.get_full_order(event_order)
-			if not has_gpt_accounts_marker(self.order_description(order, event_order)):
-				return DeliveryOutcome(OUTCOME_IGNORED)
-			request = self.order_request(order, event_order)
-			if not request.order_id:
-				return DeliveryOutcome(OUTCOME_IGNORED)
-			existing = self.storage.get_order(request.order_id)
-			if existing:
-				status = existing.get("status")
-				if status == STATUS_COMPLETED:
-					return DeliveryOutcome(OUTCOME_COMPLETED, request.order_id)
-				if status == STATUS_SEND_FAILED:
-					return DeliveryOutcome(OUTCOME_SEND_FAILED, request.order_id, existing.get("last_error", ""))
-				if status == STATUS_WAITING_STOCK:
-					return DeliveryOutcome(OUTCOME_WAITING_STOCK, request.order_id)
-			return self.deliver(request, config)
+			timer = self.timer_factory(
+				config["delay_seconds"],
+				lambda: self.handle_delayed_new_order(event),
+			)
+			timer.daemon = True
+			timer.start()
+			return DeliveryOutcome(OUTCOME_IGNORED)
+
+	def handle_delayed_new_order(self, event: object) -> DeliveryOutcome:
+		with self.lock:
+			return self.handle_new_order_locked(event)
+
+	def handle_new_order_locked(self, event: object) -> DeliveryOutcome:
+		config = normalize_gpt_accounts_delivery_settings(self.settings_getter().get("gpt_accounts_delivery"))
+		if not config["enabled"]:
+			return DeliveryOutcome(OUTCOME_IGNORED)
+		event_order = getattr(event, "order", None)
+		if not event_order:
+			return DeliveryOutcome(OUTCOME_IGNORED)
+		order = self.get_full_order(event_order)
+		if not has_gpt_accounts_marker(self.order_description(order, event_order)):
+			return DeliveryOutcome(OUTCOME_IGNORED)
+		request = self.order_request(order, event_order)
+		if not request.order_id:
+			return DeliveryOutcome(OUTCOME_IGNORED)
+		existing = self.storage.get_order(request.order_id)
+		if existing:
+			status = existing.get("status")
+			if status == STATUS_COMPLETED:
+				return DeliveryOutcome(OUTCOME_COMPLETED, request.order_id)
+			if status == STATUS_SEND_FAILED:
+				return DeliveryOutcome(OUTCOME_SEND_FAILED, request.order_id, existing.get("last_error", ""))
+			if status == STATUS_WAITING_STOCK:
+				return DeliveryOutcome(OUTCOME_WAITING_STOCK, request.order_id)
+		return self.deliver(request, config)
+
+	def is_matching_new_order(self, event: object) -> bool:
+		event_order = getattr(event, "order", None)
+		if not event_order:
+			return False
+		order = self.get_full_order(event_order)
+		if not has_gpt_accounts_marker(self.order_description(order, event_order)):
+			return False
+		return bool(self.order_request(order, event_order).order_id)
 
 	def retry_order(self, order_id: str) -> DeliveryOutcome:
 		with self.lock:
