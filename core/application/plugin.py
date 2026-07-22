@@ -8,16 +8,13 @@ from typing import TYPE_CHECKING, Any
 from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 
 from ..config.constants import CBT_UPDATER_INSTALL, CBT_UPDATER_SKIP, LOGGER_NAME, LOGGER_PREFIX, UUID, VERSION
-from ..delivery.orchestrator import DeliveryOrchestrator
 from ..funpay import MessageContext, extract_message_context, should_send_auto_status_message
-from ..delivery.providers.gemini_service import GeminiDeliveryService
-from ..delivery.providers.gemini_storage import GeminiDeliveryStorage
-from ..delivery.providers.gpt_accounts_service import GptAccountsDeliveryService
-from ..delivery.providers.gpt_accounts_storage import GptAccountsDeliveryStorage
 from ..config.settings import DEFAULT_SETTINGS
 from ..status.status import auto_message_text, parse_funpay_status_command, response_text
 from ..storage.storage import PluginStorage
 from ..runtime.settings import update_settings
+
+from ..modules import ModuleRegistry
 
 from ..two_factor.service import TwoFactorService
 from ..two_factor.storage import TwoFactorStorage
@@ -52,29 +49,15 @@ class ManualActionsPlugin:
 		self.storage = PluginStorage()
 		self.settings: dict[str, Any] = DEFAULT_SETTINGS.copy()
 		self.updater: ManualActionsUpdater | None = None
-		self.gemini_storage = GeminiDeliveryStorage()
-		self.gpt_accounts_storage = GptAccountsDeliveryStorage()
+		self.module_registry = ModuleRegistry.discover()
+		self.services = self.module_registry.create_services(self)
+		for name, service in self.services.items():
+			setattr(self, name, service)
 		self.two_factor_storage = TwoFactorStorage()
 		self.two_factor_service = TwoFactorService(
 			self.cardinal,
 			lambda: self.settings,
 			self.two_factor_storage,
-		)
-		self.gemini_service = GeminiDeliveryService(
-			self.cardinal,
-			lambda: self.settings,
-			self.gemini_storage,
-			admin_notifier=self.send_telegram_admin_message,
-		)
-		self.gpt_accounts_service = GptAccountsDeliveryService(
-			self.cardinal,
-			lambda: self.settings,
-			self.gpt_accounts_storage,
-			admin_notifier=self.send_telegram_admin_message,
-		)
-		self.delivery_orchestrator = DeliveryOrchestrator(
-			(self.gemini_service, self.gpt_accounts_service),
-			logger,
 		)
 		self.telegram_ui = TelegramSettingsUI(self)
 		self.telegram_commands = TelegramCommands(self)
@@ -88,8 +71,7 @@ class ManualActionsPlugin:
 
 	def load(self) -> None:
 		self.settings = self.storage.load_settings()
-		self.gemini_storage.load()
-		self.gpt_accounts_storage.load()
+		self.module_registry.load(self)
 		self.two_factor_storage.load()
 		self.configure_updater()
 
