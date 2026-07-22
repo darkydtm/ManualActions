@@ -3,8 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from ..gemini.settings import DEFAULT_GEMINI_DELIVERY_SETTINGS, normalize_gemini_delivery_settings
-from ..gpt_accounts.settings import DEFAULT_GPT_ACCOUNTS_DELIVERY_SETTINGS, normalize_gpt_accounts_delivery_settings
+from ..delivery.providers.gemini import DEFAULT_GEMINI_DELIVERY_SETTINGS, normalize_gemini_delivery_settings
+from ..delivery.providers.gpt_accounts import DEFAULT_GPT_ACCOUNTS_DELIVERY_SETTINGS, normalize_gpt_accounts_delivery_settings
 from ..gist.settings import DEFAULT_GIST_SETTINGS, normalize_gist_settings
 from ..lots.scheduling import DEFAULT_LOT_SCHEDULING_SETTINGS, normalize_lot_scheduling_settings
 from ..status.status import STATUS_IDS, normalize_status_id

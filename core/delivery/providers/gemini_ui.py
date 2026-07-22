@@ -9,7 +9,7 @@ from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 from tg_bot import CBT
 from tg_bot.utils import escape
 
-from ..config.constants import (
+from ...config.constants import (
 	CBT_GEMINI_ADD,
 	CBT_AUTO_DELIVERY_PAGE,
 	CBT_GEMINI_CLEAR,
@@ -33,10 +33,10 @@ from ..config.constants import (
 	STATE_GEMINI_TEMPLATE,
 	UUID,
 )
-from ..common.payloads import CallbackPayloadCache
-from ..runtime.settings import update_host_settings
-from .service import OUTCOME_COMPLETED, OUTCOME_SEND_FAILED, OUTCOME_WAITING_STOCK
-from .settings import (
+from ...common.payloads import CallbackPayloadCache
+from ...runtime.settings import update_host_settings
+from .gemini_service import OUTCOME_COMPLETED, OUTCOME_SEND_FAILED, OUTCOME_WAITING_STOCK
+from .gemini import (
 	GEMINI_SHORTAGE_MODES,
 	parse_gemini_link_batch,
 )

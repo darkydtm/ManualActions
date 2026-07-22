@@ -2,60 +2,67 @@ from __future__ import annotations
 
 import argparse
 import ast
+from collections import defaultdict
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
 ENTRY_FILE = ROOT / "main.py"
 OUTPUT_FILE = ROOT / "dist" / "manual_actions.py"
-PACKAGE_MODULES = [
-	"config/constants",
-	"runtime/contracts",
-	"runtime/locks",
-	"runtime/effects",
-	"runtime/logging",
-	"runtime/persistence",
-	"runtime/settings",
-	"delivery/contracts",
-	"delivery/orchestrator",
-	"status/status",
-	"gist/settings",
-	"gemini/settings",
-	"gpt_accounts/settings",
-	"lots/scheduling",
-	"config/settings",
-	"storage/storage",
-	"application/updater",
-	"common/payloads",
-	"gemini/storage",
-	"gpt_accounts/storage",
-	"two_factor/commands",
-	"two_factor/parser",
-	"two_factor/totp",
-	"two_factor/storage",
-	"funpay/chat_sync",
-	"funpay/messages",
-	"funpay/blacklist",
-	"funpay/lots",
-	"funpay/orders",
-	"telegram/ui",
-	"telegram/blacklist",
-	"telegram/lots",
-	"telegram/orders",
-	"gist/client",
-	"gist/service",
-	"gemini/service",
-	"gpt_accounts/service",
-	"two_factor/service",
-	"gist/ui",
-	"gist/telegram",
-	"gemini/ui",
-	"gpt_accounts/ui",
-	"telegram/settings",
-	"telegram/templates",
-	"telegram/commands",
-	"application/plugin",
-]
+
+def discover_package_modules() -> list[str]:
+	modules = {
+		path.relative_to(ROOT / "core").with_suffix("").as_posix()
+		for path in (ROOT / "core").rglob("*.py")
+		if path.name != "__init__.py"
+	}
+	dependencies = defaultdict(set)
+	for module in modules:
+		path = ROOT / "core" / f"{module}.py"
+		dependencies[module].update(local_dependencies(module, ast.parse(read_source(path)), modules))
+
+	ordered = []
+	visiting = set()
+	visited = set()
+
+	def visit(module: str) -> None:
+		if module in visited:
+			return
+		if module in visiting:
+			raise ValueError(f"Local import cycle detected at {module}.")
+		visiting.add(module)
+		for dependency in sorted(dependencies[module]):
+			visit(dependency)
+		visiting.remove(module)
+		visited.add(module)
+		ordered.append(module)
+
+	for module in sorted(modules):
+		visit(module)
+	return ordered
+
+
+def local_dependencies(module: str, tree: ast.Module, modules: set[str]) -> set[str]:
+	dependencies = set()
+	for statement in ast.walk(tree):
+		if not isinstance(statement, ast.ImportFrom):
+			continue
+		for dependency in import_from_dependencies(module, statement):
+			if dependency in modules:
+				dependencies.add(dependency)
+	return dependencies
+
+
+def import_from_dependencies(module: str, statement: ast.ImportFrom) -> set[str]:
+	value = statement.module or ""
+	if statement.level:
+		package = module.split("/")[:-1]
+		base = package[:len(package) - statement.level + 1]
+		target = base + (value.split(".") if value else [])
+		return {"/".join(target)} if target else set()
+	if value == "core" or value.startswith("core."):
+		return {value.removeprefix("core.").replace(".", "/")}
+	return set()
 class ImportCollector:
 	def __init__(self):
 		self.imports: list[tuple[str, str | None]] = []
@@ -243,7 +250,7 @@ def build_source() -> str:
 	collector = ImportCollector()
 	module_sections = []
 
-	for module_name in PACKAGE_MODULES:
+	for module_name in discover_package_modules():
 		path = ROOT / "core" / f"{module_name}.py"
 		section = extract_module_body(read_source(path), collector)
 		if section:

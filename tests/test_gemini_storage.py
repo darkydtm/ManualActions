@@ -5,7 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from core.gemini.storage import (
+from core.delivery.providers.gemini_storage import (
 	GeminiDeliveryStorage,
 	OrderReservationRequest,
 	STATUS_COMPLETED,

@@ -4,9 +4,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from core.gpt_accounts.service import GptAccountsDeliveryService, OUTCOME_COMPLETED, has_gpt_accounts_marker
-from core.gpt_accounts.settings import Account
-from core.gpt_accounts.storage import GptAccountsDeliveryStorage
+from core.delivery.providers.gpt_accounts_service import GptAccountsDeliveryService, OUTCOME_COMPLETED, has_gpt_accounts_marker
+from core.delivery.providers.gpt_accounts import Account
+from core.delivery.providers.gpt_accounts_storage import GptAccountsDeliveryStorage
 
 
 class GptAccountsServiceTest(unittest.TestCase):

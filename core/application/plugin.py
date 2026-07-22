@@ -10,10 +10,10 @@ from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 from ..config.constants import CBT_UPDATER_INSTALL, CBT_UPDATER_SKIP, LOGGER_NAME, LOGGER_PREFIX, UUID, VERSION
 from ..delivery.orchestrator import DeliveryOrchestrator
 from ..funpay import MessageContext, extract_message_context, should_send_auto_status_message
-from ..gemini.service import GeminiDeliveryService
-from ..gemini.storage import GeminiDeliveryStorage
-from ..gpt_accounts.service import GptAccountsDeliveryService
-from ..gpt_accounts.storage import GptAccountsDeliveryStorage
+from ..delivery.providers.gemini_service import GeminiDeliveryService
+from ..delivery.providers.gemini_storage import GeminiDeliveryStorage
+from ..delivery.providers.gpt_accounts_service import GptAccountsDeliveryService
+from ..delivery.providers.gpt_accounts_storage import GptAccountsDeliveryStorage
 from ..config.settings import DEFAULT_SETTINGS
 from ..status.status import auto_message_text, parse_funpay_status_command, response_text
 from ..storage.storage import PluginStorage

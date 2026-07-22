@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from core.gemini.settings import (
+from core.delivery.providers.gemini import (
 	DEFAULT_GEMINI_MESSAGE_TEMPLATE,
 	parse_gemini_link_batch,
 	normalize_gemini_delivery_settings,

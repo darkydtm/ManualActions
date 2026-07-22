@@ -7,9 +7,9 @@ import tg_bot.static_keyboards
 from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 from tg_bot.utils import escape
 
-from ..common.payloads import CallbackPayloadCache
-from ..runtime.settings import update_host_settings
-from ..config.constants import (
+from ...common.payloads import CallbackPayloadCache
+from ...runtime.settings import update_host_settings
+from ...config.constants import (
 	CBT_AUTO_DELIVERY_PAGE,
 	CBT_GPT_ACCOUNTS_ADD,
 	CBT_GPT_ACCOUNTS_CLEAR,
@@ -27,8 +27,8 @@ from ..config.constants import (
 	STATE_GPT_ACCOUNTS_DELAY,
 	STATE_GPT_ACCOUNTS_TEMPLATE,
 )
-from .service import OUTCOME_COMPLETED, OUTCOME_WAITING_STOCK
-from .settings import GPT_ACCOUNTS_SHORTAGE_MODES, parse_account_batch
+from .gpt_accounts_service import OUTCOME_COMPLETED, OUTCOME_WAITING_STOCK
+from .gpt_accounts import GPT_ACCOUNTS_SHORTAGE_MODES, parse_account_batch
 
 
 class GptAccountsUIHost(Protocol):

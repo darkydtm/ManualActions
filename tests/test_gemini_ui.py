@@ -43,13 +43,13 @@ from core.config.constants import (
 	CBT_GEMINI_STOCK,
 	CBT_GIST_PAGE,
 )
-from core.gemini import ui as gemini_ui_module
-from core.gemini.service import DeliveryOutcome, OUTCOME_COMPLETED
-from core.gemini.storage import GeminiDeliveryStorage, OrderReservationRequest
-from core.gemini.ui import TelegramGeminiDeliveryUI
-from core.gpt_accounts import ui as gpt_accounts_ui_module
-from core.gpt_accounts.storage import GptAccountsDeliveryStorage
-from core.gpt_accounts.ui import TelegramGptAccountsDeliveryUI
+from core.delivery.providers import gemini_ui as gemini_ui_module
+from core.delivery.providers.gemini_service import DeliveryOutcome, OUTCOME_COMPLETED
+from core.delivery.providers.gemini_storage import GeminiDeliveryStorage, OrderReservationRequest
+from core.delivery.providers.gemini_ui import TelegramGeminiDeliveryUI
+from core.delivery.providers import gpt_accounts_ui as gpt_accounts_ui_module
+from core.delivery.providers.gpt_accounts_storage import GptAccountsDeliveryStorage
+from core.delivery.providers.gpt_accounts_ui import TelegramGptAccountsDeliveryUI
 from core.config.settings import normalize_settings
 
 

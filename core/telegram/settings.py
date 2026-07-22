@@ -51,8 +51,8 @@ from ..config.constants import (
 	UUID,
 	VERSION,
 )
-from ..gemini.ui import TelegramGeminiDeliveryUI
-from ..gpt_accounts.ui import TelegramGptAccountsDeliveryUI
+from ..delivery.providers.gemini_ui import TelegramGeminiDeliveryUI
+from ..delivery.providers.gpt_accounts_ui import TelegramGptAccountsDeliveryUI
 from ..gist.ui import TelegramGistSettingsUI
 from ..status.status import STATUS_IDS, status_label
 from ..application.updater import MODE_ASK, MODE_DISABLED, MODE_ENABLED, ReleaseCheckResult

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
 
-from core.gemini.service import (
+from core.delivery.providers.gemini_service import (
 	OUTCOME_COMPLETED,
 	OUTCOME_IGNORED,
 	OUTCOME_SEND_FAILED,
@@ -15,7 +15,7 @@ from core.gemini.service import (
 	has_gemini_marker,
 	normalize_order_amount,
 )
-from core.gemini.storage import (
+from core.delivery.providers.gemini_storage import (
 	GeminiDeliveryStorage,
 	STATUS_COMPLETED,
 	STATUS_GIST_CREATED,
