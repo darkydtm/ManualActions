@@ -18,3 +18,7 @@ def update_settings(
 		settings.clear()
 		settings.update(previous)
 		raise
+
+
+def update_host_settings(host: Any, mutation: Callable[[dict[str, Any]], None]) -> None:
+	update_settings(host.settings, host.save_settings, mutation)
