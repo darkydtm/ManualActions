@@ -43,5 +43,14 @@ class ReleaseWorkflowTest(unittest.TestCase):
 		self.assertIn('--target "${{ steps.release.outputs.target }}"', source)
 
 
+	def test_project_validation_runs_before_artifact_build(self):
+		source = WORKFLOW.read_text(encoding="utf-8")
+
+		self.assertLess(
+			source.index("name: Validate project source"),
+			source.index("name: Build plugin artifact"),
+		)
+
+
 if __name__ == "__main__":
 	unittest.main()
