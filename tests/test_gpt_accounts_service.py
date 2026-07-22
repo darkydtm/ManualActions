@@ -41,3 +41,28 @@ class GptAccountsServiceTest(unittest.TestCase):
 		text = self.cardinal.send_message.call_args.kwargs["message_text"]
 		self.assertIn("Email: one@example.com", text)
 		self.assertIn("Email: two@example.com", text)
+
+	def test_shortage_continues_when_buyer_notification_fails(self):
+		topic_notifier = Mock()
+		admin_notifier = Mock()
+		self.service = GptAccountsDeliveryService(
+			self.cardinal,
+			lambda: self.settings,
+			self.storage,
+			topic_notifier=topic_notifier,
+			admin_notifier=admin_notifier,
+		)
+		order = SimpleNamespace(
+			id="ORDER-3",
+			amount=1,
+			chat_id=1,
+			full_description="#gptacc",
+			buyer_username="buyer",
+		)
+		self.cardinal.account.get_order.return_value = order
+		self.cardinal.send_message.side_effect = RuntimeError("offline")
+
+		self.service.handle_new_order(SimpleNamespace(order=order))
+
+		topic_notifier.assert_called_once()
+		admin_notifier.assert_called_once()

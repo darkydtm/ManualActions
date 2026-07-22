@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 
 from ..config.constants import CBT_UPDATER_INSTALL, CBT_UPDATER_SKIP, LOGGER_NAME, LOGGER_PREFIX, UUID, VERSION
+from ..delivery.orchestrator import DeliveryOrchestrator
 from ..funpay import MessageContext, extract_message_context, should_send_auto_status_message
 from ..gemini.service import GeminiDeliveryService
 from ..gemini.storage import GeminiDeliveryStorage
@@ -69,6 +70,10 @@ class ManualActionsPlugin:
 			lambda: self.settings,
 			self.gpt_accounts_storage,
 			admin_notifier=self.send_telegram_admin_message,
+		)
+		self.delivery_orchestrator = DeliveryOrchestrator(
+			(self.gemini_service, self.gpt_accounts_service),
+			logger,
 		)
 		self.telegram_ui = TelegramSettingsUI(self)
 		self.telegram_commands = TelegramCommands(self)
@@ -163,16 +168,7 @@ class ManualActionsPlugin:
 			self.send_funpay_message(context.chat_id, auto_message_text(self.settings))
 
 	def new_order_hook(self, c: Cardinal, e: object) -> None:
-		try:
-			self.gemini_service.handle_new_order(e)
-		except Exception as exc:
-			logger.error(f"{LOGGER_PREFIX} Gemini auto-delivery failed: {exc}")
-			logger.debug("TRACEBACK", exc_info=True)
-		try:
-			self.gpt_accounts_service.handle_new_order(e)
-		except Exception as exc:
-			logger.error(f"{LOGGER_PREFIX} ChatGPT account auto-delivery failed: {exc}")
-			logger.debug("TRACEBACK", exc_info=True)
+		self.delivery_orchestrator.handle_new_order(e)
 
 	def is_blacklisted(self, context: MessageContext) -> bool:
 		return bool(
