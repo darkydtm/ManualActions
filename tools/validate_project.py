@@ -41,7 +41,7 @@ def validate_local_imports(core_path: Path) -> None:
 
 
 def validate_package_modules(root: Path) -> None:
-	for name in build_plugin.PACKAGE_MODULES:
+	for name in build_plugin.discover_package_modules():
 		if not (root / "core" / f"{name}.py").is_file():
 			raise ValidationError(f"Missing builder module: {name}")
 
@@ -79,7 +79,7 @@ def validate_ui_settings_transactions(source: str, path: Path) -> None:
 
 
 def validate_ui_settings_persistence(root: Path) -> None:
-	for package in ("telegram", "gemini", "gpt_accounts", "gist"):
+	for package in ("telegram", "delivery/providers", "gist"):
 		for path in (root / "core" / package).rglob("*.py"):
 			validate_ui_settings_transactions(path.read_text(encoding="utf-8"), path)
 
