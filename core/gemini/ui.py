@@ -17,6 +17,7 @@ from ..config.constants import (
 	CBT_GEMINI_DELETE,
 	CBT_GEMINI_DELETE_CANCEL,
 	CBT_GEMINI_DELETE_CONFIRM,
+	CBT_GEMINI_EDIT_DELAY,
 	CBT_GEMINI_EDIT_TEMPLATE,
 	CBT_GEMINI_LINK,
 	CBT_GEMINI_PAGE,
@@ -28,6 +29,7 @@ from ..config.constants import (
 	CBT_GEMINI_WAITING,
 	CBT_GIST_PAGE,
 	STATE_GEMINI_ADD,
+	STATE_GEMINI_DELAY,
 	STATE_GEMINI_TEMPLATE,
 	UUID,
 )
@@ -74,6 +76,10 @@ class TelegramGeminiDeliveryUI:
 			self.save_message_template,
 			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_GEMINI_TEMPLATE),
 		)
+		self.host.tg.msg_handler(
+			self.save_delay,
+			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_GEMINI_DELAY),
+		)
 		callbacks = (
 			(self.open_page, CBT_GEMINI_PAGE),
 			(self.toggle_enabled, CBT_GEMINI_TOGGLE),
@@ -88,6 +94,7 @@ class TelegramGeminiDeliveryUI:
 			(self.open_shortage_page, CBT_GEMINI_SHORTAGE),
 			(self.set_shortage_mode, CBT_GEMINI_SET_SHORTAGE),
 			(self.edit_message_template, CBT_GEMINI_EDIT_TEMPLATE),
+			(self.ask_delay, CBT_GEMINI_EDIT_DELAY),
 			(self.open_waiting_page, CBT_GEMINI_WAITING),
 			(self.retry_order, CBT_GEMINI_RETRY),
 		)
@@ -118,6 +125,7 @@ class TelegramGeminiDeliveryUI:
 			f"Автовыдача: <b>{enabled}</b>\n"
 			f"В стоке: <b>{self.host.gemini_storage.stock_count()}</b>\n"
 			f"Нехватка: <b>{SHORTAGE_MODE_LABELS[config['shortage_mode']]}</b>\n"
+			f"Задержка: <b>{config['delay_seconds']} сек.</b>\n"
 			f"GitHub token: <b>{token}</b>\n\n"
 			f"<b>Сообщение покупателю</b>\n<code>{escape(template)}</code>"
 		)
@@ -131,6 +139,7 @@ class TelegramGeminiDeliveryUI:
 		if self.host.gemini_storage.stock_count():
 			keyboard.add(B("🧹 Очистить сток", callback_data=f"{CBT_GEMINI_CLEAR}{offset}"))
 		keyboard.add(B("⚖️ Режим нехватки", callback_data=f"{CBT_GEMINI_SHORTAGE}{offset}"))
+		keyboard.add(B("⏱ Задержка", callback_data=f"{CBT_GEMINI_EDIT_DELAY}{offset}"))
 		keyboard.add(B("✏️ Текст выдачи", callback_data=f"{CBT_GEMINI_EDIT_TEMPLATE}{offset}"))
 		keyboard.add(B("⏳ Ожидающие заказы", callback_data=f"{CBT_GEMINI_WAITING}0:{offset}"))
 		keyboard.add(B("🔑 GitHub Gists", callback_data=f"{CBT_GIST_PAGE}{offset}"))
@@ -387,6 +396,41 @@ class TelegramGeminiDeliveryUI:
 		keyboard = K(row_width=1)
 		keyboard.add(B("◀️ К автовыдаче", callback_data=f"{CBT_GEMINI_PAGE}{offset}"))
 		self.host.tgbot.reply_to(message, "Текст выдачи сохранён.", reply_markup=keyboard)
+
+	def ask_delay(self, call: telebot.types.CallbackQuery) -> None:
+		offset = self.get_offset(call.data)
+		result = self.host.tgbot.send_message(
+			call.message.chat.id,
+			"Введите задержку в секундах. 0 - выдать сразу.",
+			reply_markup=tg_bot.static_keyboards.CLEAR_STATE_BTN(),
+		)
+		self.host.tg.set_state(
+			call.message.chat.id,
+			result.id,
+			call.from_user.id,
+			STATE_GEMINI_DELAY,
+			{"offset": offset},
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def save_delay(self, message: telebot.types.Message) -> None:
+		try:
+			delay_seconds = int((message.text or "").strip())
+		except ValueError:
+			delay_seconds = -1
+		if delay_seconds < 0:
+			self.host.tgbot.reply_to(message, "Введите целое число секунд от 0.")
+			return
+		state = self.host.tg.get_state(message.chat.id, message.from_user.id) or {}
+		offset = state.get("data", {}).get("offset", "0")
+		update_host_settings(
+			self.host,
+			lambda settings: settings["gemini_delivery"].__setitem__("delay_seconds", delay_seconds),
+		)
+		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
+		keyboard = K(row_width=1)
+		keyboard.add(B("◀️ К автовыдаче", callback_data=f"{CBT_GEMINI_PAGE}{offset}"))
+		self.host.tgbot.reply_to(message, "Задержка сохранена.", reply_markup=keyboard)
 
 	def open_waiting_page(self, call: telebot.types.CallbackQuery) -> None:
 		page, offset = self.parse_page_callback(call.data, CBT_GEMINI_WAITING)
