@@ -33,7 +33,7 @@ class OrderReservationRequest:
 
 
 @dataclass(frozen=True)
-class ReservationResult:
+class GptAccountsReservationResult:
 	order_id: str
 	status: str
 	accounts: tuple[Account, ...]
@@ -106,10 +106,10 @@ class GptAccountsDeliveryStorage:
 			return count
 		return self.mutate(mutate)
 
-	def reserve(self, request: OrderReservationRequest, shortage_mode: str) -> ReservationResult:
+	def reserve(self, request: OrderReservationRequest, shortage_mode: str) -> GptAccountsReservationResult:
 		order_id = str(request.order_id).strip().lstrip("#")
 		requested = max(int(request.requested_amount), 1)
-		def mutate(state: dict[str, Any]) -> ReservationResult:
+		def mutate(state: dict[str, Any]) -> GptAccountsReservationResult:
 			order = state["orders"].get(order_id)
 			if order and order["status"] in (STATUS_RESERVED, STATUS_COMPLETED, STATUS_SEND_FAILED):
 				return self.reservation_result(order)
@@ -264,9 +264,9 @@ class GptAccountsDeliveryStorage:
 				emails.add(self.account(account).email.casefold())
 		return emails
 
-	def reservation_result(self, order: dict[str, Any]) -> ReservationResult:
+	def reservation_result(self, order: dict[str, Any]) -> GptAccountsReservationResult:
 		accounts = tuple(self.account(value) for value in order.get("reserved_accounts", []))
-		return ReservationResult(order["order_id"], order["status"], accounts, int(order.get("requested_amount") or 1), len(accounts) < int(order.get("requested_amount") or 1))
+		return GptAccountsReservationResult(order["order_id"], order["status"], accounts, int(order.get("requested_amount") or 1), len(accounts) < int(order.get("requested_amount") or 1))
 
 	@staticmethod
 	def require_order(state: dict[str, Any], order_id: str) -> dict[str, Any]:
