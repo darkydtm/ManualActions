@@ -7,6 +7,7 @@ from typing import Any, Iterable
 
 GPT_ACCOUNTS_SHORTAGE_MODES = ("partial", "all_or_nothing")
 DEFAULT_GPT_ACCOUNTS_MESSAGE_TEMPLATE = "Спасибо за покупку!\n\n{accounts}"
+GPT_ACCOUNT_TEMPLATE_PLACEHOLDERS = ("{mail}", "{pass}", "{2fa}")
 DEFAULT_GPT_ACCOUNTS_DELIVERY_SETTINGS = {
 	"enabled": False,
 	"shortage_mode": "partial",
@@ -46,9 +47,15 @@ def normalize_gpt_accounts_delivery_settings(data: Any) -> dict[str, Any]:
 		if isinstance(value, int) and not isinstance(value, bool) and value >= (1 if key == "quantity" else 0):
 			settings[key] = value
 	message_template = data.get("message_template")
-	if isinstance(message_template, str) and "{accounts}" in message_template:
+	if isinstance(message_template, str) and is_gpt_account_message_template(message_template):
 		settings["message_template"] = message_template
 	return settings
+
+
+def is_gpt_account_message_template(template: str) -> bool:
+	if "{accounts}" in template:
+		return not any(placeholder in template for placeholder in GPT_ACCOUNT_TEMPLATE_PLACEHOLDERS)
+	return any(placeholder in template for placeholder in GPT_ACCOUNT_TEMPLATE_PLACEHOLDERS)
 
 
 def parse_account_batch(text: str, existing_emails: set[str]) -> AccountBatchResult:
@@ -81,3 +88,17 @@ def format_accounts(accounts: Iterable[Account]) -> str:
 			text += f"\n2FA secret: {account.two_factor_secret}"
 		items.append(text)
 	return "\n\n".join(items)
+
+
+def format_delivery_message(template: str, accounts: Iterable[Account]) -> str:
+	accounts = tuple(accounts)
+	if "{accounts}" in template:
+		return template.format(accounts=format_accounts(accounts))
+	return "\n\n".join(
+		template.format_map({
+			"mail": account.email,
+			"pass": account.password,
+			"2fa": account.two_factor_secret,
+		})
+		for account in accounts
+	)

@@ -28,7 +28,11 @@ from ...config.constants import (
 	STATE_GPT_ACCOUNTS_TEMPLATE,
 )
 from .gpt_accounts_service import OUTCOME_COMPLETED, OUTCOME_WAITING_STOCK
-from .gpt_accounts import GPT_ACCOUNTS_SHORTAGE_MODES, parse_account_batch
+from .gpt_accounts import (
+	GPT_ACCOUNTS_SHORTAGE_MODES,
+	is_gpt_account_message_template,
+	parse_account_batch,
+)
 
 
 class GptAccountsUIHost(Protocol):
@@ -180,13 +184,13 @@ class TelegramGptAccountsDeliveryUI:
 
 	def ask_template(self, call):
 		offset = self.offset(call.data)
-		message = self.host.tgbot.send_message(call.message.chat.id, "Введите текст выдачи. Обязательно оставьте {accounts}.", reply_markup=tg_bot.static_keyboards.CLEAR_STATE_BTN())
+		message = self.host.tgbot.send_message(call.message.chat.id, "Введите текст выдачи. Используйте {accounts} или {mail}, {pass}, {2fa}.", reply_markup=tg_bot.static_keyboards.CLEAR_STATE_BTN())
 		self.host.tg.set_state(call.message.chat.id, message.id, call.from_user.id, STATE_GPT_ACCOUNTS_TEMPLATE, {"offset": offset})
 		self.host.tgbot.answer_callback_query(call.id)
 
 	def save_template(self, message):
-		if "{accounts}" not in (message.text or ""):
-			self.host.tgbot.reply_to(message, "Текст должен содержать {accounts}.")
+		if not is_gpt_account_message_template(message.text or ""):
+			self.host.tgbot.reply_to(message, "Текст должен содержать {accounts} или {mail}, {pass}, {2fa}.")
 			return
 		update_host_settings(self.host, lambda settings: settings["gpt_accounts_delivery"].__setitem__("message_template", message.text))
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
