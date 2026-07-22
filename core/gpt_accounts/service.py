@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from ..config.constants import LOGGER_NAME, LOGGER_PREFIX
 from ..funpay.chat_sync import find_chat_sync_topic, get_chat_sync_obj, send_chat_sync_topic_message
+from ..runtime import run_effects
 from .settings import format_accounts, normalize_gpt_accounts_delivery_settings
 from .storage import (
 	GptAccountsDeliveryStorage,
@@ -34,6 +35,7 @@ class DeliveryOutcome:
 
 
 class GptAccountsDeliveryService:
+	name = "gpt_accounts"
 	def __init__(
 		self,
 		cardinal,
@@ -128,12 +130,16 @@ class GptAccountsDeliveryService:
 			return
 		record = self.storage.get_order(order_id) or {}
 		text = f"⚠️ Нехватка ChatGPT-аккаунтов для заказа #{order_id}.\nТребуется: {requested}\nВыдано: {delivered}\nОсталось в стоке: {self.storage.stock_count()}"
-		try:
-			self.notify_buyer(record, text)
-			self.notify_topic(record, text)
-			self.admin_notifier(text)
-		except Exception as exc:
-			logger.warning(f"{LOGGER_PREFIX} Failed to notify about ChatGPT account shortage: {exc}")
+		results = run_effects((
+			lambda: self.notify_buyer(record, text),
+			lambda: self.notify_topic(record, text),
+			lambda: self.admin_notifier(text),
+		))
+		for result in results:
+			if not result.succeeded:
+				logger.warning(
+					f"{LOGGER_PREFIX} Failed to notify about ChatGPT account shortage: {result.error}"
+				)
 
 	def notify_buyer(self, record: dict[str, Any], text: str) -> None:
 		chat_id = self.resolve_chat_id(record)

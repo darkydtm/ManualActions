@@ -10,6 +10,12 @@ ENTRY_FILE = ROOT / "main.py"
 OUTPUT_FILE = ROOT / "dist" / "manual_actions.py"
 PACKAGE_MODULES = [
 	"config/constants",
+	"runtime/contracts",
+	"runtime/locks",
+	"runtime/effects",
+	"runtime/logging",
+	"delivery/contracts",
+	"delivery/orchestrator",
 	"status/status",
 	"gist/settings",
 	"gemini/settings",

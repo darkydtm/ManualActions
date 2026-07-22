@@ -55,6 +55,10 @@ class PluginGeminiIntegrationTest(unittest.TestCase):
 
 		self.assertIsNotNone(plugin.gemini_storage)
 		self.assertIsNotNone(plugin.gemini_service)
+		self.assertEqual(
+			[provider.name for provider in plugin.delivery_orchestrator.providers],
+			["gemini", "gpt_accounts"],
+		)
 		self.assertIs(plugin.telegram_ui.gemini_ui.host, plugin)
 		self.assertIsNotNone(plugin.gpt_accounts_storage)
 		self.assertIsNotNone(plugin.gpt_accounts_service)
@@ -70,27 +74,24 @@ class PluginGeminiIntegrationTest(unittest.TestCase):
 		self.assertEqual(self.cardinal.new_order_handlers, [plugin.new_order_hook])
 		self.assertEqual(getattr(ManualActionsPlugin.new_order_hook, "plugin_uuid"), UUID)
 
-	def test_new_order_hook_delegates_to_service(self):
+	def test_new_order_hook_delegates_to_orchestrator(self):
 		plugin = ManualActionsPlugin(self.cardinal)
-		plugin.gemini_service = Mock()
-		plugin.gpt_accounts_service = Mock()
+		plugin.delivery_orchestrator = Mock()
 		plugin.two_factor_service = Mock()
 		event = object()
 
 		plugin.new_order_hook(self.cardinal, event)
 
-		plugin.gemini_service.handle_new_order.assert_called_once_with(event)
-		plugin.gpt_accounts_service.handle_new_order.assert_called_once_with(event)
+		plugin.delivery_orchestrator.handle_new_order.assert_called_once_with(event)
 		plugin.two_factor_service.handle_new_order.assert_not_called()
 
 	def test_new_order_hook_logs_unexpected_error_without_raising(self):
 		plugin = ManualActionsPlugin(self.cardinal)
-		plugin.gemini_service = Mock()
-		plugin.gpt_accounts_service = Mock()
-		plugin.two_factor_service = Mock()
-		plugin.gemini_service.handle_new_order.side_effect = RuntimeError("failed")
+		plugin.delivery_orchestrator = Mock()
+		plugin.delivery_orchestrator.handle_new_order.side_effect = RuntimeError("failed")
 
-		plugin.new_order_hook(self.cardinal, object())
+		with self.assertRaises(RuntimeError):
+			plugin.new_order_hook(self.cardinal, object())
 
 
 if __name__ == "__main__":

@@ -44,6 +44,7 @@ class DeliveryOutcome:
 
 
 class GeminiDeliveryService:
+	name = "gemini"
 	def __init__(
 		self,
 		cardinal,
