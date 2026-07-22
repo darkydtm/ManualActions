@@ -179,6 +179,7 @@ class GeminiDeliveryUITest(unittest.TestCase):
 		self.ui.register()
 
 		self.assertEqual(len(self.tg.handlers), 3)
+		self.assertEqual(self.tg.handlers[0][1]["content_types"], ["text", "document"])
 		self.assertGreaterEqual(len(self.tg.callbacks), 10)
 
 	def test_main_page_shows_stock_and_gist_navigation(self):

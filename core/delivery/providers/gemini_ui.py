@@ -70,6 +70,7 @@ class TelegramGeminiDeliveryUI:
 	def register(self) -> None:
 		self.host.tg.msg_handler(
 			self.save_stock,
+			content_types=["text", "document"],
 			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_GEMINI_ADD),
 		)
 		self.host.tg.msg_handler(
