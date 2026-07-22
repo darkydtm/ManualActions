@@ -85,7 +85,7 @@ class PluginGeminiIntegrationTest(unittest.TestCase):
 		plugin.delivery_orchestrator.handle_new_order.assert_called_once_with(event)
 		plugin.two_factor_service.handle_new_order.assert_not_called()
 
-	def test_new_order_hook_logs_unexpected_error_without_raising(self):
+	def test_new_order_hook_propagates_orchestrator_failure(self):
 		plugin = ManualActionsPlugin(self.cardinal)
 		plugin.delivery_orchestrator = Mock()
 		plugin.delivery_orchestrator.handle_new_order.side_effect = RuntimeError("failed")
