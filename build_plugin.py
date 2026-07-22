@@ -15,6 +15,7 @@ PACKAGE_MODULES = [
 	"runtime/effects",
 	"runtime/logging",
 	"runtime/persistence",
+	"runtime/settings",
 	"delivery/contracts",
 	"delivery/orchestrator",
 	"status/status",

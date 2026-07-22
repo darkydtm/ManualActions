@@ -17,6 +17,7 @@ from ..gpt_accounts.storage import GptAccountsDeliveryStorage
 from ..config.settings import DEFAULT_SETTINGS
 from ..status.status import auto_message_text, parse_funpay_status_command, response_text
 from ..storage.storage import PluginStorage
+from ..runtime.settings import update_settings
 
 from ..two_factor.service import TwoFactorService
 from ..two_factor.storage import TwoFactorStorage
@@ -94,6 +95,9 @@ class ManualActionsPlugin:
 
 	def save_settings(self) -> None:
 		self.storage.save_settings(self.settings)
+
+	def update_settings(self, mutation) -> None:
+		update_settings(self.settings, self.save_settings, mutation)
 
 	def register(self) -> None:
 		self.telegram_ui.register()
