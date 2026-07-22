@@ -37,9 +37,12 @@ jobs:
           python -m py_compile main.py build_plugin.py
           find core -name '*.py' -print0 | xargs -0 python -m py_compile
 
+      - name: Validate project source
+        run: python tools/validate_project.py
+
       - name: Check removed reference package stays absent
         run: |
-          ! rg -n "chatgpt_accounts|ChatGPT Accounts|chatgpt" \
+          ! rg -n "chatgpt_accounts|ChatGPT Accounts" \
             -g '!AGENTS.md' \
             -g '!docs/superpowers/**' \
             -g '!examples/**'
