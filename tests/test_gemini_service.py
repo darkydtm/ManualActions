@@ -131,6 +131,47 @@ class GeminiDeliveryServiceTest(unittest.TestCase):
 		self.assertEqual(outcome.status, OUTCOME_IGNORED)
 		self.assertEqual(self.storage.stock_count(), 1)
 
+	def test_schedules_delivery_after_configured_delay(self):
+		self.settings["gemini_delivery"]["delay_seconds"] = 15
+		timer = Mock()
+		self.service = GeminiDeliveryService(
+			self.cardinal,
+			lambda: self.settings,
+			self.storage,
+			gist_creator=self.gist_creator,
+			topic_notifier=self.topic_notifier,
+			admin_notifier=self.admin_notifier,
+			timer_factory=lambda seconds, callback: timer,
+		)
+		self.storage.add_links((LINK_ONE,))
+
+		outcome = self.service.handle_new_order(self.event())
+
+		self.assertEqual(outcome.status, OUTCOME_IGNORED)
+		timer.start.assert_called_once_with()
+		self.cardinal.send_message.assert_not_called()
+
+	def test_skips_delayed_delivery_when_disabled_before_execution(self):
+		self.settings["gemini_delivery"]["delay_seconds"] = 15
+		callbacks = []
+		self.service = GeminiDeliveryService(
+			self.cardinal,
+			lambda: self.settings,
+			self.storage,
+			gist_creator=self.gist_creator,
+			topic_notifier=self.topic_notifier,
+			admin_notifier=self.admin_notifier,
+			timer_factory=lambda seconds, callback: callbacks.append(callback) or Mock(),
+		)
+		self.storage.add_links((LINK_ONE,))
+
+		self.service.handle_new_order(self.event())
+		self.settings["gemini_delivery"]["enabled"] = False
+		callbacks[0]()
+
+		self.assertEqual(self.storage.stock_count(), 1)
+		self.cardinal.send_message.assert_not_called()
+
 	def test_creates_secret_gist_and_sends_template(self):
 		self.storage.add_links((LINK_ONE, LINK_TWO))
 
