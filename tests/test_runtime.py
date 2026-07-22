@@ -5,12 +5,27 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from core.runtime import KeyedLockRegistry, log_failure, run_effects
+from core.runtime import KeyedLockRegistry, call_external, log_failure, run_effects
 from core.runtime.persistence import AtomicWriteError, atomic_write_json
 from core.runtime.settings import update_settings
 
 
 class RuntimeTest(unittest.TestCase):
+	def test_call_external_returns_value(self):
+		result = call_external(lambda: "ok")
+
+		self.assertTrue(result.succeeded)
+		self.assertEqual(result.value, "ok")
+
+	def test_call_external_redacts_error_secret(self):
+		result = call_external(
+			lambda: (_ for _ in ()).throw(RuntimeError("token=secret")),
+			("secret",),
+		)
+
+		self.assertFalse(result.succeeded)
+		self.assertEqual(result.error, "token=***")
+
 	def test_same_key_reuses_lock_and_different_keys_do_not(self):
 		registry = KeyedLockRegistry()
 
