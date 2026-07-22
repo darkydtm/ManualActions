@@ -57,6 +57,20 @@ class TwoFactorServiceTest(unittest.TestCase):
 
 		self.assertIn("не найден", self.cardinal.send_message.call_args.kwargs["message_text"])
 
+	def test_order_lookup_failure_returns_unavailable_outcome(self):
+		self.cardinal.account.get_order.side_effect = RuntimeError("offline")
+
+		outcome = self.service.handle_code_request(self.context("!code ORDER-1"))
+
+		self.assertEqual(outcome.status, "unavailable")
+
+	def test_secret_persistence_failure_returns_unavailable_outcome(self):
+		self.storage.save = Mock(side_effect=RuntimeError("offline"))
+
+		outcome = self.service.handle_seller_message(self.context("2FA: secret", is_seller=True))
+
+		self.assertEqual(outcome.status, "unavailable")
+
 	@staticmethod
 	def context(text, chat_id=7, is_seller=False):
 		return MessageContext(text, chat_id, None, None, is_seller)

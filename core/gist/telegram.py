@@ -16,6 +16,7 @@ from ..config.constants import (
 )
 from ..funpay.chat_sync import TopicContext, get_topic_context, is_in_sync_chat
 from ..funpay.orders import format_order_price, get_pending_orders_for_user
+from ..runtime import ExternalResult, call_external
 from .service import (
 	create_gist_result,
 	gist_config_errors,
@@ -101,7 +102,7 @@ class TelegramGistFlow:
 			filename = resolve_gist_filename(gist_settings, username, request.order_id)
 			result = create_gist_result(gist_settings, request.text, filename=filename)
 		except Exception as exc:
-			self.host.tgbot.edit_message_text(
+			self.edit_message(
 				f"❌ {html_escape(gist_error_text(exc))}",
 				wait_message.chat.id,
 				wait_message.message_id,
@@ -129,7 +130,7 @@ class TelegramGistFlow:
 		wait_message = self.host.tgbot.reply_to(message, f"⏳ Получаю список заказов {context.username}...")
 		orders = get_pending_orders_for_user(self.host.cardinal, context.username)
 		if not orders:
-			self.host.tgbot.edit_message_text(
+			self.edit_message(
 				f"ℹ️ У {html_escape(context.username)} нет неподтверждённых заказов.",
 				wait_message.chat.id,
 				wait_message.message_id,
@@ -151,7 +152,7 @@ class TelegramGistFlow:
 				callback_data=f"{CBT_GIST_ORDER_SELECT}{token}:{order_id}",
 			))
 		keyboard.add(B("❌ Отмена", callback_data=f"{CBT_GIST_ORDER_CANCEL}{token}"))
-		self.host.tgbot.edit_message_text(
+		self.edit_message(
 			f"📝 Выберите заказ для имени файла ({html_escape(context.username)}):",
 			wait_message.chat.id,
 			wait_message.message_id,
@@ -164,7 +165,7 @@ class TelegramGistFlow:
 		request = self.pending_requests.pop(token, None)
 		self.host.tgbot.answer_callback_query(call.id)
 		if not request or not separator or order_id not in request.order_ids:
-			self.host.tgbot.edit_message_text(
+			self.edit_message(
 				"❌ Запрос выбора заказа истёк.",
 				call.message.chat.id,
 				call.message.message_id,
@@ -178,7 +179,7 @@ class TelegramGistFlow:
 		token = call.data.replace(CBT_GIST_ORDER_CANCEL, "", 1)
 		self.pending_requests.pop(token, None)
 		self.host.tgbot.answer_callback_query(call.id, "Отменено.")
-		self.host.tgbot.edit_message_text(
+		self.edit_message(
 			"❌ Выбор заказа отменён.",
 			call.message.chat.id,
 			call.message.message_id,
@@ -196,7 +197,7 @@ class TelegramGistFlow:
 			filename = resolve_gist_filename(gist_settings, order_id=order_id)
 			result = create_gist_result(gist_settings, request.text, filename=filename)
 		except Exception as exc:
-			self.host.tgbot.edit_message_text(
+			self.edit_message(
 				f"❌ {html_escape(gist_error_text(exc))}",
 				message.chat.id,
 				message.message_id,
@@ -222,7 +223,7 @@ class TelegramGistFlow:
 				B("❌ Не отправлять", callback_data=f"{CBT_GIST_SKIP_SEND}{token}"),
 			)
 
-		self.host.tgbot.edit_message_text(
+		self.edit_message(
 			self.format_result(url),
 			message.chat.id,
 			message.message_id,
@@ -238,13 +239,14 @@ class TelegramGistFlow:
 			self.expire_result(call)
 			return
 
-		try:
-			sent = self.host.cardinal.send_message(chat_id=result.fp_chat_id, message_text=result.url)
-			if sent is False:
-				raise RuntimeError("Cardinal не подтвердил отправку.")
-		except Exception as exc:
-			self.host.tgbot.edit_message_text(
-				f"{self.format_result(result.url)}\n\n❌ Не удалось отправить ссылку в чат: {html_escape(str(exc))}",
+		send_result = call_external(
+			lambda: self.host.cardinal.send_message(chat_id=result.fp_chat_id, message_text=result.url),
+		)
+		if send_result.succeeded and send_result.value is False:
+			send_result = ExternalResult(False, error="Cardinal не подтвердил отправку.")
+		if not send_result.succeeded:
+			self.edit_message(
+				f"{self.format_result(result.url)}\n\n❌ Не удалось отправить ссылку в чат: {html_escape(send_result.error)}",
 				call.message.chat.id,
 				call.message.message_id,
 				disable_web_page_preview=True,
@@ -252,7 +254,7 @@ class TelegramGistFlow:
 			)
 			return
 
-		self.host.tgbot.edit_message_text(
+		self.edit_message(
 			f"{self.format_result(result.url)}\n\n✅ Ссылка отправлена в чат.",
 			call.message.chat.id,
 			call.message.message_id,
@@ -268,7 +270,7 @@ class TelegramGistFlow:
 			self.expire_result(call)
 			return
 
-		self.host.tgbot.edit_message_text(
+		self.edit_message(
 			f"{self.format_result(result.url)}\n\nℹ️ Ссылка не отправлена.",
 			call.message.chat.id,
 			call.message.message_id,
@@ -278,7 +280,7 @@ class TelegramGistFlow:
 
 	def expire_result(self, call: telebot.types.CallbackQuery) -> None:
 		text = getattr(call.message, "text", None) or "✅ GitHub Gist создан."
-		self.host.tgbot.edit_message_text(
+		self.edit_message(
 			f"{text}\n\n❌ Действие истекло.",
 			call.message.chat.id,
 			call.message.message_id,
@@ -288,6 +290,9 @@ class TelegramGistFlow:
 	def format_order_button(self, order: object) -> str:
 		order_id = str(getattr(order, "id", ""))
 		return f"#{order_id} - {format_order_price(order)}"
+
+	def edit_message(self, *args, **kwargs) -> None:
+		call_external(lambda: self.host.tgbot.edit_message_text(*args, **kwargs))
 
 	def chat_sync_context(self, message: telebot.types.Message) -> TopicContext | None:
 		if not is_in_sync_chat(message):
