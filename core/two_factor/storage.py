@@ -25,12 +25,14 @@ class TwoFactorStorage:
 			return
 
 		with self.lock:
-			self.chats[str(chat_id)] = {
+			chats = deepcopy(self.chats)
+			chats[str(chat_id)] = {
 				"chat_id": chat_id,
 				"secret": secret.strip(),
 				"updated_at": time.time(),
 			}
-			self.storage.save_dict(self.path, {"chats": self.chats})
+			self.storage.save_dict(self.path, {"chats": chats})
+			self.chats = chats
 
 	def get_for_chat(self, chat_id: int | str) -> dict[str, Any] | None:
 		with self.lock:
