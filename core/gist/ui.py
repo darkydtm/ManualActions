@@ -11,6 +11,7 @@ from tg_bot.utils import escape
 from ..config.constants import (
 	CBT_GIST_EDIT_CUSTOM_FILENAME,
 	CBT_GIST_EDIT_TOKEN,
+	CBT_GIST_CATEGORY,
 	CBT_GIST_FILENAME_PAGE,
 	CBT_GIST_PAGE,
 	CBT_GIST_SET_FILENAME_MODE,
@@ -61,6 +62,10 @@ class TelegramGistSettingsUI:
 			lambda c: (c.data or "").startswith(CBT_GIST_PAGE),
 		)
 		self.host.tg.cbq_handler(
+			self.open_category_callback,
+			lambda c: (c.data or "").startswith(CBT_GIST_CATEGORY),
+		)
+		self.host.tg.cbq_handler(
 			self.open_token_page_callback,
 			lambda c: (c.data or "").startswith(CBT_GIST_TOKEN_PAGE),
 		)
@@ -106,10 +111,29 @@ class TelegramGistSettingsUI:
 		)
 
 		keyboard = K(row_width=1)
-		keyboard.add(B("🔑 GitHub token", callback_data=f"{CBT_GIST_TOKEN_PAGE}{offset}"))
-		keyboard.add(B("👁 Видимость", callback_data=f"{CBT_GIST_VISIBILITY_PAGE}{offset}"))
-		keyboard.add(B("📄 Имя файла", callback_data=f"{CBT_GIST_FILENAME_PAGE}{offset}"))
+		keyboard.add(B("🔑 Подключение", callback_data=f"{CBT_GIST_CATEGORY}connection:{offset}"))
+		keyboard.add(B("📄 Файл", callback_data=f"{CBT_GIST_CATEGORY}file:{offset}"))
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.PLUGIN_SETTINGS}:{UUID}:{offset}"))
+		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
+
+	def open_category_callback(self, call: telebot.types.CallbackQuery) -> None:
+		category, offset = self.parse_two_part_callback(call.data, CBT_GIST_CATEGORY)
+		self.show_category(call.message.chat.id, call.message.id, category, offset, True)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def show_category(self, chat_id: int, message_id: int | None, category: str, offset: str, edit: bool) -> None:
+		keyboard = K(row_width=1)
+		if category == "connection":
+			keyboard.add(B("🔑 GitHub token", callback_data=f"{CBT_GIST_TOKEN_PAGE}{offset}"))
+			text = "<b>GitHub Gists - подключение</b>"
+		elif category == "file":
+			keyboard.add(B("👁 Видимость", callback_data=f"{CBT_GIST_VISIBILITY_PAGE}{offset}"))
+			keyboard.add(B("📄 Имя файла", callback_data=f"{CBT_GIST_FILENAME_PAGE}{offset}"))
+			text = "<b>GitHub Gists - файл</b>"
+		else:
+			self.show_page(chat_id, message_id, offset, edit)
+			return
+		keyboard.add(B("◀️ К GitHub Gists", callback_data=f"{CBT_GIST_PAGE}{offset}"))
 		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
 
 	def open_token_page_callback(self, call: telebot.types.CallbackQuery) -> None:

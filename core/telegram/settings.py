@@ -19,6 +19,7 @@ from ..config.constants import (
 	CBT_GPT_ACCOUNTS_PAGE,
 	CBT_GIST_PAGE,
 	CBT_STATUS_DETAIL,
+	CBT_STATUS_CATEGORY,
 	CBT_STATUS_EDIT_AUTO,
 	CBT_STATUS_EDIT_RESPONSE,
 	CBT_STATUS_PAGE,
@@ -32,6 +33,8 @@ from ..config.constants import (
 	CBT_TEMPLATE_EDIT_TEXT,
 	CBT_TEMPLATE_EDIT_TITLE,
 	CBT_TEMPLATES_PAGE,
+	CBT_TEMPLATES_CATEGORY,
+	CBT_UPDATER_CATEGORY,
 	CBT_UPDATER_CUSTOM_INTERVAL,
 	CBT_UPDATER_CHECK,
 	CBT_UPDATER_INTERVAL_PAGE,
@@ -159,6 +162,10 @@ class TelegramSettingsUI:
 			lambda c: (c.data or "").startswith(CBT_STATUS_DETAIL),
 		)
 		self.host.tg.cbq_handler(
+			self.open_status_category,
+			lambda c: (c.data or "").startswith(CBT_STATUS_CATEGORY),
+		)
+		self.host.tg.cbq_handler(
 			self.set_status,
 			lambda c: (c.data or "").startswith(CBT_STATUS_SET),
 		)
@@ -177,6 +184,10 @@ class TelegramSettingsUI:
 		self.host.tg.cbq_handler(
 			self.open_templates_page,
 			lambda c: (c.data or "").startswith(CBT_TEMPLATES_PAGE),
+		)
+		self.host.tg.cbq_handler(
+			self.open_templates_category,
+			lambda c: (c.data or "").startswith(CBT_TEMPLATES_CATEGORY),
 		)
 		self.host.tg.cbq_handler(
 			self.open_template_detail,
@@ -209,6 +220,10 @@ class TelegramSettingsUI:
 		self.host.tg.cbq_handler(
 			self.open_updater_page,
 			lambda c: (c.data or "").startswith(CBT_UPDATER_PAGE),
+		)
+		self.host.tg.cbq_handler(
+			self.open_updater_category,
+			lambda c: (c.data or "").startswith(CBT_UPDATER_CATEGORY),
 		)
 		self.host.tg.cbq_handler(
 			self.open_updater_mode_page,
@@ -307,13 +322,30 @@ class TelegramSettingsUI:
 			text += "\n\nСоздайте первую заготовку."
 
 		keyboard = K(row_width=1)
-		keyboard.add(B("➕ Добавить заготовку", callback_data=f"{CBT_TEMPLATE_ADD}{offset}"))
-		for template in templates:
-			keyboard.add(B(
-				template["title"][:64],
-				callback_data=f"{CBT_TEMPLATE_DETAIL}{template['id']}:{offset}",
-			))
+		keyboard.add(B("➕ Создание", callback_data=f"{CBT_TEMPLATES_CATEGORY}create:{offset}"))
+		keyboard.add(B("📝 Управление", callback_data=f"{CBT_TEMPLATES_CATEGORY}manage:{offset}"))
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.PLUGIN_SETTINGS}:{UUID}:{offset}"))
+		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
+
+	def open_templates_category(self, call: telebot.types.CallbackQuery) -> None:
+		category, offset = self.parse_two_part_callback(call.data, CBT_TEMPLATES_CATEGORY)
+		self.show_templates_category(call.message.chat.id, call.message.id, category, offset, True)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def show_templates_category(self, chat_id: int, message_id: int | None, category: str, offset: str, edit: bool) -> None:
+		keyboard = K(row_width=1)
+		if category == "create":
+			keyboard.add(B("➕ Добавить заготовку", callback_data=f"{CBT_TEMPLATE_ADD}{offset}"))
+			text = "<b>Заготовки сообщений - создание</b>"
+		elif category == "manage":
+			templates = self.host.settings["templates"]
+			for template in templates:
+				keyboard.add(B(template["title"][:64], callback_data=f"{CBT_TEMPLATE_DETAIL}{template['id']}:{offset}"))
+			text = f"<b>Заготовки сообщений - управление</b>\n\nВсего: <b>{len(templates)}</b>"
+		else:
+			self.show_templates_page(chat_id, message_id, offset, edit)
+			return
+		keyboard.add(B("◀️ К заготовкам", callback_data=f"{CBT_TEMPLATES_PAGE}{offset}"))
 		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
 
 	def open_template_detail(self, call: telebot.types.CallbackQuery) -> None:
@@ -619,16 +651,36 @@ class TelegramSettingsUI:
 		)
 
 		keyboard = K(row_width=1)
-		if current != status_id:
-			keyboard.add(B("✅ Сделать текущим", callback_data=f"{CBT_STATUS_SET}{status_id}:{offset}"))
-		keyboard.add(B("✏️ Текст !status", callback_data=f"{CBT_STATUS_EDIT_RESPONSE}{status_id}:{offset}"))
-		keyboard.add(B(
-			"🟢 Выключить автоответ" if auto_config["enabled"] else "🔴 Включить автоответ",
-			callback_data=f"{CBT_STATUS_TOGGLE_AUTO}{status_id}:{offset}",
-		))
-		keyboard.add(B("✏️ Текст автоответа", callback_data=f"{CBT_STATUS_EDIT_AUTO}{status_id}:{offset}"))
+		keyboard.add(B("⚙️ Управление", callback_data=f"{CBT_STATUS_CATEGORY}{status_id}|control:{offset}"))
+		keyboard.add(B("✏️ Тексты", callback_data=f"{CBT_STATUS_CATEGORY}{status_id}|texts:{offset}"))
 		keyboard.add(B("◀️ К статусам", callback_data=f"{CBT_STATUS_PAGE}{offset}"))
 		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
+
+	def open_status_category(self, call: telebot.types.CallbackQuery) -> None:
+		payload = call.data.replace(CBT_STATUS_CATEGORY, "", 1)
+		value, _, offset = payload.partition(":")
+		status_id, _, category = value.partition("|")
+		if status_id not in STATUS_IDS or category not in {"control", "texts"}:
+			self.host.tgbot.answer_callback_query(call.id)
+			return
+		self.show_status_category(call.message.chat.id, call.message.id, status_id, category, offset or "0", True)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def show_status_category(self, chat_id: int, message_id: int | None, status_id: str, category: str, offset: str, edit: bool) -> None:
+		current = self.host.settings["status"]
+		auto_config = self.host.settings["status_auto_messages"][status_id]
+		keyboard = K(row_width=1)
+		if category == "control":
+			if current != status_id:
+				keyboard.add(B("✅ Сделать текущим", callback_data=f"{CBT_STATUS_SET}{status_id}:{offset}"))
+			keyboard.add(B("🟢 Выключить автоответ" if auto_config["enabled"] else "🔴 Включить автоответ", callback_data=f"{CBT_STATUS_TOGGLE_AUTO}{status_id}:{offset}"))
+			label = "Управление"
+		else:
+			keyboard.add(B("✏️ Текст !status", callback_data=f"{CBT_STATUS_EDIT_RESPONSE}{status_id}:{offset}"))
+			keyboard.add(B("✏️ Текст автоответа", callback_data=f"{CBT_STATUS_EDIT_AUTO}{status_id}:{offset}"))
+			label = "Тексты"
+		keyboard.add(B("◀️ К статусу", callback_data=f"{CBT_STATUS_DETAIL}{status_id}:{offset}"))
+		self.send_or_edit(f"<b>{escape(status_label(status_id))} - {label}</b>", chat_id, message_id, keyboard, edit)
 
 	def set_status(self, call: telebot.types.CallbackQuery) -> None:
 		status_id, offset = self.parse_status_callback(call.data, CBT_STATUS_SET)
@@ -734,6 +786,11 @@ class TelegramSettingsUI:
 		self.show_updater_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
 		self.host.tgbot.answer_callback_query(call.id)
 
+	def open_updater_category(self, call: telebot.types.CallbackQuery) -> None:
+		category, offset = self.parse_two_part_callback(call.data, CBT_UPDATER_CATEGORY)
+		self.show_updater_category(call.message.chat.id, call.message.id, category, offset, True)
+		self.host.tgbot.answer_callback_query(call.id)
+
 	def open_updater_mode_page(self, call: telebot.types.CallbackQuery) -> None:
 		offset = self.get_offset(call.data)
 		self.show_updater_mode_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
@@ -754,10 +811,24 @@ class TelegramSettingsUI:
 		)
 
 		keyboard = K(row_width=1)
-		keyboard.add(B("🔄 Проверить обновления", callback_data=f"{CBT_UPDATER_CHECK}{offset}"))
-		keyboard.add(B("Режим обновления", callback_data=f"{CBT_UPDATER_MODE_PAGE}{offset}"))
-		keyboard.add(B("Интервал проверки", callback_data=f"{CBT_UPDATER_INTERVAL_PAGE}{offset}"))
+		keyboard.add(B("🔄 Проверка", callback_data=f"{CBT_UPDATER_CATEGORY}check:{offset}"))
+		keyboard.add(B("⚙️ Настройки", callback_data=f"{CBT_UPDATER_CATEGORY}settings:{offset}"))
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.PLUGIN_SETTINGS}:{UUID}:{offset}"))
+		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
+
+	def show_updater_category(self, chat_id: int, message_id: int | None, category: str, offset: str, edit: bool) -> None:
+		keyboard = K(row_width=1)
+		if category == "check":
+			keyboard.add(B("🔄 Проверить обновления", callback_data=f"{CBT_UPDATER_CHECK}{offset}"))
+			text = "<b>Автообновление - проверка</b>"
+		elif category == "settings":
+			keyboard.add(B("Режим обновления", callback_data=f"{CBT_UPDATER_MODE_PAGE}{offset}"))
+			keyboard.add(B("Интервал проверки", callback_data=f"{CBT_UPDATER_INTERVAL_PAGE}{offset}"))
+			text = "<b>Автообновление - настройки</b>"
+		else:
+			self.show_updater_page(chat_id, message_id, offset, edit)
+			return
+		keyboard.add(B("◀️ К автообновлению", callback_data=f"{CBT_UPDATER_PAGE}{offset}"))
 		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
 
 	def check_updates(self, call: telebot.types.CallbackQuery) -> None:
