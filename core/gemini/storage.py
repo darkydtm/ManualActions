@@ -43,7 +43,7 @@ class OrderReservationRequest:
 
 
 @dataclass(frozen=True)
-class ReservationResult:
+class GeminiReservationResult:
 	order_id: str
 	status: str
 	links: tuple[str, ...]
@@ -137,11 +137,11 @@ class GeminiDeliveryStorage:
 
 		return self.mutate(mutate)
 
-	def reserve(self, request: OrderReservationRequest, shortage_mode: str) -> ReservationResult:
+	def reserve(self, request: OrderReservationRequest, shortage_mode: str) -> GeminiReservationResult:
 		order_id = str(request.order_id).strip().lstrip("#")
 		requested_amount = max(int(request.requested_amount), 1)
 
-		def mutate(state: dict[str, Any]) -> ReservationResult:
+		def mutate(state: dict[str, Any]) -> GeminiReservationResult:
 			orders = state["orders"]
 			order = orders.get(order_id)
 			if order and order["status"] in TERMINAL_STATUSES | {STATUS_RESERVED}:
@@ -348,10 +348,10 @@ class GeminiDeliveryStorage:
 		return order
 
 	@staticmethod
-	def reservation_result(order: dict[str, Any]) -> ReservationResult:
+	def reservation_result(order: dict[str, Any]) -> GeminiReservationResult:
 		requested_amount = int(order.get("requested_amount") or 1)
 		links = tuple(order.get("reserved_links", []))
-		return ReservationResult(
+		return GeminiReservationResult(
 			order_id=order["order_id"],
 			status=order["status"],
 			links=links,
