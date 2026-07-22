@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 from core.funpay.chat_sync import (
 	ChatSyncTopic,
 	find_chat_sync_topic,
+	parse_topic_name,
 	send_chat_sync_topic_message,
 )
 
@@ -84,6 +85,9 @@ class ChatSyncBackgroundLookupTest(unittest.TestCase):
 		result = send_chat_sync_topic_message(bot, ChatSyncTopic(-1001, 12), "Warning")
 
 		self.assertFalse(result)
+
+	def test_rejects_invalid_topic_chat_id(self):
+		self.assertEqual(parse_topic_name("buyer (not-a-number)"), (None, None))
 
 
 if __name__ == "__main__":

@@ -78,7 +78,6 @@ def send_chat_sync_topic_message(bot, topic: ChatSyncTopic, text: str) -> bool:
 		logger.warning(f"{LOGGER_PREFIX} Failed to send Chat Sync warning: {exc}")
 		logger.debug("TRACEBACK", exc_info=True)
 		return False
-	return None
 
 
 def parse_topic_name(name: str) -> tuple[str, int] | tuple[None, None]:
@@ -93,7 +92,7 @@ def parse_topic_name(name: str) -> tuple[str, int] | tuple[None, None]:
 		username = parts[0].strip()
 		chat_id = int(parts[1].replace("(", "").replace(")", "").strip())
 		return username, chat_id
-	except Exception:
+	except (TypeError, ValueError):
 		return None, None
 
 
@@ -125,7 +124,7 @@ def get_topic_context(cardinal: Cardinal, message: telebot.types.Message) -> Top
 
 	try:
 		fp_chat_id = int(fp_chat_id_str)
-	except Exception:
+	except (TypeError, ValueError):
 		return None
 
 	threads_info = getattr(cs, "threads_info", {}) or {}
@@ -140,5 +139,7 @@ def get_topic_context(cardinal: Cardinal, message: telebot.types.Message) -> Top
 		source_cardinal = getattr(cs, "cardinal", cardinal)
 		chat = source_cardinal.account.get_chat(fp_chat_id, with_history=False)
 		return TopicContext(username=chat.name, fp_chat_id=fp_chat_id, thread_id=thread_id)
-	except Exception:
+	except Exception as exc:
+		logger.warning(f"{LOGGER_PREFIX} Failed to resolve Chat Sync topic context: {exc}")
+		logger.debug("TRACEBACK", exc_info=True)
 		return None
