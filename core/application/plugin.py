@@ -142,8 +142,10 @@ class ManualActionsPlugin:
 		if self.updater:
 			self.updater.skip_version(version)
 			return
-		self.settings["updater"]["skipped_version"] = version.strip()
-		self.save_settings()
+		value = version.strip()
+		self.update_settings(
+			lambda settings: settings["updater"].__setitem__("skipped_version", value)
+		)
 
 	def check_updates_manually(self):
 		if not self.updater:
