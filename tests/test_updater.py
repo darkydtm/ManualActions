@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from core.application.updater import (
 	ManualActionsUpdater,
@@ -49,6 +50,45 @@ def release(version="1.3.1", draft=False, asset_name="manual_actions.py"):
 
 
 class UpdaterTest(unittest.TestCase):
+	def test_restart_uses_a_new_stop_event_when_old_thread_is_stopping(self):
+		class FakeThread:
+			def __init__(self, target, args, name, daemon):
+				self.target = target
+				self.args = args
+				self.name = name
+				self.daemon = daemon
+				self.started = False
+				self.joined = False
+
+			def start(self):
+				self.started = True
+
+			def is_alive(self):
+				return self.started
+
+			def join(self, timeout):
+				self.joined = True
+
+		settings = {"updater": {"mode": "ask"}}
+		threads = []
+
+		def create_thread(**kwargs):
+			thread = FakeThread(**kwargs)
+			threads.append(thread)
+			return thread
+
+		updater = ManualActionsUpdater(settings, lambda: None, "manual_actions.py", "1.0.0")
+		with patch("core.application.updater.threading.Thread", side_effect=create_thread):
+			updater.start()
+			first_stop_event = updater._stop
+			updater.stop()
+			updater.start()
+
+		self.assertEqual(len(threads), 2)
+		self.assertTrue(first_stop_event.is_set())
+		self.assertIsNot(first_stop_event, updater._stop)
+		self.assertTrue(threads[0].joined)
+
 	def test_compares_semantic_versions(self):
 		self.assertTrue(is_newer_version("1.3.0", "1.3.1"))
 		self.assertTrue(is_newer_version("v1.3.0", "1.4.0"))
