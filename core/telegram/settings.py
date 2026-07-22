@@ -10,6 +10,7 @@ from tg_bot import CBT
 from tg_bot.utils import escape
 
 from ..funpay.blacklist import unblock_user
+from ..runtime.settings import update_host_settings
 from ..config.constants import (
 	CBT_BLACKLIST_PAGE,
 	CBT_AUTO_DELIVERY_PAGE,
@@ -625,8 +626,7 @@ class TelegramSettingsUI:
 			self.host.tgbot.answer_callback_query(call.id)
 			return
 
-		self.host.settings["status"] = status_id
-		self.host.save_settings()
+		update_host_settings(self.host, lambda settings: settings.__setitem__("status", status_id))
 		self.show_status_detail(call.message.chat.id, call.message.id, status_id, offset=offset, edit=True)
 		self.host.tgbot.answer_callback_query(call.id, f"Статус: {status_label(status_id)}")
 
@@ -681,8 +681,8 @@ class TelegramSettingsUI:
 			return
 
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
-		self.host.settings["status_response_texts"][status_id] = self.clean_text(message.text)
-		self.host.save_settings()
+		value = self.clean_text(message.text)
+		update_host_settings(self.host, lambda settings: settings["status_response_texts"].__setitem__(status_id, value))
 		keyboard = K().row(
 			B("◀️ Назад", callback_data=f"{CBT_STATUS_DETAIL}{status_id}:{offset}"),
 			B("✏️ Изменить", callback_data=f"{CBT_STATUS_EDIT_RESPONSE}{status_id}:{offset}"),
@@ -700,8 +700,8 @@ class TelegramSettingsUI:
 			return
 
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
-		self.host.settings["status_auto_messages"][status_id]["text"] = self.clean_text(message.text)
-		self.host.save_settings()
+		value = self.clean_text(message.text)
+		update_host_settings(self.host, lambda settings: settings["status_auto_messages"][status_id].__setitem__("text", value))
 		keyboard = K().row(
 			B("◀️ Назад", callback_data=f"{CBT_STATUS_DETAIL}{status_id}:{offset}"),
 			B("✏️ Изменить", callback_data=f"{CBT_STATUS_EDIT_AUTO}{status_id}:{offset}"),
@@ -715,8 +715,7 @@ class TelegramSettingsUI:
 			return
 
 		config = self.host.settings["status_auto_messages"][status_id]
-		config["enabled"] = not config["enabled"]
-		self.host.save_settings()
+		update_host_settings(self.host, lambda settings: settings["status_auto_messages"][status_id].__setitem__("enabled", not config["enabled"]))
 		self.show_status_detail(call.message.chat.id, call.message.id, status_id, offset=offset, edit=True)
 		self.host.tgbot.answer_callback_query(call.id)
 
@@ -812,8 +811,7 @@ class TelegramSettingsUI:
 			self.host.tgbot.answer_callback_query(call.id)
 			return
 
-		self.host.settings["updater"]["mode"] = mode
-		self.host.save_settings()
+		update_host_settings(self.host, lambda settings: settings["updater"].__setitem__("mode", mode))
 		self.host.refresh_updater()
 		self.show_updater_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
 		self.host.tgbot.answer_callback_query(call.id, self.updater_mode_label(mode))
@@ -868,8 +866,7 @@ class TelegramSettingsUI:
 		)
 
 	def save_updater_interval(self, interval: int) -> None:
-		self.host.settings["updater"]["check_interval_seconds"] = interval
-		self.host.save_settings()
+		update_host_settings(self.host, lambda settings: settings["updater"].__setitem__("check_interval_seconds", interval))
 		self.host.refresh_updater()
 
 	def install_update(self, call: telebot.types.CallbackQuery) -> None:
