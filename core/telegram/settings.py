@@ -411,8 +411,7 @@ class TelegramSettingsUI:
 			"title": title,
 			"text": self.clean_text(message.text),
 		}
-		self.host.settings["templates"].append(template)
-		self.host.save_settings()
+		update_host_settings(self.host, lambda settings: settings["templates"].append(template))
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
 		keyboard = K().row(
 			B("◀️ К заготовке", callback_data=f"{CBT_TEMPLATE_DETAIL}{template['id']}:{offset}"),
@@ -457,8 +456,10 @@ class TelegramSettingsUI:
 			self.host.tgbot.reply_to(message, "Заготовка не найдена.")
 			return
 
-		template["title"] = title
-		self.host.save_settings()
+		update_host_settings(
+			self.host,
+			lambda settings: self.find_template_in(settings, template_id).__setitem__("title", title),
+		)
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
 		keyboard = K().row(
 			B("◀️ К заготовке", callback_data=f"{CBT_TEMPLATE_DETAIL}{template_id}:{offset}"),
@@ -498,8 +499,11 @@ class TelegramSettingsUI:
 			self.host.tgbot.reply_to(message, "Заготовка не найдена.")
 			return
 
-		template["text"] = self.clean_text(message.text)
-		self.host.save_settings()
+		value = self.clean_text(message.text)
+		update_host_settings(
+			self.host,
+			lambda settings: self.find_template_in(settings, template_id).__setitem__("text", value),
+		)
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
 		keyboard = K().row(
 			B("◀️ К заготовке", callback_data=f"{CBT_TEMPLATE_DETAIL}{template_id}:{offset}"),
@@ -534,8 +538,10 @@ class TelegramSettingsUI:
 			self.host.tgbot.answer_callback_query(call.id, "Заготовка не найдена.", show_alert=True)
 			return
 
-		self.host.settings["templates"].remove(template)
-		self.host.save_settings()
+		update_host_settings(
+			self.host,
+			lambda settings: settings["templates"].remove(self.find_template_in(settings, template_id)),
+		)
 		self.show_templates_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
 		self.host.tgbot.answer_callback_query(call.id, "Заготовка удалена.")
 
@@ -552,6 +558,10 @@ class TelegramSettingsUI:
 			(template for template in self.host.settings["templates"] if template["id"] == template_id),
 			None,
 		)
+
+	@staticmethod
+	def find_template_in(settings: dict[str, Any], template_id: str) -> dict[str, str]:
+		return next(template for template in settings["templates"] if template["id"] == template_id)
 
 	def open_status_page(self, call: telebot.types.CallbackQuery) -> None:
 		offset = self.get_offset(call.data)
