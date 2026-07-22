@@ -9,7 +9,7 @@ utils = types.ModuleType("Utils")
 utils.cardinal_tools = SimpleNamespace(cache_blacklist=lambda blacklist: None)
 sys.modules.setdefault("Utils", utils)
 
-from core.funpay.blacklist import toggle_action_for_user
+from core.funpay.blacklist import block_user, toggle_action_for_user
 from core.common.payloads import parse_blacklist_payload
 
 
@@ -35,6 +35,16 @@ class BlacklistFlowTest(unittest.TestCase):
 		cardinal = SimpleNamespace(blacklist=["buyer"])
 
 		self.assertEqual(toggle_action_for_user(cardinal, "buyer"), "unblock")
+
+	def test_cache_is_unchanged_when_remote_block_fails(self):
+		account = SimpleNamespace(csrf_token="token", get_chat_history=lambda *args, **kwargs: [])
+		account.method = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("offline"))
+		cardinal = SimpleNamespace(account=account, blacklist=[])
+
+		with self.assertRaisesRegex(RuntimeError, "offline"):
+			block_user(cardinal, "buyer", chat_id=1)
+
+		self.assertNotIn("buyer", cardinal.blacklist)
 
 
 if __name__ == "__main__":

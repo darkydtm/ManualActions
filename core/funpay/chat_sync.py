@@ -6,6 +6,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ..config.constants import LOGGER_NAME, LOGGER_PREFIX, SYNC_PLUGIN_UUID
+from ..runtime import call_external
 
 if TYPE_CHECKING:
 	import telebot
@@ -71,13 +72,11 @@ def find_chat_sync_topic(
 
 
 def send_chat_sync_topic_message(bot, topic: ChatSyncTopic, text: str) -> bool:
-	try:
-		bot.send_message(topic.chat_id, text, message_thread_id=topic.thread_id)
+	result = call_external(lambda: bot.send_message(topic.chat_id, text, message_thread_id=topic.thread_id))
+	if result.succeeded:
 		return True
-	except Exception as exc:
-		logger.warning(f"{LOGGER_PREFIX} Failed to send Chat Sync warning: {exc}")
-		logger.debug("TRACEBACK", exc_info=True)
-		return False
+	logger.warning("%s Failed to send Chat Sync warning: %s", LOGGER_PREFIX, result.error)
+	return False
 
 
 def parse_topic_name(name: str) -> tuple[str, int] | tuple[None, None]:
