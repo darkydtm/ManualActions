@@ -233,6 +233,27 @@ class GeminiDeliveryUITest(unittest.TestCase):
 		self.assertEqual(self.host.settings["gpt_accounts_delivery"]["delay_seconds"], 20)
 		self.assertEqual(self.saved, ["save"])
 
+	def test_saves_gpt_template_with_per_account_placeholder(self):
+		gpt_accounts_ui_module.B = FakeButton
+		gpt_accounts_ui_module.K = FakeKeyboard
+		gpt_storage = GptAccountsDeliveryStorage(Path(self.temp_dir.name) / "accounts.json")
+		gpt_host = SimpleNamespace(
+			tg=self.tg,
+			tgbot=self.bot,
+			settings=self.host.settings,
+			save_settings=lambda: self.saved.append("save"),
+			gpt_accounts_storage=gpt_storage,
+			gpt_accounts_service=Mock(),
+		)
+		ui = TelegramGptAccountsDeliveryUI(gpt_host)
+
+		ui.save_template(self.message("Login: {mail}"))
+
+		self.assertEqual(
+			self.host.settings["gpt_accounts_delivery"]["message_template"],
+			"Login: {mail}",
+		)
+
 	def test_adds_valid_links_and_reports_invalid_and_duplicates(self):
 		self.storage.add_links((LINK_TWO,))
 

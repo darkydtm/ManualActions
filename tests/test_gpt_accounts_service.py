@@ -42,6 +42,22 @@ class GptAccountsServiceTest(unittest.TestCase):
 		self.assertIn("Email: one@example.com", text)
 		self.assertIn("Email: two@example.com", text)
 
+	def test_repeats_advanced_template_for_each_delivered_account(self):
+		self.settings["gpt_accounts_delivery"]["message_template"] = "{mail}|{pass}|{2fa}"
+		self.storage.add_accounts((
+			Account("one@example.com", "one"),
+			Account("two@example.com", "two", "secret"),
+		))
+		order = SimpleNamespace(id="ORDER-2", amount=2, chat_id=1, full_description="#gptacc", buyer_username="buyer")
+		self.cardinal.account.get_order.return_value = order
+
+		self.service.handle_new_order(SimpleNamespace(order=order))
+
+		self.assertEqual(
+			self.cardinal.send_message.call_args.kwargs["message_text"],
+			"one@example.com|one|\n\ntwo@example.com|two|secret",
+		)
+
 	def test_schedules_delivery_after_configured_delay(self):
 		self.settings["gpt_accounts_delivery"]["delay_seconds"] = 15
 		timer = Mock()

@@ -1,7 +1,12 @@
 import unittest
 
 from core.config.settings import normalize_settings
-from core.delivery.providers.gpt_accounts import Account, format_accounts, parse_account_batch
+from core.delivery.providers.gpt_accounts import (
+	Account,
+	format_accounts,
+	format_delivery_message,
+	parse_account_batch,
+)
 
 
 class GptAccountsSettingsTest(unittest.TestCase):
@@ -22,6 +27,27 @@ class GptAccountsSettingsTest(unittest.TestCase):
 		self.assertEqual(
 			format_accounts((Account("one@example.com", "pass", "secret"),)),
 			"Email: one@example.com\nPassword: pass\n2FA secret: secret",
+		)
+
+	def test_formats_each_account_with_advanced_placeholders(self):
+		self.assertEqual(
+			format_delivery_message(
+				"{mail}|{pass}|{2fa}",
+				(
+					Account("one@example.com", "one"),
+					Account("two@example.com", "two", "secret"),
+				),
+			),
+			"one@example.com|one|\n\ntwo@example.com|two|secret",
+		)
+
+	def test_keeps_legacy_accounts_placeholder(self):
+		self.assertEqual(
+			format_delivery_message(
+				"Accounts:\n{accounts}",
+				(Account("one@example.com", "pass"),),
+			),
+			"Accounts:\nEmail: one@example.com\nPassword: pass",
 		)
 
 	def test_normalizes_plugin_settings(self):

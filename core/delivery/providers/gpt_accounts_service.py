@@ -10,7 +10,7 @@ from ...funpay.chat_sync import find_chat_sync_topic, get_chat_sync_obj, send_ch
 from ...runtime import run_effects
 from ..models import DeliveryOutcome, OUTCOME_COMPLETED, OUTCOME_IGNORED, OUTCOME_SEND_FAILED, OUTCOME_WAITING_STOCK
 from ..service import AutoDeliveryService
-from .gpt_accounts import format_accounts, normalize_gpt_accounts_delivery_settings
+from .gpt_accounts import format_delivery_message, normalize_gpt_accounts_delivery_settings
 from .gpt_accounts_storage import (
 	GptAccountsDeliveryStorage,
 	OrderReservationRequest,
@@ -140,7 +140,7 @@ class GptAccountsDeliveryService(AutoDeliveryService):
 				raise RuntimeError("Не удалось определить чат покупателя.")
 			sent = self.cardinal.send_message(
 				chat_id=chat_id,
-				message_text=config["message_template"].format(accounts=format_accounts(accounts)),
+				message_text=format_delivery_message(config["message_template"], accounts),
 			)
 			if sent is False:
 				raise RuntimeError("Cardinal не подтвердил отправку.")
