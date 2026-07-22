@@ -21,6 +21,7 @@ from ..config.constants import (
 	STATE_GIST_TOKEN,
 	UUID,
 )
+from ..runtime.settings import update_host_settings
 from .settings import (
 	GIST_FILENAME_MODES,
 	GIST_VISIBILITY_OPTIONS,
@@ -204,8 +205,7 @@ class TelegramGistSettingsUI:
 			self.host.tgbot.answer_callback_query(call.id)
 			return
 
-		self.host.settings["gist"]["filename"]["mode"] = mode
-		self.host.save_settings()
+		update_host_settings(self.host, lambda settings: settings["gist"]["filename"].__setitem__("mode", mode))
 		self.show_filename_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
 		self.host.tgbot.answer_callback_query(call.id, gist_filename_mode_label(mode))
 
@@ -215,8 +215,7 @@ class TelegramGistSettingsUI:
 			self.host.tgbot.answer_callback_query(call.id)
 			return
 
-		self.host.settings["gist"]["visibility"] = value
-		self.host.save_settings()
+		update_host_settings(self.host, lambda settings: settings["gist"].__setitem__("visibility", value))
 		self.show_visibility_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
 		self.host.tgbot.answer_callback_query(call.id, gist_visibility_label(value))
 
@@ -265,11 +264,13 @@ class TelegramGistSettingsUI:
 		back_page = data.get("back_page", CBT_GIST_PAGE)
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
 
-		target = self.host.settings["gist"]
-		for key in path[:-1]:
-			target = target[key]
-		target[path[-1]] = self.clean_text(message.text).strip()
-		self.host.save_settings()
+		value = self.clean_text(message.text).strip()
+		def mutate(settings):
+			target = settings["gist"]
+			for key in path[:-1]:
+				target = target[key]
+			target[path[-1]] = value
+		update_host_settings(self.host, mutate)
 
 		keyboard = K(row_width=1)
 		keyboard.add(B("◀️ Назад", callback_data=f"{back_page}{offset}"))
