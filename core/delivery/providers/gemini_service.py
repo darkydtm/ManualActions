@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
 import re
-from threading import RLock, Timer
+from threading import Timer
 from typing import Any, Callable
 
 from ...config.constants import LOGGER_NAME, LOGGER_PREFIX
@@ -14,6 +13,8 @@ from ...funpay.chat_sync import (
 )
 from ...gist.service import create_gist_result, resolve_gist_filename
 from ...gist.settings import normalize_gist_settings
+from ..models import DeliveryOutcome, OUTCOME_COMPLETED, OUTCOME_IGNORED, OUTCOME_SEND_FAILED, OUTCOME_WAITING_STOCK
+from ..service import AutoDeliveryService
 from .gemini import normalize_gemini_delivery_settings
 from .gemini_storage import (
 	GeminiDeliveryStorage,
@@ -30,21 +31,9 @@ logger = logging.getLogger(LOGGER_NAME)
 
 GEMINI_MARKER_PATTERN = re.compile(r"#geminilink\b", re.IGNORECASE)
 
-OUTCOME_IGNORED = "ignored"
-OUTCOME_WAITING_STOCK = "waiting_stock"
-OUTCOME_COMPLETED = "completed"
-OUTCOME_SEND_FAILED = "send_failed"
-
-
-@dataclass(frozen=True)
-class DeliveryOutcome:
-	status: str
-	order_id: str = ""
-	error: str = ""
-
-
-class GeminiDeliveryService:
+class GeminiDeliveryService(AutoDeliveryService):
 	name = "gemini"
+	settings_key = "gemini_delivery"
 	def __init__(
 		self,
 		cardinal,
@@ -55,14 +44,21 @@ class GeminiDeliveryService:
 		admin_notifier: Callable[[str], None] | None = None,
 		timer_factory: Callable[[int, Callable[[], None]], Any] = Timer,
 	):
-		self.cardinal = cardinal
-		self.settings_getter = settings_getter
-		self.storage = storage
+		super().__init__(
+			cardinal,
+			settings_getter,
+			storage,
+			normalize_gemini_delivery_settings,
+			has_gemini_marker,
+			timer_factory,
+		)
 		self.gist_creator = gist_creator
 		self.topic_notifier = topic_notifier or self.notify_chat_sync
 		self.admin_notifier = admin_notifier or (lambda text: None)
-		self.timer_factory = timer_factory
-		self.lock = RLock()
+		self.handle_new_order = AutoDeliveryService.handle_new_order.__get__(self)
+		self.handle_delayed_new_order = AutoDeliveryService.handle_delayed_new_order.__get__(self)
+		self.handle_new_order_locked = AutoDeliveryService.handle_new_order_locked.__get__(self)
+		self.is_matching_new_order = AutoDeliveryService.is_matching_new_order.__get__(self)
 
 	def handle_new_order(self, event: object) -> DeliveryOutcome:
 		with self.lock:
@@ -148,8 +144,9 @@ class GeminiDeliveryService:
 		self,
 		request: OrderReservationRequest,
 		config: dict[str, Any],
-		settings: dict[str, Any],
+		settings: dict[str, Any] | None = None,
 	) -> DeliveryOutcome:
+		settings = settings or self.settings_getter()
 		existing = self.storage.get_order(request.order_id)
 		if existing:
 			status = existing.get("status")
