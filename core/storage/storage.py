@@ -4,11 +4,11 @@ import json
 import logging
 import os
 from pathlib import Path
-import tempfile
 from typing import Any
 
 from ..config.constants import LOGGER_NAME, LOGGER_PREFIX, SETTINGS_FILE
 from ..config.settings import normalize_settings
+from ..runtime.persistence import AtomicWriteError, atomic_write_json
 
 
 logger = logging.getLogger(LOGGER_NAME)
@@ -45,25 +45,9 @@ class PluginStorage:
 
 	def save_dict(self, path: str, data: dict[str, Any]) -> None:
 		target = Path(path)
-		temporary_path = None
 		try:
-			target.parent.mkdir(parents=True, exist_ok=True)
-			with tempfile.NamedTemporaryFile(
-				"w",
-				encoding="utf-8",
-				dir=target.parent,
-				prefix=f".{target.name}.",
-				delete=False,
-			) as file:
-				temporary_path = Path(file.name)
-				json.dump(data, file, indent=4, ensure_ascii=False)
-				file.write("\n")
-				file.flush()
-				os.fsync(file.fileno())
-			os.replace(temporary_path, target)
-		except Exception as exc:
-			if temporary_path:
-				temporary_path.unlink(missing_ok=True)
+			atomic_write_json(target, data)
+		except AtomicWriteError as exc:
 			logger.warning(f"{LOGGER_PREFIX} Failed to save {target}.")
 			logger.debug("TRACEBACK", exc_info=True)
 			raise StorageError(f"Failed to save {target}.") from exc
