@@ -243,6 +243,23 @@ class GistTelegramTest(unittest.TestCase):
 		send.assert_called_once_with(chat_id=3, message_text="https://gist.github.com/user/id")
 		self.assertIn("отправлена", bot.edits[0][0])
 
+	def test_cardinal_send_failure_keeps_result_visible(self):
+		bot = FakeBot()
+		cardinal = SimpleNamespace(send_message=lambda **kwargs: True)
+		host = SimpleNamespace(tgbot=bot, cardinal=cardinal, settings={})
+		flow = TelegramGistFlow(host)
+		flow.pending_results["token"] = SimpleNamespace(url="https://gist.github.com/user/id", fp_chat_id=3)
+		call = SimpleNamespace(
+			id="callback-id",
+			data=f"{CBT_GIST_SEND}token",
+			message=SimpleNamespace(chat=SimpleNamespace(id=1), message_id=99, text="GitHub Gist"),
+		)
+
+		with patch.object(cardinal, "send_message", side_effect=RuntimeError("offline")):
+			flow.send_result(call)
+
+		self.assertIn("https://gist.github.com/user/id", bot.edits[0][0])
+
 	def test_skips_generated_link_delivery(self):
 		bot = FakeBot()
 		host = SimpleNamespace(tgbot=bot, cardinal=SimpleNamespace(), settings={})
