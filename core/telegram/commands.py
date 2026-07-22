@@ -18,6 +18,7 @@ from ..config.constants import (
 )
 from ..funpay.orders import get_pending_orders_for_user, refund_order
 from ..status.status import InvalidStatusCommand, parse_telegram_status_command, status_label, toggle_status
+from ..runtime.settings import update_host_settings
 from ..application.updater import ReleaseCheckResult
 from .blacklist import TelegramBlacklistFlow
 from .lots import TelegramLotsFlow
@@ -205,6 +206,5 @@ class TelegramCommands:
 			return
 
 		status_id = toggle_status(self.host.settings["status"]) if requested_status is None else requested_status
-		self.host.settings["status"] = status_id
-		self.host.save_settings()
+		update_host_settings(self.host, lambda settings: settings.__setitem__("status", status_id))
 		self.host.tgbot.reply_to(message, f"✅ Статус: {status_label(status_id)}")

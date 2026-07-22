@@ -8,6 +8,7 @@ from telebot.types import InlineKeyboardButton as B, InlineKeyboardMarkup as K
 from tg_bot.utils import escape
 
 from ..common.payloads import CallbackPayloadCache
+from ..runtime.settings import update_host_settings
 from ..config.constants import (
 	CBT_AUTO_DELIVERY_PAGE,
 	CBT_GPT_ACCOUNTS_ADD,
@@ -81,8 +82,7 @@ class TelegramGptAccountsDeliveryUI:
 
 	def toggle(self, call):
 		config = self.host.settings["gpt_accounts_delivery"]
-		config["enabled"] = not config["enabled"]
-		self.host.save_settings()
+		update_host_settings(self.host, lambda settings: settings["gpt_accounts_delivery"].__setitem__("enabled", not config["enabled"]))
 		self.show(call.message.chat.id, call.message.id, self.offset(call.data), True)
 		self.host.tgbot.answer_callback_query(call.id)
 
@@ -168,8 +168,7 @@ class TelegramGptAccountsDeliveryUI:
 	def set_shortage(self, call):
 		mode, _, offset = call.data.replace(CBT_GPT_ACCOUNTS_SET_SHORTAGE, "", 1).partition(":")
 		if mode in GPT_ACCOUNTS_SHORTAGE_MODES:
-			self.host.settings["gpt_accounts_delivery"]["shortage_mode"] = mode
-			self.host.save_settings()
+			update_host_settings(self.host, lambda settings: settings["gpt_accounts_delivery"].__setitem__("shortage_mode", mode))
 		self.show(call.message.chat.id, call.message.id, offset, True)
 		self.host.tgbot.answer_callback_query(call.id)
 
@@ -183,8 +182,7 @@ class TelegramGptAccountsDeliveryUI:
 		if "{accounts}" not in (message.text or ""):
 			self.host.tgbot.reply_to(message, "Текст должен содержать {accounts}.")
 			return
-		self.host.settings["gpt_accounts_delivery"]["message_template"] = message.text
-		self.host.save_settings()
+		update_host_settings(self.host, lambda settings: settings["gpt_accounts_delivery"].__setitem__("message_template", message.text))
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
 		self.host.tgbot.reply_to(message, "Текст выдачи сохранён.")
 

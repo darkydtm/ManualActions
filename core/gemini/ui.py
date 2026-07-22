@@ -32,6 +32,7 @@ from ..config.constants import (
 	UUID,
 )
 from ..common.payloads import CallbackPayloadCache
+from ..runtime.settings import update_host_settings
 from .service import OUTCOME_COMPLETED, OUTCOME_SEND_FAILED, OUTCOME_WAITING_STOCK
 from .settings import (
 	GEMINI_SHORTAGE_MODES,
@@ -139,8 +140,7 @@ class TelegramGeminiDeliveryUI:
 	def toggle_enabled(self, call: telebot.types.CallbackQuery) -> None:
 		offset = self.get_offset(call.data)
 		config = self.host.settings["gemini_delivery"]
-		config["enabled"] = not config["enabled"]
-		self.host.save_settings()
+		update_host_settings(self.host, lambda settings: settings["gemini_delivery"].__setitem__("enabled", not config["enabled"]))
 		self.show_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
 		self.host.tgbot.answer_callback_query(
 			call.id,
@@ -355,8 +355,7 @@ class TelegramGeminiDeliveryUI:
 		if mode not in GEMINI_SHORTAGE_MODES:
 			self.host.tgbot.answer_callback_query(call.id)
 			return
-		self.host.settings["gemini_delivery"]["shortage_mode"] = mode
-		self.host.save_settings()
+		update_host_settings(self.host, lambda settings: settings["gemini_delivery"].__setitem__("shortage_mode", mode))
 		self.show_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
 		self.host.tgbot.answer_callback_query(call.id, SHORTAGE_MODE_LABELS[mode])
 
@@ -383,8 +382,7 @@ class TelegramGeminiDeliveryUI:
 			return
 		state = self.host.tg.get_state(message.chat.id, message.from_user.id) or {}
 		offset = state.get("data", {}).get("offset", "0")
-		self.host.settings["gemini_delivery"]["message_template"] = text
-		self.host.save_settings()
+		update_host_settings(self.host, lambda settings: settings["gemini_delivery"].__setitem__("message_template", text))
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
 		keyboard = K(row_width=1)
 		keyboard.add(B("◀️ К автовыдаче", callback_data=f"{CBT_GEMINI_PAGE}{offset}"))
