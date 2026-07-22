@@ -30,6 +30,7 @@ sys.modules.setdefault("tg_bot.utils", tg_bot_utils_module)
 from core.config import settings as settings_module
 from core.config.constants import (
 	CBT_GIST_FILENAME_PAGE,
+	CBT_GIST_CATEGORY,
 	CBT_GIST_SET_FILENAME_MODE,
 	CBT_GIST_SET_VISIBILITY,
 	CBT_GIST_TOKEN_PAGE,
@@ -109,9 +110,12 @@ class GistUITest(unittest.TestCase):
 		_, text, keyboard = bot.messages[0]
 		callbacks = [row[0].callback_data for row in keyboard.rows]
 		self.assertIn("Token: <b>не задан</b>", text)
-		self.assertIn(f"{CBT_GIST_TOKEN_PAGE}0", callbacks)
-		self.assertIn(f"{CBT_GIST_VISIBILITY_PAGE}0", callbacks)
-		self.assertIn(f"{CBT_GIST_FILENAME_PAGE}0", callbacks)
+		self.assertIn(f"{CBT_GIST_CATEGORY}connection:0", callbacks)
+		self.assertIn(f"{CBT_GIST_CATEGORY}file:0", callbacks)
+		ui.show_category(1, 2, "file", "0", True)
+		category_callbacks = [row[0].callback_data for row in bot.edits[-1][3].rows]
+		self.assertIn(f"{CBT_GIST_VISIBILITY_PAGE}0", category_callbacks)
+		self.assertIn(f"{CBT_GIST_FILENAME_PAGE}0", category_callbacks)
 
 	def test_filename_page_includes_order_id_mode(self):
 		bot = FakeBot()

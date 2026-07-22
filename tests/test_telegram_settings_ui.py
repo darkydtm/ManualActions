@@ -39,6 +39,7 @@ sys.modules.setdefault("Utils", utils_module)
 from core.config import settings as settings_module
 from core.config.constants import (
 	CBT_GIST_PAGE,
+	CBT_TEMPLATES_CATEGORY,
 	CBT_TEMPLATE_ADD,
 	CBT_TEMPLATE_DELETE,
 	CBT_TEMPLATE_DELETE_CANCEL,
@@ -49,6 +50,7 @@ from core.config.constants import (
 	CBT_TEMPLATES_PAGE,
 	CBT_UPDATER_CUSTOM_INTERVAL,
 	CBT_UPDATER_CHECK,
+	CBT_UPDATER_CATEGORY,
 	CBT_UPDATER_INTERVAL_PAGE,
 	CBT_UPDATER_INTERVAL,
 	CBT_UPDATER_MODE_PAGE,
@@ -185,8 +187,10 @@ class TelegramSettingsUITest(unittest.TestCase):
 
 		text, _, _, keyboard = bot.edits[0]
 		self.assertIn("Всего: <b>1</b>", text)
-		self.assertEqual(keyboard.rows[1][0].text, "Greeting")
-		self.assertEqual(keyboard.rows[1][0].callback_data, f"{CBT_TEMPLATE_DETAIL}one:0")
+		callbacks = [row[0].callback_data for row in keyboard.rows]
+		self.assertIn(f"{CBT_TEMPLATES_CATEGORY}manage:0", callbacks)
+		ui.show_templates_category(1, 2, "manage", "0", True)
+		self.assertEqual(bot.edits[-1][3].rows[0][0].callback_data, f"{CBT_TEMPLATE_DETAIL}one:0")
 
 	def test_template_detail_escapes_and_previews_content(self):
 		bot = FakeBot()
@@ -384,9 +388,12 @@ class TelegramSettingsUITest(unittest.TestCase):
 		text, _, _, keyboard = bot.edits[0]
 		callbacks = [row[0].callback_data for row in keyboard.rows]
 		self.assertIn("<b>Автообновление</b>", text)
-		self.assertIn(f"{CBT_UPDATER_MODE_PAGE}0", callbacks)
-		self.assertIn(f"{CBT_UPDATER_INTERVAL_PAGE}0", callbacks)
-		self.assertIn(f"{CBT_UPDATER_CHECK}0", callbacks)
+		self.assertIn(f"{CBT_UPDATER_CATEGORY}check:0", callbacks)
+		self.assertIn(f"{CBT_UPDATER_CATEGORY}settings:0", callbacks)
+		ui.show_updater_category(1, 2, "settings", "0", True)
+		category_callbacks = [row[0].callback_data for row in bot.edits[-1][3].rows]
+		self.assertIn(f"{CBT_UPDATER_MODE_PAGE}0", category_callbacks)
+		self.assertIn(f"{CBT_UPDATER_INTERVAL_PAGE}0", category_callbacks)
 		self.assertNotIn("Текущая версия", text)
 
 	def test_manual_update_check_shows_result(self):

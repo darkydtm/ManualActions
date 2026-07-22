@@ -11,6 +11,7 @@ from tg_bot.utils import escape
 
 from ...config.constants import (
 	CBT_GEMINI_ADD,
+	CBT_GEMINI_CATEGORY,
 	CBT_AUTO_DELIVERY_PAGE,
 	CBT_GEMINI_CLEAR,
 	CBT_GEMINI_CLEAR_CONFIRM,
@@ -83,6 +84,7 @@ class TelegramGeminiDeliveryUI:
 		)
 		callbacks = (
 			(self.open_page, CBT_GEMINI_PAGE),
+			(self.open_category, CBT_GEMINI_CATEGORY),
 			(self.toggle_enabled, CBT_GEMINI_TOGGLE),
 			(self.ask_stock, CBT_GEMINI_ADD),
 			(self.open_stock_page, CBT_GEMINI_STOCK),
@@ -131,21 +133,41 @@ class TelegramGeminiDeliveryUI:
 			f"<b>Сообщение покупателю</b>\n<code>{escape(template)}</code>"
 		)
 		keyboard = K(row_width=1)
-		keyboard.add(B(
-			"🟢 Включено" if config["enabled"] else "🔴 Выключено",
-			callback_data=f"{CBT_GEMINI_TOGGLE}{offset}",
-		))
-		keyboard.add(B("➕ Добавить ссылки", callback_data=f"{CBT_GEMINI_ADD}{offset}"))
-		keyboard.add(B("📦 Открыть сток", callback_data=f"{CBT_GEMINI_STOCK}0:{offset}"))
-		if self.host.gemini_storage.stock_count():
-			keyboard.add(B("🧹 Очистить сток", callback_data=f"{CBT_GEMINI_CLEAR}{offset}"))
-		keyboard.add(B("⚖️ Режим нехватки", callback_data=f"{CBT_GEMINI_SHORTAGE}{offset}"))
-		keyboard.add(B("⏱ Задержка", callback_data=f"{CBT_GEMINI_EDIT_DELAY}{offset}"))
-		keyboard.add(B("✏️ Текст выдачи", callback_data=f"{CBT_GEMINI_EDIT_TEMPLATE}{offset}"))
-		keyboard.add(B("⏳ Ожидающие заказы", callback_data=f"{CBT_GEMINI_WAITING}0:{offset}"))
-		keyboard.add(B("🔑 GitHub Gists", callback_data=f"{CBT_GIST_PAGE}{offset}"))
+		keyboard.add(B("⚙️ Управление", callback_data=f"{CBT_GEMINI_CATEGORY}control:{offset}"))
+		keyboard.add(B("📦 Сток", callback_data=f"{CBT_GEMINI_CATEGORY}stock:{offset}"))
+		keyboard.add(B("✏️ Настройки", callback_data=f"{CBT_GEMINI_CATEGORY}settings:{offset}"))
+		keyboard.add(B("⏳ Заказы", callback_data=f"{CBT_GEMINI_CATEGORY}orders:{offset}"))
 		keyboard.add(B("◀️ К автовыдаче", callback_data=f"{CBT_AUTO_DELIVERY_PAGE}{offset}"))
 		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
+
+	def open_category(self, call: telebot.types.CallbackQuery) -> None:
+		category, offset = self.parse_value_callback(call.data, CBT_GEMINI_CATEGORY)
+		self.show_category(call.message.chat.id, call.message.id, category, offset, True)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def show_category(self, chat_id: int, message_id: int | None, category: str, offset: str, edit: bool) -> None:
+		config = self.host.settings["gemini_delivery"]
+		keyboard = K(row_width=1)
+		labels = {"control": "Управление", "stock": "Сток", "settings": "Настройки", "orders": "Заказы"}
+		if category == "control":
+			keyboard.add(B("🟢 Включено" if config["enabled"] else "🔴 Выключено", callback_data=f"{CBT_GEMINI_TOGGLE}{offset}"))
+		elif category == "stock":
+			keyboard.add(B("➕ Добавить ссылки", callback_data=f"{CBT_GEMINI_ADD}{offset}"))
+			keyboard.add(B("📦 Открыть сток", callback_data=f"{CBT_GEMINI_STOCK}0:{offset}"))
+			if self.host.gemini_storage.stock_count():
+				keyboard.add(B("🧹 Очистить сток", callback_data=f"{CBT_GEMINI_CLEAR}{offset}"))
+		elif category == "settings":
+			keyboard.add(B("⚖️ Режим нехватки", callback_data=f"{CBT_GEMINI_SHORTAGE}{offset}"))
+			keyboard.add(B("⏱ Задержка", callback_data=f"{CBT_GEMINI_EDIT_DELAY}{offset}"))
+			keyboard.add(B("✏️ Текст выдачи", callback_data=f"{CBT_GEMINI_EDIT_TEMPLATE}{offset}"))
+			keyboard.add(B("🔑 GitHub Gists", callback_data=f"{CBT_GIST_PAGE}{offset}"))
+		elif category == "orders":
+			keyboard.add(B("⏳ Ожидающие заказы", callback_data=f"{CBT_GEMINI_WAITING}0:{offset}"))
+		else:
+			self.show_page(chat_id, message_id, offset, edit)
+			return
+		keyboard.add(B("◀️ К Gemini", callback_data=f"{CBT_GEMINI_PAGE}{offset}"))
+		self.send_or_edit(f"<b>Gemini - {labels[category]}</b>", chat_id, message_id, keyboard, edit)
 
 	def toggle_enabled(self, call: telebot.types.CallbackQuery) -> None:
 		offset = self.get_offset(call.data)

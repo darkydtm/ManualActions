@@ -12,6 +12,7 @@ from ...runtime.settings import update_host_settings
 from ...config.constants import (
 	CBT_AUTO_DELIVERY_PAGE,
 	CBT_GPT_ACCOUNTS_ADD,
+	CBT_GPT_ACCOUNTS_CATEGORY,
 	CBT_GPT_ACCOUNTS_CLEAR,
 	CBT_GPT_ACCOUNTS_DELETE,
 	CBT_GPT_ACCOUNTS_EDIT_DELAY,
@@ -57,6 +58,7 @@ class TelegramGptAccountsDeliveryUI:
 		self.host.tg.msg_handler(self.save_delay, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_GPT_ACCOUNTS_DELAY))
 		for handler, prefix in (
 			(self.open_page, CBT_GPT_ACCOUNTS_PAGE), (self.toggle, CBT_GPT_ACCOUNTS_TOGGLE),
+			(self.open_category, CBT_GPT_ACCOUNTS_CATEGORY),
 			(self.ask_stock, CBT_GPT_ACCOUNTS_ADD), (self.open_stock, CBT_GPT_ACCOUNTS_STOCK),
 			(self.delete_account, CBT_GPT_ACCOUNTS_DELETE), (self.clear_stock, CBT_GPT_ACCOUNTS_CLEAR),
 			(self.open_shortage, CBT_GPT_ACCOUNTS_SHORTAGE), (self.set_shortage, CBT_GPT_ACCOUNTS_SET_SHORTAGE),
@@ -78,17 +80,40 @@ class TelegramGptAccountsDeliveryUI:
 		text += f"Нехватка: <b>{'выдать остаток' if config['shortage_mode'] == 'partial' else 'не выдавать'}</b>\n"
 		text += f"Задержка: <b>{config['delay_seconds']} сек.</b>"
 		keyboard = K(row_width=1)
-		keyboard.add(B("🟢 Включено" if config["enabled"] else "🔴 Выключено", callback_data=f"{CBT_GPT_ACCOUNTS_TOGGLE}{offset}"))
-		keyboard.add(B("➕ Добавить аккаунты", callback_data=f"{CBT_GPT_ACCOUNTS_ADD}{offset}"))
-		keyboard.add(B("📦 Открыть сток", callback_data=f"{CBT_GPT_ACCOUNTS_STOCK}{offset}"))
-		if self.host.gpt_accounts_storage.stock_count():
-			keyboard.add(B("🧹 Очистить сток", callback_data=f"{CBT_GPT_ACCOUNTS_CLEAR}{offset}"))
-		keyboard.add(B("⚖️ Режим нехватки", callback_data=f"{CBT_GPT_ACCOUNTS_SHORTAGE}{offset}"))
-		keyboard.add(B("⏱ Задержка", callback_data=f"{CBT_GPT_ACCOUNTS_EDIT_DELAY}{offset}"))
-		keyboard.add(B("✏️ Текст выдачи", callback_data=f"{CBT_GPT_ACCOUNTS_EDIT_TEMPLATE}{offset}"))
-		keyboard.add(B("⏳ Ожидающие заказы", callback_data=f"{CBT_GPT_ACCOUNTS_WAITING}{offset}"))
+		keyboard.add(B("⚙️ Управление", callback_data=f"{CBT_GPT_ACCOUNTS_CATEGORY}control:{offset}"))
+		keyboard.add(B("📦 Сток", callback_data=f"{CBT_GPT_ACCOUNTS_CATEGORY}stock:{offset}"))
+		keyboard.add(B("✏️ Настройки", callback_data=f"{CBT_GPT_ACCOUNTS_CATEGORY}settings:{offset}"))
+		keyboard.add(B("⏳ Заказы", callback_data=f"{CBT_GPT_ACCOUNTS_CATEGORY}orders:{offset}"))
 		keyboard.add(B("◀️ К автовыдаче", callback_data=f"{CBT_AUTO_DELIVERY_PAGE}{offset}"))
 		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
+
+	def open_category(self, call):
+		category, _, offset = call.data.replace(CBT_GPT_ACCOUNTS_CATEGORY, "", 1).partition(":")
+		self.show_category(call.message.chat.id, call.message.id, category, offset or "0", True)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def show_category(self, chat_id, message_id, category, offset, edit):
+		config = self.host.settings["gpt_accounts_delivery"]
+		keyboard = K(row_width=1)
+		labels = {"control": "Управление", "stock": "Сток", "settings": "Настройки", "orders": "Заказы"}
+		if category == "control":
+			keyboard.add(B("🟢 Включено" if config["enabled"] else "🔴 Выключено", callback_data=f"{CBT_GPT_ACCOUNTS_TOGGLE}{offset}"))
+		elif category == "stock":
+			keyboard.add(B("➕ Добавить аккаунты", callback_data=f"{CBT_GPT_ACCOUNTS_ADD}{offset}"))
+			keyboard.add(B("📦 Открыть сток", callback_data=f"{CBT_GPT_ACCOUNTS_STOCK}{offset}"))
+			if self.host.gpt_accounts_storage.stock_count():
+				keyboard.add(B("🧹 Очистить сток", callback_data=f"{CBT_GPT_ACCOUNTS_CLEAR}{offset}"))
+		elif category == "settings":
+			keyboard.add(B("⚖️ Режим нехватки", callback_data=f"{CBT_GPT_ACCOUNTS_SHORTAGE}{offset}"))
+			keyboard.add(B("⏱ Задержка", callback_data=f"{CBT_GPT_ACCOUNTS_EDIT_DELAY}{offset}"))
+			keyboard.add(B("✏️ Текст выдачи", callback_data=f"{CBT_GPT_ACCOUNTS_EDIT_TEMPLATE}{offset}"))
+		elif category == "orders":
+			keyboard.add(B("⏳ Ожидающие заказы", callback_data=f"{CBT_GPT_ACCOUNTS_WAITING}{offset}"))
+		else:
+			self.show(chat_id, message_id, offset, edit)
+			return
+		keyboard.add(B("◀️ К ChatGPT", callback_data=f"{CBT_GPT_ACCOUNTS_PAGE}{offset}"))
+		self.send_or_edit(f"<b>ChatGPT - {labels[category]}</b>", chat_id, message_id, keyboard, edit)
 
 	def toggle(self, call):
 		config = self.host.settings["gpt_accounts_delivery"]

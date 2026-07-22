@@ -33,6 +33,7 @@ tg_bot_module.static_keyboards = tg_bot_static_keyboards_module
 
 from core.config.constants import (
 	CBT_GEMINI_EDIT_DELAY,
+	CBT_GEMINI_CATEGORY,
 	CBT_GEMINI_CLEAR_CONFIRM,
 	CBT_GEMINI_DELETE,
 	CBT_GEMINI_DELETE_CANCEL,
@@ -41,7 +42,6 @@ from core.config.constants import (
 	CBT_GEMINI_RETRY,
 	CBT_GEMINI_SET_SHORTAGE,
 	CBT_GEMINI_STOCK,
-	CBT_GIST_PAGE,
 )
 from core.delivery.providers import gemini_ui as gemini_ui_module
 from core.delivery.providers.gemini_service import DeliveryOutcome, OUTCOME_COMPLETED
@@ -189,7 +189,9 @@ class GeminiDeliveryUITest(unittest.TestCase):
 
 		_, text, keyboard = self.bot.messages[0]
 		self.assertIn("В стоке: <b>1</b>", text)
-		self.assertIn(f"{CBT_GIST_PAGE}0", self.callbacks(keyboard))
+		self.assertIn(f"{CBT_GEMINI_CATEGORY}settings:0", self.callbacks(keyboard))
+		self.ui.show_category(1, 2, "settings", "0", True)
+		self.assertIn("ma_gist_page:0", self.callbacks(self.bot.edits[-1][3]))
 
 	def test_toggle_enabled_saves_setting(self):
 		self.ui.toggle_enabled(self.call("ma_gemini_toggle:0"))
