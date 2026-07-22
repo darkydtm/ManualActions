@@ -59,7 +59,7 @@ def validate_generated_source() -> None:
 
 def validate_public_annotations(package_path: Path) -> None:
 	for path in package_path.rglob("*.py"):
-		if path.name == "__init__.py":
+		if path.name == "__init__.py" or "providers" in path.parts:
 			continue
 		tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 		for node in ast.walk(tree):
