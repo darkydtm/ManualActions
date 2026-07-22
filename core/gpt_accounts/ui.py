@@ -14,6 +14,7 @@ from ..config.constants import (
 	CBT_GPT_ACCOUNTS_ADD,
 	CBT_GPT_ACCOUNTS_CLEAR,
 	CBT_GPT_ACCOUNTS_DELETE,
+	CBT_GPT_ACCOUNTS_EDIT_DELAY,
 	CBT_GPT_ACCOUNTS_EDIT_TEMPLATE,
 	CBT_GPT_ACCOUNTS_PAGE,
 	CBT_GPT_ACCOUNTS_RETRY,
@@ -23,6 +24,7 @@ from ..config.constants import (
 	CBT_GPT_ACCOUNTS_TOGGLE,
 	CBT_GPT_ACCOUNTS_WAITING,
 	STATE_GPT_ACCOUNTS_ADD,
+	STATE_GPT_ACCOUNTS_DELAY,
 	STATE_GPT_ACCOUNTS_TEMPLATE,
 )
 from .service import OUTCOME_COMPLETED, OUTCOME_WAITING_STOCK
@@ -48,11 +50,13 @@ class TelegramGptAccountsDeliveryUI:
 	def register(self) -> None:
 		self.host.tg.msg_handler(self.save_stock, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_GPT_ACCOUNTS_ADD))
 		self.host.tg.msg_handler(self.save_template, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_GPT_ACCOUNTS_TEMPLATE))
+		self.host.tg.msg_handler(self.save_delay, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_GPT_ACCOUNTS_DELAY))
 		for handler, prefix in (
 			(self.open_page, CBT_GPT_ACCOUNTS_PAGE), (self.toggle, CBT_GPT_ACCOUNTS_TOGGLE),
 			(self.ask_stock, CBT_GPT_ACCOUNTS_ADD), (self.open_stock, CBT_GPT_ACCOUNTS_STOCK),
 			(self.delete_account, CBT_GPT_ACCOUNTS_DELETE), (self.clear_stock, CBT_GPT_ACCOUNTS_CLEAR),
 			(self.open_shortage, CBT_GPT_ACCOUNTS_SHORTAGE), (self.set_shortage, CBT_GPT_ACCOUNTS_SET_SHORTAGE),
+			(self.ask_delay, CBT_GPT_ACCOUNTS_EDIT_DELAY),
 			(self.ask_template, CBT_GPT_ACCOUNTS_EDIT_TEMPLATE), (self.open_waiting, CBT_GPT_ACCOUNTS_WAITING),
 			(self.retry, CBT_GPT_ACCOUNTS_RETRY),
 		):
@@ -67,7 +71,8 @@ class TelegramGptAccountsDeliveryUI:
 		text = "<b>ChatGPT автовыдача</b>\n\n"
 		text += f"Автовыдача: <b>{'включена' if config['enabled'] else 'выключена'}</b>\n"
 		text += f"В стоке: <b>{self.host.gpt_accounts_storage.stock_count()}</b>\n"
-		text += f"Нехватка: <b>{'выдать остаток' if config['shortage_mode'] == 'partial' else 'не выдавать'}</b>"
+		text += f"Нехватка: <b>{'выдать остаток' if config['shortage_mode'] == 'partial' else 'не выдавать'}</b>\n"
+		text += f"Задержка: <b>{config['delay_seconds']} сек.</b>"
 		keyboard = K(row_width=1)
 		keyboard.add(B("🟢 Включено" if config["enabled"] else "🔴 Выключено", callback_data=f"{CBT_GPT_ACCOUNTS_TOGGLE}{offset}"))
 		keyboard.add(B("➕ Добавить аккаунты", callback_data=f"{CBT_GPT_ACCOUNTS_ADD}{offset}"))
@@ -75,6 +80,7 @@ class TelegramGptAccountsDeliveryUI:
 		if self.host.gpt_accounts_storage.stock_count():
 			keyboard.add(B("🧹 Очистить сток", callback_data=f"{CBT_GPT_ACCOUNTS_CLEAR}{offset}"))
 		keyboard.add(B("⚖️ Режим нехватки", callback_data=f"{CBT_GPT_ACCOUNTS_SHORTAGE}{offset}"))
+		keyboard.add(B("⏱ Задержка", callback_data=f"{CBT_GPT_ACCOUNTS_EDIT_DELAY}{offset}"))
 		keyboard.add(B("✏️ Текст выдачи", callback_data=f"{CBT_GPT_ACCOUNTS_EDIT_TEMPLATE}{offset}"))
 		keyboard.add(B("⏳ Ожидающие заказы", callback_data=f"{CBT_GPT_ACCOUNTS_WAITING}{offset}"))
 		keyboard.add(B("◀️ К автовыдаче", callback_data=f"{CBT_AUTO_DELIVERY_PAGE}{offset}"))
@@ -185,6 +191,32 @@ class TelegramGptAccountsDeliveryUI:
 		update_host_settings(self.host, lambda settings: settings["gpt_accounts_delivery"].__setitem__("message_template", message.text))
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
 		self.host.tgbot.reply_to(message, "Текст выдачи сохранён.")
+
+	def ask_delay(self, call):
+		offset = self.offset(call.data)
+		message = self.host.tgbot.send_message(
+			call.message.chat.id,
+			"Введите задержку в секундах. 0 - выдать сразу.",
+			reply_markup=tg_bot.static_keyboards.CLEAR_STATE_BTN(),
+		)
+		self.host.tg.set_state(call.message.chat.id, message.id, call.from_user.id, STATE_GPT_ACCOUNTS_DELAY, {"offset": offset})
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def save_delay(self, message):
+		try:
+			delay_seconds = int((message.text or "").strip())
+		except ValueError:
+			delay_seconds = -1
+		if delay_seconds < 0:
+			self.host.tgbot.reply_to(message, "Введите целое число секунд от 0.")
+			return
+		state = self.host.tg.get_state(message.chat.id, message.from_user.id) or {}
+		offset = state.get("data", {}).get("offset", "0")
+		update_host_settings(self.host, lambda settings: settings["gpt_accounts_delivery"].__setitem__("delay_seconds", delay_seconds))
+		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
+		keyboard = K(row_width=1)
+		keyboard.add(B("◀️ К автовыдаче", callback_data=f"{CBT_GPT_ACCOUNTS_PAGE}{offset}"))
+		self.host.tgbot.reply_to(message, "Задержка сохранена.", reply_markup=keyboard)
 
 	def open_waiting(self, call):
 		offset = self.offset(call.data)

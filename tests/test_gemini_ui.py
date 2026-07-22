@@ -29,8 +29,10 @@ tg_bot_utils_module.escape = lambda value: value
 sys.modules.setdefault("tg_bot", tg_bot_module)
 sys.modules.setdefault("tg_bot.static_keyboards", tg_bot_static_keyboards_module)
 sys.modules.setdefault("tg_bot.utils", tg_bot_utils_module)
+tg_bot_module.static_keyboards = tg_bot_static_keyboards_module
 
 from core.config.constants import (
+	CBT_GEMINI_EDIT_DELAY,
 	CBT_GEMINI_CLEAR_CONFIRM,
 	CBT_GEMINI_DELETE,
 	CBT_GEMINI_DELETE_CANCEL,
@@ -45,6 +47,9 @@ from core.gemini import ui as gemini_ui_module
 from core.gemini.service import DeliveryOutcome, OUTCOME_COMPLETED
 from core.gemini.storage import GeminiDeliveryStorage, OrderReservationRequest
 from core.gemini.ui import TelegramGeminiDeliveryUI
+from core.gpt_accounts import ui as gpt_accounts_ui_module
+from core.gpt_accounts.storage import GptAccountsDeliveryStorage
+from core.gpt_accounts.ui import TelegramGptAccountsDeliveryUI
 from core.config.settings import normalize_settings
 
 
@@ -173,7 +178,7 @@ class GeminiDeliveryUITest(unittest.TestCase):
 	def test_registers_states_and_callbacks(self):
 		self.ui.register()
 
-		self.assertEqual(len(self.tg.handlers), 2)
+		self.assertEqual(len(self.tg.handlers), 3)
 		self.assertGreaterEqual(len(self.tg.callbacks), 10)
 
 	def test_main_page_shows_stock_and_gist_navigation(self):
@@ -189,6 +194,42 @@ class GeminiDeliveryUITest(unittest.TestCase):
 		self.ui.toggle_enabled(self.call("ma_gemini_toggle:0"))
 
 		self.assertTrue(self.host.settings["gemini_delivery"]["enabled"])
+		self.assertEqual(self.saved, ["save"])
+
+	def test_saves_gemini_delay(self):
+		self.ui.ask_delay(self.call(f"{CBT_GEMINI_EDIT_DELAY}0"))
+
+		self.ui.save_delay(self.message("15"))
+
+		self.assertEqual(self.host.settings["gemini_delivery"]["delay_seconds"], 15)
+		self.assertEqual(self.saved, ["save"])
+
+	def test_rejects_invalid_gemini_delay(self):
+		self.host.settings["gemini_delivery"]["delay_seconds"] = 10
+
+		self.ui.save_delay(self.message("-1"))
+
+		self.assertEqual(self.host.settings["gemini_delivery"]["delay_seconds"], 10)
+		self.assertIn("целое число", self.bot.replies[0][1])
+
+	def test_saves_gpt_delay(self):
+		gpt_accounts_ui_module.B = FakeButton
+		gpt_accounts_ui_module.K = FakeKeyboard
+		gpt_storage = GptAccountsDeliveryStorage(Path(self.temp_dir.name) / "accounts.json")
+		gpt_host = SimpleNamespace(
+			tg=self.tg,
+			tgbot=self.bot,
+			settings=self.host.settings,
+			save_settings=lambda: self.saved.append("save"),
+			gpt_accounts_storage=gpt_storage,
+			gpt_accounts_service=Mock(),
+		)
+		ui = TelegramGptAccountsDeliveryUI(gpt_host)
+
+		ui.ask_delay(self.call("ma_gpt_accounts_edit_delay:0"))
+		ui.save_delay(self.message("20"))
+
+		self.assertEqual(self.host.settings["gpt_accounts_delivery"]["delay_seconds"], 20)
 		self.assertEqual(self.saved, ["save"])
 
 	def test_adds_valid_links_and_reports_invalid_and_duplicates(self):
