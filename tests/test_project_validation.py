@@ -20,6 +20,13 @@ class ProjectValidationTest(unittest.TestCase):
 	def test_generated_source_is_valid_without_local_imports(self):
 		validate_generated_source()
 
+	def test_ui_settings_writes_use_transaction_helper(self):
+		for path in Path("core").rglob("*.py"):
+			if path.name in {"plugin.py", "updater.py"}:
+				continue
+			source = path.read_text(encoding="utf-8")
+			self.assertNotIn("self.host.save_settings()", source, path)
+
 
 if __name__ == "__main__":
 	unittest.main()
