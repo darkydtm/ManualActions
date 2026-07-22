@@ -1,0 +1,48 @@
+from __future__ import annotations
+
+import logging
+import unittest
+
+from core.runtime import KeyedLockRegistry, log_failure, run_effects
+
+
+class RuntimeTest(unittest.TestCase):
+	def test_same_key_reuses_lock_and_different_keys_do_not(self):
+		registry = KeyedLockRegistry()
+
+		self.assertIs(registry.lock_for("gemini:42"), registry.lock_for("gemini:42"))
+		self.assertIsNot(registry.lock_for("gemini:42"), registry.lock_for("gpt_accounts:42"))
+
+	def test_effect_failure_does_not_stop_following_effect(self):
+		calls = []
+
+		def fail():
+			raise RuntimeError("failed")
+
+		results = run_effects((fail, lambda: calls.append("next")))
+
+		self.assertEqual(calls, ["next"])
+		self.assertFalse(results[0].succeeded)
+		self.assertEqual(results[0].error, "failed")
+		self.assertTrue(results[1].succeeded)
+
+	def test_log_failure_redacts_supplied_secrets(self):
+		logger = logging.getLogger("test.runtime")
+
+		with self.assertLogs(logger, level="WARNING") as logs:
+			log_failure(
+				logger,
+				"delivery",
+				"ORDER-1",
+				"reserved",
+				"external_service",
+				"token=secret-token",
+				("secret-token",),
+			)
+
+		self.assertIn("token=***", logs.output[0])
+		self.assertNotIn("secret-token", logs.output[0])
+
+
+if __name__ == "__main__":
+	unittest.main()
