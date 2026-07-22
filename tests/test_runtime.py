@@ -7,6 +7,7 @@ import unittest
 
 from core.runtime import KeyedLockRegistry, log_failure, run_effects
 from core.runtime.persistence import AtomicWriteError, atomic_write_json
+from core.runtime.settings import update_settings
 
 
 class RuntimeTest(unittest.TestCase):
@@ -55,6 +56,18 @@ class RuntimeTest(unittest.TestCase):
 				atomic_write_json(path, {"invalid": object()})
 
 			self.assertEqual(path.read_text(encoding="utf-8"), '{"state": "old"}\n')
+
+	def test_settings_update_rolls_back_when_save_fails(self):
+		settings = {"status": "1"}
+
+		with self.assertRaises(RuntimeError):
+			update_settings(
+				settings,
+				lambda: (_ for _ in ()).throw(RuntimeError("offline")),
+				lambda value: value.__setitem__("status", "2"),
+			)
+
+		self.assertEqual(settings, {"status": "1"})
 
 
 if __name__ == "__main__":
