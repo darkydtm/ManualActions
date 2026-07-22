@@ -10,8 +10,8 @@ from threading import RLock
 import time
 from typing import Any, Callable, Iterable
 
-from ..config.constants import GEMINI_DELIVERY_FILE, LOGGER_NAME, LOGGER_PREFIX
-from ..runtime.persistence import AtomicWriteError, atomic_write_json
+from ...config.constants import GEMINI_DELIVERY_FILE, LOGGER_NAME, LOGGER_PREFIX
+from ...runtime.persistence import AtomicWriteError, atomic_write_json
 
 
 logger = logging.getLogger(LOGGER_NAME)

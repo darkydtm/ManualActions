@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.gpt_accounts.settings import Account
-from core.gpt_accounts.storage import GptAccountsDeliveryStorage, OrderReservationRequest, STATUS_WAITING_STOCK
+from core.delivery.providers.gpt_accounts import Account
+from core.delivery.providers.gpt_accounts_storage import GptAccountsDeliveryStorage, OrderReservationRequest, STATUS_WAITING_STOCK
 
 
 class GptAccountsStorageTest(unittest.TestCase):

@@ -1,7 +1,7 @@
 import unittest
 
 from core.config.settings import normalize_settings
-from core.gpt_accounts.settings import Account, format_accounts, parse_account_batch
+from core.delivery.providers.gpt_accounts import Account, format_accounts, parse_account_batch
 
 
 class GptAccountsSettingsTest(unittest.TestCase):

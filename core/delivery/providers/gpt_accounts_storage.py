@@ -8,9 +8,9 @@ from threading import RLock
 import time
 from typing import Any, Callable, Iterable
 
-from ..config.constants import GPT_ACCOUNTS_DELIVERY_FILE, LOGGER_NAME, LOGGER_PREFIX
-from ..runtime.persistence import atomic_write_json
-from .settings import Account
+from ...config.constants import GPT_ACCOUNTS_DELIVERY_FILE, LOGGER_NAME, LOGGER_PREFIX
+from ...runtime.persistence import atomic_write_json
+from .gpt_accounts import Account
 
 import logging
 

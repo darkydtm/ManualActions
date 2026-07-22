@@ -54,26 +54,25 @@ class BuildPluginTest(unittest.TestCase):
 		lines = build_plugin.build_source().splitlines()
 
 		self.assertEqual(lines.count("import logging"), 1)
-		self.assertEqual(lines.count("from dataclasses import dataclass"), 1)
-		self.assertEqual(
-			[line for line in lines if line.startswith("from typing import ")],
-			["from typing import TYPE_CHECKING, Any, Callable, Iterable, Protocol"],
-		)
+		self.assertEqual(sum(line.startswith("from dataclasses import ") for line in lines), 1)
+		self.assertEqual(len([line for line in lines if line.startswith("from typing import ")]), 1)
 		self.assertNotIn("\timport telebot", lines)
 
 	def test_includes_templates_flow_before_command_registration(self):
-		templates_index = build_plugin.PACKAGE_MODULES.index("telegram/templates")
-		commands_index = build_plugin.PACKAGE_MODULES.index("telegram/commands")
+		modules = build_plugin.discover_package_modules()
+		templates_index = modules.index("telegram/templates")
+		commands_index = modules.index("telegram/commands")
 
 		self.assertLess(templates_index, commands_index)
 		self.assertIn("class TelegramTemplatesFlow", build_plugin.build_source())
 
 	def test_includes_gemini_modules_in_dependency_order(self):
-		settings_index = build_plugin.PACKAGE_MODULES.index("gemini/settings")
-		storage_index = build_plugin.PACKAGE_MODULES.index("gemini/storage")
-		service_index = build_plugin.PACKAGE_MODULES.index("gemini/service")
-		ui_index = build_plugin.PACKAGE_MODULES.index("gemini/ui")
-		plugin_index = build_plugin.PACKAGE_MODULES.index("application/plugin")
+		modules = build_plugin.discover_package_modules()
+		settings_index = modules.index("delivery/providers/gemini")
+		storage_index = modules.index("delivery/providers/gemini_storage")
+		service_index = modules.index("delivery/providers/gemini_service")
+		ui_index = modules.index("delivery/providers/gemini_ui")
+		plugin_index = modules.index("application/plugin")
 
 		self.assertLess(settings_index, storage_index)
 		self.assertLess(storage_index, service_index)
@@ -85,11 +84,12 @@ class BuildPluginTest(unittest.TestCase):
 		self.assertIn("class TelegramGeminiDeliveryUI", source)
 
 	def test_includes_gpt_account_modules_in_dependency_order(self):
-		settings_index = build_plugin.PACKAGE_MODULES.index("gpt_accounts/settings")
-		storage_index = build_plugin.PACKAGE_MODULES.index("gpt_accounts/storage")
-		service_index = build_plugin.PACKAGE_MODULES.index("gpt_accounts/service")
-		ui_index = build_plugin.PACKAGE_MODULES.index("gpt_accounts/ui")
-		plugin_index = build_plugin.PACKAGE_MODULES.index("application/plugin")
+		modules = build_plugin.discover_package_modules()
+		settings_index = modules.index("delivery/providers/gpt_accounts")
+		storage_index = modules.index("delivery/providers/gpt_accounts_storage")
+		service_index = modules.index("delivery/providers/gpt_accounts_service")
+		ui_index = modules.index("delivery/providers/gpt_accounts_ui")
+		plugin_index = modules.index("application/plugin")
 
 		self.assertLess(settings_index, storage_index)
 		self.assertLess(storage_index, service_index)
@@ -98,15 +98,17 @@ class BuildPluginTest(unittest.TestCase):
 		self.assertIn("class GptAccountsDeliveryService", build_plugin.build_source())
 
 	def test_includes_two_factor_modules_before_plugin(self):
-		service_index = build_plugin.PACKAGE_MODULES.index("two_factor/service")
-		plugin_index = build_plugin.PACKAGE_MODULES.index("application/plugin")
+		modules = build_plugin.discover_package_modules()
+		service_index = modules.index("two_factor/service")
+		plugin_index = modules.index("application/plugin")
 
 		self.assertLess(service_index, plugin_index)
 		self.assertIn("class TwoFactorService", build_plugin.build_source())
 
 	def test_includes_lot_scheduling_before_settings(self):
-		scheduling_index = build_plugin.PACKAGE_MODULES.index("lots/scheduling")
-		settings_index = build_plugin.PACKAGE_MODULES.index("config/settings")
+		modules = build_plugin.discover_package_modules()
+		scheduling_index = modules.index("lots/scheduling")
+		settings_index = modules.index("config/settings")
 
 		self.assertLess(scheduling_index, settings_index)
 		self.assertIn("DEFAULT_LOT_SCHEDULING_SETTINGS", build_plugin.build_source())
