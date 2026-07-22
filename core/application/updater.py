@@ -66,27 +66,42 @@ class ManualActionsUpdater:
 		self.default_poll_interval = poll_interval
 		self._stop = threading.Event()
 		self._thread: threading.Thread | None = None
+		self._lifecycle_lock = threading.RLock()
+		self._check_lock = threading.RLock()
 
 	def start(self) -> None:
-		if self.mode() == MODE_DISABLED:
-			return
-		if self._thread and self._thread.is_alive():
-			return
+		with self._lifecycle_lock:
+			if self.mode() == MODE_DISABLED:
+				return
+			if self._thread and self._thread.is_alive() and not self._stop.is_set():
+				return
 
-		self._stop.clear()
-		self._thread = threading.Thread(target=self._run, name="ManualActionsUpdater", daemon=True)
-		self._thread.start()
+			stop_event = threading.Event()
+			thread = threading.Thread(
+				target=self._run,
+				args=(stop_event,),
+				name="ManualActionsUpdater",
+				daemon=True,
+			)
+			self._stop = stop_event
+			self._thread = thread
+			thread.start()
 
 	def stop(self) -> None:
-		self._stop.set()
-		if self._thread and self._thread.is_alive() and self._thread is not threading.current_thread():
-			self._thread.join(timeout=2)
+		with self._lifecycle_lock:
+			stop_event = self._stop
+			thread = self._thread
+			stop_event.set()
+		if thread and thread.is_alive() and thread is not threading.current_thread():
+			thread.join(timeout=2)
 
 	def check_once(self) -> ReleaseCheckResult:
-		return self._check_once(force=False)
+		with self._check_lock:
+			return self._check_once(force=False)
 
 	def check_manually(self) -> ReleaseCheckResult:
-		return self._check_once(force=True)
+		with self._check_lock:
+			return self._check_once(force=True)
 
 	def _check_once(self, force: bool) -> ReleaseCheckResult:
 		mode = self.mode()
@@ -114,13 +129,14 @@ class ManualActionsUpdater:
 		return ReleaseCheckResult(release, True, "available")
 
 	def install_latest(self, expected_version: str | None = None, notify: bool = True) -> Path:
-		release = fetch_latest_release(self.request_func)
-		if expected_version and release.version != expected_version:
-			raise UpdaterError("Найден другой релиз. Откройте обновление заново.")
-		path = self.install_release(release)
-		if notify and self.on_update_installed:
-			self.on_update_installed(release, path)
-		return path
+		with self._check_lock:
+			release = fetch_latest_release(self.request_func)
+			if expected_version and release.version != expected_version:
+				raise UpdaterError("Найден другой релиз. Откройте обновление заново.")
+			path = self.install_release(release)
+			if notify and self.on_update_installed:
+				self.on_update_installed(release, path)
+			return path
 
 	def skip_version(self, version: str) -> None:
 		self.config()["skipped_version"] = version.strip()
@@ -148,14 +164,14 @@ class ManualActionsUpdater:
 			return interval
 		return self.default_poll_interval
 
-	def _run(self) -> None:
-		while not self._stop.is_set():
+	def _run(self, stop_event: threading.Event) -> None:
+		while not stop_event.is_set():
 			try:
 				self.check_once()
 			except Exception as exc:
 				if self.on_update_error:
 					self.on_update_error(exc)
-			if self._stop.wait(self.poll_interval()):
+			if stop_event.wait(self.poll_interval()):
 				break
 
 
