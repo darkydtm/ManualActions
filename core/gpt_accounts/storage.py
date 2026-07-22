@@ -4,12 +4,12 @@ from copy import deepcopy
 from dataclasses import dataclass
 import json
 from pathlib import Path
-import tempfile
 from threading import RLock
 import time
 from typing import Any, Callable, Iterable
 
 from ..config.constants import GPT_ACCOUNTS_DELIVERY_FILE, LOGGER_NAME, LOGGER_PREFIX
+from ..runtime.persistence import atomic_write_json
 from .settings import Account
 
 import logging
@@ -202,12 +202,7 @@ class GptAccountsDeliveryStorage:
 			return result
 
 	def write_state(self, state: dict[str, Any]) -> None:
-		self.path.parent.mkdir(parents=True, exist_ok=True)
-		with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self.path.parent, delete=False) as file:
-			json.dump(state, file, ensure_ascii=False, indent="\t")
-			file.write("\n")
-			temporary_path = Path(file.name)
-		temporary_path.replace(self.path)
+		atomic_write_json(self.path, state, indent="\t")
 
 	@staticmethod
 	def default_state() -> dict[str, Any]:

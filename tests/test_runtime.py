@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 
 from core.runtime import KeyedLockRegistry, log_failure, run_effects
+from core.runtime.persistence import AtomicWriteError, atomic_write_json
 
 
 class RuntimeTest(unittest.TestCase):
@@ -42,6 +45,16 @@ class RuntimeTest(unittest.TestCase):
 
 		self.assertIn("token=***", logs.output[0])
 		self.assertNotIn("secret-token", logs.output[0])
+
+	def test_atomic_write_preserves_previous_file_on_json_error(self):
+		with TemporaryDirectory() as directory:
+			path = Path(directory) / "state.json"
+			path.write_text('{"state": "old"}\n', encoding="utf-8")
+
+			with self.assertRaises(AtomicWriteError):
+				atomic_write_json(path, {"invalid": object()})
+
+			self.assertEqual(path.read_text(encoding="utf-8"), '{"state": "old"}\n')
 
 
 if __name__ == "__main__":

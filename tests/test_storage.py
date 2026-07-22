@@ -23,6 +23,9 @@ class PluginStorageTest(unittest.TestCase):
 
 		self.assertEqual(json.loads(self.path.read_text(encoding="utf-8")), {"status": "1"})
 
+	def test_load_dict_returns_empty_for_missing_file(self):
+		self.assertEqual(self.storage.load_dict(str(self.path)), {})
+
 	def test_failed_save_preserves_previous_file(self):
 		self.path.parent.mkdir(parents=True)
 		self.path.write_text('{"status": "1"}\n', encoding="utf-8")

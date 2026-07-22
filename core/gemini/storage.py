@@ -6,12 +6,12 @@ import json
 import logging
 import os
 from pathlib import Path
-import tempfile
 from threading import RLock
 import time
 from typing import Any, Callable, Iterable
 
 from ..config.constants import GEMINI_DELIVERY_FILE, LOGGER_NAME, LOGGER_PREFIX
+from ..runtime.persistence import AtomicWriteError, atomic_write_json
 
 
 logger = logging.getLogger(LOGGER_NAME)
@@ -298,27 +298,9 @@ class GeminiDeliveryStorage:
 			return result
 
 	def save_state(self, state: dict[str, Any]) -> None:
-		self.path.parent.mkdir(parents=True, exist_ok=True)
-		temp_path = None
 		try:
-			with tempfile.NamedTemporaryFile(
-				"w",
-				encoding="utf-8",
-				dir=self.path.parent,
-				prefix=f".{self.path.name}.",
-				delete=False,
-			) as file:
-				temp_path = Path(file.name)
-				json.dump(state, file, indent=4, ensure_ascii=False)
-				file.flush()
-				os.fsync(file.fileno())
-			os.replace(temp_path, self.path)
-		except Exception as exc:
-			if temp_path:
-				try:
-					temp_path.unlink(missing_ok=True)
-				except Exception:
-					pass
+			atomic_write_json(self.path, state)
+		except AtomicWriteError as exc:
 			raise StorageUnavailableError(f"Failed to save storage: {self.path}") from exc
 
 	def trim_completed_orders(self, state: dict[str, Any]) -> None:
