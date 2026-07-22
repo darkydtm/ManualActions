@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import ast
+from pathlib import Path
+import sys
+from tempfile import TemporaryDirectory
+import types
 import unittest
+from unittest.mock import patch
 
 import build_plugin
 
@@ -9,6 +14,24 @@ import build_plugin
 class BuildPluginTest(unittest.TestCase):
 	def test_build_source_is_valid_python(self):
 		ast.parse(build_plugin.build_source())
+
+	def test_generated_source_keeps_gemini_reservation_result(self):
+		module = types.ModuleType("manual_actions_generated")
+		dependencies = self.build_dependencies()
+		dependencies[module.__name__] = module
+		with TemporaryDirectory() as directory, patch.dict(sys.modules, dependencies):
+			exec(build_plugin.build_source(), module.__dict__)
+			link = "https://one.google.com/activate-plan/subscription/new/link"
+			storage = module.GeminiDeliveryStorage(Path(directory) / "gemini_delivery.json")
+			storage.add_links((link,))
+
+			result = storage.reserve(
+				module.OrderReservationRequest("ORDER-1", 1),
+				"partial",
+			)
+
+		self.assertIsInstance(result, module.GeminiReservationResult)
+		self.assertEqual(result.links, (link,))
 
 	def test_moves_imports_to_header(self):
 		tree = ast.parse(build_plugin.build_source())
@@ -87,6 +110,35 @@ class BuildPluginTest(unittest.TestCase):
 
 		self.assertLess(scheduling_index, settings_index)
 		self.assertIn("DEFAULT_LOT_SCHEDULING_SETTINGS", build_plugin.build_source())
+
+	@staticmethod
+	def build_dependencies():
+		telebot = types.ModuleType("telebot")
+		telebot_types = types.ModuleType("telebot.types")
+		telebot_types.CallbackQuery = object
+		telebot_types.InlineKeyboardButton = object
+		telebot_types.InlineKeyboardMarkup = object
+		telebot_types.Message = object
+		telebot.TeleBot = object
+		telebot.types = telebot_types
+
+		tg_bot = types.ModuleType("tg_bot")
+		tg_bot.CBT = types.SimpleNamespace()
+		tg_bot_static_keyboards = types.ModuleType("tg_bot.static_keyboards")
+		tg_bot_utils = types.ModuleType("tg_bot.utils")
+		tg_bot_utils.escape = lambda value: value
+		tg_bot.static_keyboards = tg_bot_static_keyboards
+
+		utils = types.ModuleType("Utils")
+		utils.cardinal_tools = types.SimpleNamespace(cache_blacklist=lambda blacklist: None)
+		return {
+			"Utils": utils,
+			"telebot": telebot,
+			"telebot.types": telebot_types,
+			"tg_bot": tg_bot,
+			"tg_bot.static_keyboards": tg_bot_static_keyboards,
+			"tg_bot.utils": tg_bot_utils,
+		}
 
 	@staticmethod
 	def is_import_header_statement(statement: ast.stmt) -> bool:
