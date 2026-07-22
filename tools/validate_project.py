@@ -58,7 +58,7 @@ def validate_generated_source() -> None:
 
 
 def validate_public_annotations(package_path: Path) -> None:
-	for path in package_path.glob("*.py"):
+	for path in package_path.rglob("*.py"):
 		if path.name == "__init__.py":
 			continue
 		tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -73,12 +73,24 @@ def validate_public_annotations(package_path: Path) -> None:
 				raise ValidationError(f"Missing return annotation for {path}:{node.name}")
 
 
+def validate_ui_settings_transactions(source: str, path: Path) -> None:
+	if "self.host.save_settings()" in source:
+		raise ValidationError(f"Direct settings save: {path}")
+
+
+def validate_ui_settings_persistence(root: Path) -> None:
+	for package in ("telegram", "gemini", "gpt_accounts", "gist"):
+		for path in (root / "core" / package).rglob("*.py"):
+			validate_ui_settings_transactions(path.read_text(encoding="utf-8"), path)
+
+
 def validate_project(root: Path = ROOT) -> None:
 	validate_local_imports(root / "core")
 	validate_package_modules(root)
 	validate_generated_source()
 	validate_public_annotations(root / "core" / "runtime")
 	validate_public_annotations(root / "core" / "delivery")
+	validate_ui_settings_persistence(root)
 
 
 def main() -> int:
