@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from Utils import cardinal_tools
 
 from ..config.constants import LOGGER_NAME, LOGGER_PREFIX
+from ..runtime import call_external
 
 if TYPE_CHECKING:
 	from cardinal import Cardinal
@@ -113,8 +114,12 @@ def set_chat_mute(cardinal: Cardinal, chat_id: int | str, muted: bool) -> None:
 		"content-type": "application/x-www-form-urlencoded; charset=UTF-8",
 		"x-requested-with": "XMLHttpRequest",
 	}
-	response = account.method("post", "chat/mute", headers, payload, raise_not_200=True)
-	validate_mute_response(response)
+	result = call_external(
+		lambda: account.method("post", "chat/mute", headers, payload, raise_not_200=True),
+	)
+	if not result.succeeded:
+		raise RuntimeError(result.error)
+	validate_mute_response(result.value)
 
 
 def ensure_csrf_token(account: Any) -> None:
