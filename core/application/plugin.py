@@ -84,9 +84,11 @@ class ManualActionsPlugin:
 	def register(self) -> None:
 		self.telegram_ui.register()
 		self.telegram_commands.register()
+		self.module_registry.register_telegram(self)
 		self.cardinal.new_message_handlers.append(self.message_hook)
 		self.cardinal.last_chat_message_changed_handlers.append(self.message_hook)
 		self.cardinal.new_order_handlers.append(self.new_order_hook)
+		self.module_registry.register_funpay(self)
 		self.refresh_updater()
 
 	def configure_updater(self) -> None:
@@ -112,6 +114,7 @@ class ManualActionsPlugin:
 	def shutdown(self) -> None:
 		if self.updater:
 			self.updater.stop()
+		self.module_registry.shutdown(self)
 
 	def install_update_version(self, version: str) -> Path:
 		if not self.updater:

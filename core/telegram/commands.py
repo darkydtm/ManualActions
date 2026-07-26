@@ -23,6 +23,7 @@ from ..application.updater import ReleaseCheckResult
 from .blacklist import TelegramBlacklistFlow
 from .lots import TelegramLotsFlow
 from .orders import TelegramOrdersFlow
+from .profit import TelegramProfitFlow
 from .templates import TelegramTemplatesFlow
 
 if TYPE_CHECKING:
@@ -54,6 +55,7 @@ class TelegramCommands:
 		("bl_list", "Показать чёрный список", True),
 		("lot", "Информация о лоте: /lot [ID] или в топике", True),
 		("orders", "Заказы пользователя: /orders [ник] или в топике", True),
+		("profit", "Прибыль за период: /profit", True),
 		("gist", "Создать GitHub Gist: /gist &lt;текст&gt; или reply", True),
 		("templates", "Отправить заготовку в топике Chat Sync", True),
 		("status", "Статус: /status [0/1/2]", True),
@@ -66,6 +68,7 @@ class TelegramCommands:
 		self.lots_flow = TelegramLotsFlow(host)
 		self.orders_flow = TelegramOrdersFlow(host, self.ask_refund_confirm)
 		self.gist_flow = TelegramGistFlow(host)
+		self.profit_flow = TelegramProfitFlow(host)
 		self.templates_flow = TelegramTemplatesFlow(host)
 
 	def register(self) -> None:
@@ -84,6 +87,7 @@ class TelegramCommands:
 		self.lots_flow.register()
 		self.orders_flow.register()
 		self.gist_flow.register()
+		self.profit_flow.register()
 		self.templates_flow.register()
 		self.host.cardinal.add_telegram_commands(UUID, self.COMMANDS)
 		self.host.tg.msg_handler(self.cmd_refund, commands=["refund"])

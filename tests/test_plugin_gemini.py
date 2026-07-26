@@ -71,7 +71,7 @@ class PluginGeminiIntegrationTest(unittest.TestCase):
 
 		plugin.register()
 
-		self.assertEqual(self.cardinal.new_order_handlers, [plugin.new_order_hook])
+		self.assertIn(plugin.new_order_hook, self.cardinal.new_order_handlers)
 		self.assertEqual(getattr(ManualActionsPlugin.new_order_hook, "plugin_uuid"), UUID)
 
 	def test_new_order_hook_delegates_to_orchestrator(self):
