@@ -20,6 +20,7 @@ BOOLEAN_KEYS = (
 	"self_notify",
 	"tag_admins_on_reply",
 	"sync_on_start",
+	"import_offered",
 )
 
 DEFAULT_CHAT_SYNC_SETTINGS = {
@@ -35,6 +36,7 @@ DEFAULT_CHAT_SYNC_SETTINGS = {
 	"self_notify": True,
 	"tag_admins_on_reply": False,
 	"sync_on_start": True,
+	"import_offered": False,
 	"history_depth": 25,
 	"messages_per_minute": 20,
 }
