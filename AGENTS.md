@@ -9,6 +9,8 @@ The plugin entry point is `main.py`. Keep this file small because Cardinal loads
 ## Current Features
 
 - Built-in Chat Sync mirrors FunPay chats into Telegram forum topics using only the Cardinal bot.
+- Chat Sync can import the group, settings, and topic links from the standalone `745ed27e-...` plugin, offers that
+  import once on startup, and warns admins while the standalone plugin is still installed.
 - Telegram `/refund [order_id]` refunds an order after confirmation.
 - Telegram `/refund` inside a Chat Sync topic resolves the buyer from the topic and offers pending paid orders.
 - Telegram `/bl [username]` toggles Cardinal blacklist state.
@@ -62,6 +64,23 @@ Telegram bot: the Cardinal bot, added to a forum group as an administrator with 
 - Cardinal notifications for the sync group should stay off, otherwise messages are duplicated in "General".
 
 Topics are stored in `storage/plugins/manual_actions/chat_sync_topics.json`.
+
+## Chat Sync Import
+
+`core/chat_sync/importer.py` reads the standalone plugin's `storage/plugins/745ed27e-.../settings.json` and
+`threads.json`, maps its setting names to the built-in ones, and builds an `ImportPlan`. Nothing touches disk until
+`ChatSyncService.apply_import` runs.
+
+- Bots and tokens are never imported - the built-in Chat Sync runs on the Cardinal bot only.
+- A legacy thread is skipped when its FunPay chat or its `thread_id` is already linked, so re-importing is safe.
+- When the legacy group differs from the bound one, the import replaces the group and drops the current topic links -
+  they belong to another group.
+- `ImportPlan.settings` keeps only the flags that differ from the current config, so `changes` reports real work.
+- Imported records have no username until `resolve_usernames` (one `get_chats` call) or `remember_username` fills it in
+  from a delivered message.
+- `import_offered` in the Chat Sync settings keeps the startup offer from repeating. `register_telegram` calls
+  `announce_legacy_plugin`, which warns admins while the standalone plugin is still loaded (`legacy_plugin_installed`
+  scans `sys.modules` for its UUID) and offers the import once.
 
 ## Important Behavior
 

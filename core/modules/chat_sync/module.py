@@ -30,6 +30,7 @@ def register_funpay(host: Any) -> None:
 def register_telegram(host: Any) -> None:
 	host.services["chat_sync_ui"].register()
 	host.services["chat_sync_flow"].register()
+	host.services["chat_sync_ui"].announce_legacy_plugin()
 
 
 def shutdown(host: Any) -> None:

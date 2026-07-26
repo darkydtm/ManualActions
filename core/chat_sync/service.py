@@ -17,6 +17,7 @@ from .formatting import (
 	escape,
 	render_messages,
 )
+from .importer import ImportPlan, LegacySnapshot, build_import_plan, read_legacy_snapshot
 from .registry import set_active_service
 from .settings import DEFAULT_CHAT_SYNC_SETTINGS
 from .storage import ChatSyncStorage, TopicRecord
@@ -225,6 +226,7 @@ class ChatSyncService:
 		key = str(chat_id)
 		record = self.get_topic(key)
 		if record:
+			self.remember_username(key, username)
 			return record
 
 		# Serialize per chat so concurrent events cannot create two topics for one chat.
@@ -276,6 +278,19 @@ class ChatSyncService:
 		if record:
 			logger.warning(f"{LOGGER_PREFIX} Topic {record.thread_id} for chat {key} is gone, unlinked.")
 			self.save_topics()
+
+	def remember_username(self, key: str, username: str) -> None:
+		"""Imported and renamed topics carry no username until a chat name shows up."""
+		name = str(username or "").strip()
+		if not name:
+			return
+
+		with self._topics_lock:
+			record = self.topics.get(key)
+			if not record or record.username == name:
+				return
+			record.username = name
+		self.save_topics()
 
 	def clear_topics(self) -> None:
 		with self._topics_lock:
@@ -618,6 +633,67 @@ class ChatSyncService:
 			return created
 		finally:
 			self._bulk_sync_running = False
+
+	# Legacy plugin import
+
+	def legacy_snapshot(self) -> LegacySnapshot:
+		return read_legacy_snapshot(getattr(self.storage, "storage", None))
+
+	def preview_import(self, snapshot: LegacySnapshot | None = None) -> ImportPlan:
+		snapshot = self.legacy_snapshot() if snapshot is None else snapshot
+		with self._topics_lock:
+			current = dict(self.topics)
+		return build_import_plan(snapshot, current, self.telegram_chat_id, current_settings=self.config)
+
+	def import_legacy(self, snapshot: LegacySnapshot | None = None) -> ImportPlan:
+		snapshot = self.legacy_snapshot() if snapshot is None else snapshot
+		if not snapshot.available:
+			return ImportPlan()
+
+		with self._topics_lock:
+			current = dict(self.topics)
+		plan = build_import_plan(
+			snapshot,
+			current,
+			self.telegram_chat_id,
+			self.resolve_usernames(snapshot.threads),
+			self.config,
+		)
+		self.apply_import(plan)
+		logger.info(
+			f"{LOGGER_PREFIX} Imported Chat Sync data: {plan.added} topics added, "
+			f"{plan.skipped} skipped, {plan.dropped} dropped."
+		)
+		return plan
+
+	def apply_import(self, plan: ImportPlan) -> None:
+		values = dict(plan.settings)
+		if plan.chat_id:
+			values["chat_id"] = plan.chat_id
+		if values:
+			self.host.update_settings(lambda settings: settings["chat_sync"].update(values))
+
+		with self._topics_lock:
+			self.topics = dict(plan.topics)
+			self._reversed = {record.thread_id: key for key, record in self.topics.items()}
+		self.save_topics()
+
+	def resolve_usernames(self, threads: dict[str, int]) -> dict[str, str]:
+		if not threads:
+			return {}
+
+		result = call_external(lambda: self.cardinal.account.get_chats())
+		if not result.succeeded:
+			logger.warning(f"{LOGGER_PREFIX} Failed to resolve usernames for imported topics: {result.error}")
+			return {}
+
+		names: dict[str, str] = {}
+		for chat_id, chat in dict(result.value or {}).items():
+			key = str(getattr(chat, "id", chat_id))
+			name = str(getattr(chat, "name", "") or "")
+			if name and key in threads:
+				names[key] = name
+		return names
 
 	# Topic decoration
 

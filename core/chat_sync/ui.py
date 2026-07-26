@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 from typing import Any
 
@@ -11,19 +12,27 @@ from ..config.constants import (
 	CBT_CHAT_SYNC_CATEGORY,
 	CBT_CHAT_SYNC_EDIT_DEPTH,
 	CBT_CHAT_SYNC_EDIT_RATE,
+	CBT_CHAT_SYNC_IMPORT,
+	CBT_CHAT_SYNC_IMPORT_CONFIRM,
+	CBT_CHAT_SYNC_IMPORT_SKIP,
 	CBT_CHAT_SYNC_PAGE,
 	CBT_CHAT_SYNC_SYNC,
 	CBT_CHAT_SYNC_TOGGLE,
 	CBT_CHAT_SYNC_UNBIND,
 	CBT_CHAT_SYNC_UNBIND_CONFIRM,
+	LOGGER_NAME,
+	LOGGER_PREFIX,
 	STATE_CHAT_SYNC_DEPTH,
 	STATE_CHAT_SYNC_RATE,
 	UUID,
 )
 from ..runtime.settings import update_host_settings
+from .importer import ImportPlan, legacy_plugin_installed
 from .settings import MAX_HISTORY_DEPTH, MAX_MESSAGES_PER_MINUTE, MIN_MESSAGES_PER_MINUTE
 from .service import ChatSyncService
 
+
+logger = logging.getLogger(LOGGER_NAME)
 
 TOGGLE_LABELS = {
 	"enabled": "Синхронизация",
@@ -57,7 +66,20 @@ SETUP_GUIDE = (
 	"2. Добавьте этого бота в группу и сделайте администратором с правом «Управление темами».\n"
 	"3. Отправьте в группе <code>/setup_sync_chat</code>.\n"
 	"4. Отправьте <code>/sync_chats</code>, чтобы создать темы для существующих чатов.\n\n"
+	"Если раньше работал плагин Chat Sync - удалите его файл из <code>plugins</code>: группу, настройки и темы "
+	"можно перенести кнопкой импорта, а два одновременно работающих Chat Sync дублируют сообщения.\n\n"
 	"Уведомления Cardinal для этой группы лучше отключить - иначе сообщения продублируются в «General»."
+)
+
+IMPORT_HINT = (
+	"📥 Найдены данные плагина Chat Sync. Кнопка «Импорт из плагина Chat Sync» перенесёт группу, "
+	"настройки и связки тем - создавать всё заново не нужно."
+)
+
+REMOVE_PLUGIN_WARNING = (
+	"⚠️ Плагин Chat Sync (<code>745ed27e-3196-47c3-9483-e382c09fd2d8</code>) установлен. "
+	"Удалите его файл из <code>plugins</code> и перезапустите Cardinal, иначе каждое сообщение "
+	"придёт в тему дважды - от встроенного Chat Sync и от плагина."
 )
 
 
@@ -79,6 +101,9 @@ class TelegramChatSyncSettingsUI:
 		tg.cbq_handler(self.confirm_unbind, lambda c: (c.data or "").startswith(CBT_CHAT_SYNC_UNBIND_CONFIRM))
 		tg.cbq_handler(self.edit_depth, lambda c: (c.data or "").startswith(CBT_CHAT_SYNC_EDIT_DEPTH))
 		tg.cbq_handler(self.edit_rate, lambda c: (c.data or "").startswith(CBT_CHAT_SYNC_EDIT_RATE))
+		tg.cbq_handler(self.ask_import, lambda c: (c.data or "").startswith(CBT_CHAT_SYNC_IMPORT))
+		tg.cbq_handler(self.confirm_import, lambda c: (c.data or "").startswith(CBT_CHAT_SYNC_IMPORT_CONFIRM))
+		tg.cbq_handler(self.skip_import, lambda c: (c.data or "").startswith(CBT_CHAT_SYNC_IMPORT_SKIP))
 		tg.msg_handler(
 			self.save_depth,
 			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_CHAT_SYNC_DEPTH),
@@ -99,6 +124,7 @@ class TelegramChatSyncSettingsUI:
 		config = self.service.config
 		bound = self.service.telegram_chat_id
 		state = "✅ работает" if self.service.ready else "❌ не работает"
+		plan = self.service.preview_import()
 
 		text = (
 			"<b>Chat Sync</b>\n\n"
@@ -107,7 +133,7 @@ class TelegramChatSyncSettingsUI:
 			f"Тем создано: <b>{len(self.service.topics)}</b>\n"
 			f"История в новой теме: <b>{config.get('history_depth')}</b> сообщений\n"
 			f"Лимит отправки: <b>{config.get('messages_per_minute')}</b> сообщений/мин\n\n"
-			f"{self.hint()}"
+			f"{self.warning()}{self.hint(plan)}"
 		)
 
 		keyboard = K(row_width=1)
@@ -117,13 +143,19 @@ class TelegramChatSyncSettingsUI:
 		keyboard.add(B("🐢 Лимит отправки", callback_data=f"{CBT_CHAT_SYNC_EDIT_RATE}{offset}"))
 		if bound:
 			keyboard.add(B("🔄 Синхронизировать чаты", callback_data=f"{CBT_CHAT_SYNC_SYNC}{offset}"))
+		if plan.available:
+			keyboard.add(B("📥 Импорт из плагина Chat Sync", callback_data=f"{CBT_CHAT_SYNC_IMPORT}{offset}"))
+		if bound:
 			keyboard.add(B("🗑 Отвязать группу", callback_data=f"{CBT_CHAT_SYNC_UNBIND}{offset}"))
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT.PLUGIN_SETTINGS}:{UUID}:{offset}"))
 		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
 
-	def hint(self) -> str:
+	def warning(self) -> str:
+		return f"{REMOVE_PLUGIN_WARNING}\n\n" if legacy_plugin_installed() else ""
+
+	def hint(self, plan: ImportPlan) -> str:
 		if not self.service.telegram_chat_id:
-			return SETUP_GUIDE
+			return f"{SETUP_GUIDE}\n\n{IMPORT_HINT}" if plan.available else SETUP_GUIDE
 		if getattr(self.service.cardinal, "old_mode_enabled", False):
 			return "⚠️ Chat Sync не работает со старым режимом получения сообщений. Отключите его в /menu."
 		if not self.service.config.get("enabled"):
@@ -197,6 +229,145 @@ class TelegramChatSyncSettingsUI:
 		self.service.clear_topics()
 		self.show_page(call.message.chat.id, call.message.id, offset, True)
 		self.host.tgbot.answer_callback_query(call.id, "Группа отвязана.")
+
+	# Startup announcement
+
+	def announce_legacy_plugin(self) -> None:
+		threading.Thread(
+			target=self.send_legacy_announcement,
+			name="manual-actions-chat-sync-notice",
+			daemon=True,
+		).start()
+
+	def send_legacy_announcement(self) -> None:
+		installed = legacy_plugin_installed()
+		plan = self.service.preview_import()
+		offer = bool(plan.available and plan.changes and not self.service.config.get("import_offered"))
+		if not installed and not offer:
+			return
+
+		lines = ["<b>Chat Sync</b>\n"]
+		keyboard = None
+		if installed:
+			logger.warning(f"{LOGGER_PREFIX} The standalone Chat Sync plugin is installed, messages may be duplicated.")
+			lines.append(REMOVE_PLUGIN_WARNING)
+		if offer:
+			lines.append(
+				f"\n📥 Найдены данные плагина: группа <code>{plan.chat_id or 'не найдена'}</code>, "
+				f"тем для переноса - <b>{plan.added}</b>.\n"
+				"Импорт перенесёт группу, настройки и связки тем, создавать их заново не нужно."
+			)
+			keyboard = K(row_width=2)
+			keyboard.add(
+				B("📥 Импортировать", callback_data=f"{CBT_CHAT_SYNC_IMPORT_CONFIRM}0"),
+				B("❌ Не сейчас", callback_data=f"{CBT_CHAT_SYNC_IMPORT_SKIP}0"),
+			)
+			self.mark_import_offered()
+
+		self.host.send_telegram_admin_message("\n".join(lines), keyboard)
+
+	def mark_import_offered(self) -> None:
+		if self.service.config.get("import_offered"):
+			return
+		update_host_settings(self.host, lambda settings: settings["chat_sync"].__setitem__("import_offered", True))
+
+	# Import from the standalone plugin
+
+	def ask_import(self, call: Any) -> None:
+		offset = self.get_offset(call.data)
+		plan = self.service.preview_import()
+		if not plan.available:
+			self.host.tgbot.answer_callback_query(call.id, "Данные плагина Chat Sync не найдены.", show_alert=True)
+			return
+
+		keyboard = K(row_width=2)
+		if plan.changes:
+			keyboard.add(
+				B("📥 Импортировать", callback_data=f"{CBT_CHAT_SYNC_IMPORT_CONFIRM}{offset}"),
+				B("◀️ Отмена", callback_data=f"{CBT_CHAT_SYNC_PAGE}{offset}"),
+			)
+		else:
+			keyboard.add(B("◀️ Назад", callback_data=f"{CBT_CHAT_SYNC_PAGE}{offset}"))
+		self.host.tgbot.edit_message_text(
+			self.import_preview_text(plan),
+			call.message.chat.id,
+			call.message.id,
+			reply_markup=keyboard,
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def import_preview_text(self, plan: ImportPlan) -> str:
+		lines = [
+			"<b>Импорт из плагина Chat Sync</b>\n",
+			f"Группа: <code>{plan.chat_id if plan.chat_id else 'не найдена'}</code>",
+			f"Новых тем: <b>{plan.added}</b>",
+		]
+		if plan.skipped:
+			lines.append(f"Уже связано: <b>{plan.skipped}</b>")
+		if plan.settings:
+			lines.append(f"Настроек: <b>{len(plan.settings)}</b>")
+		if plan.replaces_group:
+			lines.append(
+				f"\n⚠️ Текущая группа будет заменена, "
+				f"а её связки тем (<b>{plan.dropped}</b>) сброшены."
+			)
+		if not plan.changes:
+			lines.append("\nИмпортировать нечего - всё уже перенесено.")
+		else:
+			lines.append("\nБоты и токены плагина не переносятся - встроенный Chat Sync работает на боте Cardinal.")
+		return "\n".join(lines)
+
+	def confirm_import(self, call: Any) -> None:
+		offset = self.get_offset(call.data)
+		self.host.tgbot.answer_callback_query(call.id, "Импортирую...")
+		chat_id, message_id = call.message.chat.id, call.message.id
+		threading.Thread(target=self.run_import, args=(chat_id, message_id, offset), daemon=True).start()
+
+	def skip_import(self, call: Any) -> None:
+		offset = self.get_offset(call.data)
+		self.mark_import_offered()
+		keyboard = K(row_width=1)
+		keyboard.add(B("◀️ К Chat Sync", callback_data=f"{CBT_CHAT_SYNC_PAGE}{offset}"))
+		self.send_or_edit(
+			"Импорт отложен. Запустить его можно в настройках Chat Sync.",
+			call.message.chat.id,
+			call.message.id,
+			keyboard,
+			True,
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def run_import(self, chat_id: int, message_id: int, offset: str) -> None:
+		try:
+			plan = self.service.import_legacy()
+			self.mark_import_offered()
+			text = self.import_result_text(plan)
+		except Exception as exc:
+			logger.error(f"{LOGGER_PREFIX} Chat Sync import failed: {exc}")
+			logger.debug("TRACEBACK", exc_info=True)
+			text = "❌ Не удалось импортировать данные плагина Chat Sync."
+
+		keyboard = K(row_width=1)
+		keyboard.add(B("◀️ К Chat Sync", callback_data=f"{CBT_CHAT_SYNC_PAGE}{offset}"))
+		self.send_or_edit(text, chat_id, message_id, keyboard, True)
+
+	def import_result_text(self, plan: ImportPlan) -> str:
+		lines = [
+			"<b>✅ Импорт завершён</b>\n",
+			f"Перенесено тем: <b>{plan.added}</b>",
+		]
+		if plan.skipped:
+			lines.append(f"Пропущено (уже связаны): <b>{plan.skipped}</b>")
+		if plan.settings:
+			lines.append(f"Перенесено настроек: <b>{len(plan.settings)}</b>")
+		if plan.chat_id:
+			lines.append(f"Группа: <code>{plan.chat_id}</code>")
+		lines.append(
+			"\n⚠️ Удалите плагин Chat Sync из <code>plugins</code> и перезапустите Cardinal - "
+			"пока он работает, каждое сообщение приходит в тему дважды.\n"
+			"Бот Cardinal должен быть администратором группы с правом «Управление темами»."
+		)
+		return "\n".join(lines)
 
 	# Numeric settings
 
