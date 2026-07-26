@@ -5,6 +5,8 @@ from dataclasses import dataclass
 import logging
 from typing import TYPE_CHECKING
 
+from ..chat_sync.registry import get_active_service
+from ..chat_sync.topics import parse_topic_name
 from ..config.constants import LOGGER_NAME, LOGGER_PREFIX, SYNC_PLUGIN_UUID
 from ..runtime import call_external
 
@@ -30,6 +32,11 @@ logger = logging.getLogger(LOGGER_NAME)
 
 
 def get_chat_sync_obj():
+	"""Return the built-in Chat Sync service, or the standalone plugin when it is installed."""
+	service = get_active_service()
+	if service is not None:
+		return service
+
 	try:
 		for mod in list(sys.modules.values()):
 			if hasattr(mod, "cs_obj") and getattr(mod, "UUID", None) == SYNC_PLUGIN_UUID:
@@ -79,22 +86,6 @@ def send_chat_sync_topic_message(bot, topic: ChatSyncTopic, text: str) -> bool:
 	return False
 
 
-def parse_topic_name(name: str) -> tuple[str, int] | tuple[None, None]:
-	try:
-		if "👤" in name:
-			name = name.split("👤", 1)[1]
-
-		parts = name.strip().rsplit(" ", 1)
-		if len(parts) != 2:
-			return None, None
-
-		username = parts[0].strip()
-		chat_id = int(parts[1].replace("(", "").replace(")", "").strip())
-		return username, chat_id
-	except (TypeError, ValueError):
-		return None, None
-
-
 def is_in_sync_chat(message: telebot.types.Message) -> bool:
 	cs = get_chat_sync_obj()
 	if not cs or not getattr(cs, "ready", False):
@@ -108,6 +99,13 @@ def is_in_sync_chat(message: telebot.types.Message) -> bool:
 	)
 
 
+def reversed_threads_of(cs: object) -> dict:
+	threads = getattr(cs, "reversed_threads", None)
+	if isinstance(threads, dict):
+		return threads
+	return getattr(cs, "_ChatSync__reversed_threads", {}) or {}
+
+
 def get_topic_context(cardinal: Cardinal, message: telebot.types.Message) -> TopicContext | None:
 	cs = get_chat_sync_obj()
 	if not cs or not getattr(cs, "ready", False):
@@ -116,8 +114,7 @@ def get_topic_context(cardinal: Cardinal, message: telebot.types.Message) -> Top
 		return None
 
 	thread_id = message.message_thread_id
-	reversed_threads = getattr(cs, "_ChatSync__reversed_threads", {}) or {}
-	fp_chat_id_str = reversed_threads.get(thread_id)
+	fp_chat_id_str = reversed_threads_of(cs).get(thread_id)
 	if not fp_chat_id_str:
 		return None
 
@@ -142,3 +139,15 @@ def get_topic_context(cardinal: Cardinal, message: telebot.types.Message) -> Top
 		logger.warning(f"{LOGGER_PREFIX} Failed to resolve Chat Sync topic context: {exc}")
 		logger.debug("TRACEBACK", exc_info=True)
 		return None
+
+
+__all__ = [
+	"ChatSyncTopic",
+	"TopicContext",
+	"find_chat_sync_topic",
+	"get_chat_sync_obj",
+	"get_topic_context",
+	"is_in_sync_chat",
+	"parse_topic_name",
+	"send_chat_sync_topic_message",
+]

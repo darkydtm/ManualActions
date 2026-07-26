@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from ..chat_sync.settings import DEFAULT_CHAT_SYNC_SETTINGS, normalize_chat_sync_settings
 from ..delivery.providers.gemini import DEFAULT_GEMINI_DELIVERY_SETTINGS, normalize_gemini_delivery_settings
 from ..delivery.providers.gpt_accounts import DEFAULT_GPT_ACCOUNTS_DELIVERY_SETTINGS, normalize_gpt_accounts_delivery_settings
 from ..gist.settings import DEFAULT_GIST_SETTINGS, normalize_gist_settings
@@ -46,6 +47,10 @@ DEFAULT_TWO_FACTOR_SETTINGS = {
 	"label": "2FA: ",
 }
 
+DEFAULT_PROFIT_SETTINGS = {
+	"include_paid": True,
+}
+
 DEFAULT_SETTINGS = {
 	"status": "1",
 	"status_response_texts": DEFAULT_STATUS_RESPONSE_TEXTS,
@@ -57,6 +62,8 @@ DEFAULT_SETTINGS = {
 	"updater": DEFAULT_UPDATER_SETTINGS,
 	"two_factor": DEFAULT_TWO_FACTOR_SETTINGS,
 	"lot_scheduling": DEFAULT_LOT_SCHEDULING_SETTINGS,
+	"profit": DEFAULT_PROFIT_SETTINGS,
+	"chat_sync": DEFAULT_CHAT_SYNC_SETTINGS,
 }
 
 
@@ -78,6 +85,19 @@ def normalize_settings(data: dict[str, Any] | None) -> dict[str, Any]:
 	settings["updater"] = normalize_updater_settings(data.get("updater"))
 	settings["two_factor"] = normalize_two_factor_settings(data.get("two_factor"))
 	settings["lot_scheduling"] = normalize_lot_scheduling_settings(data.get("lot_scheduling"))
+	settings["profit"] = normalize_profit_settings(data.get("profit"))
+	settings["chat_sync"] = normalize_chat_sync_settings(data.get("chat_sync"))
+	return settings
+
+
+def normalize_profit_settings(data: Any) -> dict[str, bool]:
+	settings = DEFAULT_PROFIT_SETTINGS.copy()
+	if not isinstance(data, dict):
+		return settings
+
+	include_paid = data.get("include_paid")
+	if isinstance(include_paid, bool):
+		settings["include_paid"] = include_paid
 	return settings
 
 

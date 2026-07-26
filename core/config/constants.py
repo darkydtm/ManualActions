@@ -4,19 +4,25 @@ import os
 
 
 NAME = "Manual Actions"
-VERSION = "1.5.11"
+VERSION = "1.6.0"
 DESCRIPTION = (
-	"Ручное управление заказами прямо из Telegram.\n\n"
+	"Ручное управление заказами прямо из Telegram + встроенный Chat Sync.\n\n"
+	"Chat Sync зеркалит FunPay чаты в темы Telegram-форума и работает на одном боте - самом Cardinal.\n\n"
 	"Работает в двух режимах:\n"
-	"• В топике Chat Sync - команды без аргументов, контекст берётся из топика автоматически.\n"
+	"• В теме Chat Sync - команды без аргументов, контекст берётся из темы автоматически.\n"
 	"• В любом чате - команды с явными аргументами.\n\n"
+	"/setup_sync_chat - привязать группу-форум\n"
+	"/sync_chats - создать темы для всех чатов\n"
+	"/history, /full_history - история чата в теме\n"
+	"/watch - что смотрит собеседник\n"
 	"/refund [ID] - сделать возврат\n"
 	"/bl [ник] - переключить чёрный список\n"
 	"/bl_list - показать чёрный список\n"
 	"/lot [ID] - показать информацию о лоте\n"
 	"/orders [ник] - показать заказы пользователя\n"
+	"/profit - посчитать прибыль за период\n"
 	"/gist <текст> - создать GitHub Gist\n"
-	"/templates - отправить заготовку в топике Chat Sync\n"
+	"/templates - отправить заготовку в теме Chat Sync\n"
 	"/status [0/1/2] - переключить текущий статус\n"
 	"!code [ID] - показать код 2FA для заказа\n"
 	"!status - показать статус в FunPay"
@@ -33,6 +39,7 @@ SETTINGS_FILE = os.path.join(PLUGIN_FOLDER, "settings.json")
 GEMINI_DELIVERY_FILE = os.path.join(PLUGIN_FOLDER, "gemini_delivery.json")
 GPT_ACCOUNTS_DELIVERY_FILE = os.path.join(PLUGIN_FOLDER, "gpt_accounts_delivery.json")
 TWO_FACTOR_FILE = os.path.join(PLUGIN_FOLDER, "two_factor.json")
+CHAT_SYNC_TOPICS_FILE = os.path.join(PLUGIN_FOLDER, "chat_sync_topics.json")
 
 SYNC_PLUGIN_UUID = "745ed27e-3196-47c3-9483-e382c09fd2d8"
 
@@ -54,6 +61,11 @@ CBT_ORDERS_PAGE = "ma_orders_page:"
 CBT_ORDERS_FILTER = "ma_orders_filter:"
 CBT_ORDERS_DETAIL = "ma_orders_detail:"
 CBT_ORDERS_REFUND = "ma_orders_refund:"
+
+CBT_PROFIT_PAGE = "ma_profit_page:"
+CBT_PROFIT_PERIOD = "ma_profit_period:"
+CBT_PROFIT_CUSTOM = "ma_profit_custom:"
+CBT_PROFIT_TOGGLE_PAID = "ma_profit_toggle_paid:"
 
 CBT_STATUS_PAGE = "ma_status_page:"
 CBT_STATUS_CATEGORY = "ma_status_category:"
@@ -137,6 +149,15 @@ CBT_UPDATER_CUSTOM_INTERVAL = "ma_updater_custom_interval:"
 CBT_UPDATER_INSTALL = "ma_updater_install:"
 CBT_UPDATER_SKIP = "ma_updater_skip:"
 
+CBT_CHAT_SYNC_PAGE = "ma_chat_sync_page:"
+CBT_CHAT_SYNC_CATEGORY = "ma_chat_sync_category:"
+CBT_CHAT_SYNC_TOGGLE = "ma_chat_sync_toggle:"
+CBT_CHAT_SYNC_SYNC = "ma_chat_sync_sync:"
+CBT_CHAT_SYNC_UNBIND = "ma_chat_sync_unbind:"
+CBT_CHAT_SYNC_UNBIND_CONFIRM = "ma_chat_sync_unbind_confirm:"
+CBT_CHAT_SYNC_EDIT_DEPTH = "ma_chat_sync_edit_depth:"
+CBT_CHAT_SYNC_EDIT_RATE = "ma_chat_sync_edit_rate:"
+
 CBT_TWO_FACTOR_PAGE = "ma_two_factor_page:"
 CBT_TWO_FACTOR_EDIT_LABEL = "ma_two_factor_edit_label:"
 
@@ -156,3 +177,6 @@ STATE_GPT_ACCOUNTS_ADD = "ma_gpt_accounts_add"
 STATE_GPT_ACCOUNTS_TEMPLATE = "ma_gpt_accounts_template"
 STATE_GPT_ACCOUNTS_DELAY = "ma_gpt_accounts_delay"
 STATE_TWO_FACTOR_LABEL = "ma_two_factor_label"
+STATE_PROFIT_CUSTOM_PERIOD = "ma_profit_custom_period"
+STATE_CHAT_SYNC_DEPTH = "ma_chat_sync_depth"
+STATE_CHAT_SYNC_RATE = "ma_chat_sync_rate"
