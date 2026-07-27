@@ -20,6 +20,7 @@ from ..config.constants import (
 	CBT_GPT_ACCOUNTS_PAGE,
 	CBT_GIST_PAGE,
 	CBT_PROFIT_PAGE,
+	CBT_WITHDRAWAL_PAGE,
 	CBT_STATUS_DETAIL,
 	CBT_STATUS_CATEGORY,
 	CBT_STATUS_EDIT_AUTO,
@@ -60,6 +61,7 @@ from ..delivery.providers.gemini_ui import TelegramGeminiDeliveryUI
 from ..delivery.providers.gpt_accounts_ui import TelegramGptAccountsDeliveryUI
 from ..gist.ui import TelegramGistSettingsUI
 from ..status.status import STATUS_IDS, status_label
+from .withdrawals import TelegramWithdrawalFlow
 from ..application.updater import MODE_ASK, MODE_DISABLED, MODE_ENABLED, ReleaseCheckResult
 
 if TYPE_CHECKING:
@@ -111,6 +113,7 @@ class TelegramSettingsUI:
 		self.gemini_ui = TelegramGeminiDeliveryUI(host)
 		self.gpt_accounts_ui = TelegramGptAccountsDeliveryUI(host)
 		self.gist_ui = TelegramGistSettingsUI(host)
+		self.withdrawal_flow = TelegramWithdrawalFlow(host)
 
 	def register(self) -> None:
 		if not self.host.tg:
@@ -119,6 +122,7 @@ class TelegramSettingsUI:
 		self.gemini_ui.register()
 		self.gpt_accounts_ui.register()
 		self.gist_ui.register()
+		self.withdrawal_flow.register()
 		self.host.tg.msg_handler(
 			self.save_response_text,
 			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_STATUS_RESPONSE),
@@ -270,12 +274,23 @@ class TelegramSettingsUI:
 
 	def open_settings(self, call: telebot.types.CallbackQuery) -> None:
 		offset = self.get_offset(call.data)
+		self.show_root_menu(call.message.chat.id, call.message.id, offset, edit=True)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def show_root_menu(
+		self,
+		chat_id: int,
+		message_id: int | None = None,
+		offset: str = "0",
+		edit: bool = False,
+	) -> None:
 		keyboard = K(row_width=1)
 		keyboard.add(B("📊 Статусы", callback_data=f"{CBT_STATUS_PAGE}{offset}"))
 		keyboard.add(B("📝 Заготовки сообщений", callback_data=f"{CBT_TEMPLATES_PAGE}{offset}"))
 		keyboard.add(B("🤖 Автовыдача", callback_data=f"{CBT_AUTO_DELIVERY_PAGE}{offset}"))
 		keyboard.add(B("💬 Chat Sync", callback_data=f"{CBT_CHAT_SYNC_PAGE}{offset}"))
 		keyboard.add(B("💰 Прибыль", callback_data=f"{CBT_PROFIT_PAGE}{offset}"))
+		keyboard.add(B("💸 Калькулятор вывода", callback_data=f"{CBT_WITHDRAWAL_PAGE}{offset}"))
 		keyboard.add(B("🔑 GitHub Gists", callback_data=f"{CBT_GIST_PAGE}{offset}"))
 		keyboard.add(B("🔄 Автообновление", callback_data=f"{CBT_UPDATER_PAGE}{offset}"))
 		keyboard.add(B("🚫 Чёрный список", callback_data=f"{CBT_BLACKLIST_PAGE}{offset}"))
@@ -286,13 +301,10 @@ class TelegramSettingsUI:
 			f"Версия: <code>{escape(VERSION)}</code>\n"
 			f"Последняя проверка обновлений: <code>{escape(self.host.settings['updater']['last_checked_version'] or 'не было')}</code>"
 		)
-		self.host.tgbot.edit_message_text(
-			text,
-			call.message.chat.id,
-			call.message.id,
-			reply_markup=keyboard,
-		)
-		self.host.tgbot.answer_callback_query(call.id)
+		if edit and message_id is not None:
+			self.host.tgbot.edit_message_text(text, chat_id, message_id, reply_markup=keyboard)
+			return
+		self.host.tgbot.send_message(chat_id, text, reply_markup=keyboard)
 
 	def open_auto_delivery_page(self, call: telebot.types.CallbackQuery) -> None:
 		offset = self.get_offset(call.data)

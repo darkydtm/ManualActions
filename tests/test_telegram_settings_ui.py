@@ -48,6 +48,7 @@ from core.config.constants import (
 	CBT_TEMPLATE_EDIT_TEXT,
 	CBT_TEMPLATE_EDIT_TITLE,
 	CBT_TEMPLATES_PAGE,
+	CBT_WITHDRAWAL_PAGE,
 	CBT_UPDATER_CUSTOM_INTERVAL,
 	CBT_UPDATER_CHECK,
 	CBT_UPDATER_CATEGORY,
@@ -151,6 +152,31 @@ class TelegramSettingsUITest(unittest.TestCase):
 		self.assertIn(f"{CBT_UPDATER_PAGE}0", callbacks)
 		self.assertIn(f"{CBT_GIST_PAGE}0", callbacks)
 		self.assertIn(f"{CBT_TEMPLATES_PAGE}0", callbacks)
+
+	def test_root_menu_links_to_withdrawal_calculator(self):
+		bot = FakeBot()
+		host = SimpleNamespace(tgbot=bot, settings=settings_module.normalize_settings({}))
+		ui = TelegramSettingsUI(host)
+		call = SimpleNamespace(
+			data="plugin_settings:uuid:0",
+			id="call-1",
+			message=SimpleNamespace(chat=SimpleNamespace(id=1), id=2),
+		)
+
+		ui.open_settings(call)
+
+		callbacks = [row[0].callback_data for row in bot.edits[0][3].rows]
+		self.assertIn(f"{CBT_WITHDRAWAL_PAGE}0", callbacks)
+
+	def test_root_menu_sends_new_message_without_message_id(self):
+		bot = FakeBot()
+		host = SimpleNamespace(tgbot=bot, settings=settings_module.normalize_settings({}))
+		ui = TelegramSettingsUI(host)
+
+		ui.show_root_menu(1)
+
+		self.assertEqual(len(bot.messages), 1)
+		self.assertEqual(bot.edits, [])
 
 	def test_settings_page_shows_version_and_last_checked_release(self):
 		bot = FakeBot()

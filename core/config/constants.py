@@ -67,6 +67,9 @@ CBT_PROFIT_PERIOD = "ma_profit_period:"
 CBT_PROFIT_CUSTOM = "ma_profit_custom:"
 CBT_PROFIT_TOGGLE_PAID = "ma_profit_toggle_paid:"
 
+CBT_WITHDRAWAL_PAGE = "ma_withdrawal_page:"
+CBT_WITHDRAWAL_METHOD = "ma_withdrawal_method:"
+
 CBT_STATUS_PAGE = "ma_status_page:"
 CBT_STATUS_CATEGORY = "ma_status_category:"
 CBT_STATUS_DETAIL = "ma_status_detail:"
