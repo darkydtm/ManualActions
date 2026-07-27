@@ -49,6 +49,20 @@ class WithdrawalParserTest(unittest.TestCase):
 			WithdrawalMethod("card", "Банковская карта", Decimal("0"), Decimal("3")),
 		))
 
+	def test_extracts_funpay_withdraw_box_data(self):
+		page = """
+			<span class="badge badge-balance">1 234,56 ₽</span>
+			<div class="withdraw-box" data-data='{"currencies":{"rub":{"name":"Рубли","channels":[{"extCurrency":"sbp","name":"СБП","feeInfo":"Комиссия: 2,5% + 15 ₽"}]}}}'></div>
+		"""
+
+		result = parse_balance_page(page)
+
+		self.assertEqual(result.available_amount, Decimal("1234.56"))
+		self.assertEqual(result.currency, "₽")
+		self.assertEqual(result.methods, (
+			WithdrawalMethod("sbp", "СБП", Decimal("15"), Decimal("2.5")),
+		))
+
 	def test_rejects_login_page(self):
 		with self.assertRaises(WithdrawalAuthenticationError):
 			parse_balance_page('<form action="/account/login"><input name="login"></form>')
