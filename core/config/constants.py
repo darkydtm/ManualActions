@@ -21,6 +21,7 @@ DESCRIPTION = (
 	"/lot [ID] - показать информацию о лоте\n"
 	"/orders [ник] - показать заказы пользователя\n"
 	"/profit - посчитать прибыль за период\n"
+	"/actions - открыть меню Manual Actions\n"
 	"/gist <текст> - создать GitHub Gist\n"
 	"/templates - отправить заготовку в теме Chat Sync\n"
 	"/status [0/1/2] - переключить текущий статус\n"

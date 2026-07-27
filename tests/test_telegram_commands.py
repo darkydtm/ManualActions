@@ -33,6 +33,7 @@ utils_module.cardinal_tools = SimpleNamespace(cache_blacklist=lambda blacklist: 
 sys.modules.setdefault("Utils", utils_module)
 
 from core.telegram.commands import TelegramCommands
+from core.config.constants import DESCRIPTION
 
 
 class FakeTelegram:
@@ -76,6 +77,26 @@ class TelegramCommandsTest(unittest.TestCase):
 		self.assertIn("update", menu_commands)
 		self.assertIn("update", handled_commands)
 		self.assertEqual(menu_commands - handled_commands, set())
+
+	def test_actions_opens_root_menu(self):
+		calls = []
+		host = SimpleNamespace(
+			tg=FakeTelegram(),
+			tgbot=SimpleNamespace(),
+			cardinal=FakeCardinal(),
+			telegram_ui=SimpleNamespace(
+				show_root_menu=lambda chat_id, message_id=None, offset="0", edit=False: calls.append(
+					(chat_id, message_id, offset, edit)
+				),
+			),
+		)
+
+		TelegramCommands(host).cmd_actions(SimpleNamespace(chat=SimpleNamespace(id=42)))
+
+		self.assertEqual(calls, [(42, None, "0", False)])
+
+	def test_describes_actions_command(self):
+		self.assertIn("/actions - открыть меню Manual Actions", DESCRIPTION)
 
 
 if __name__ == "__main__":
