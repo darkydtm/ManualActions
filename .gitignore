@@ -1,4 +1,5 @@
 __pycache__/
 *.pyc
+.worktrees/
 dist/
 storage/plugins/manual_actions/gpt_accounts_delivery.json
