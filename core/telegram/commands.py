@@ -54,7 +54,6 @@ class TelegramCommands:
 		("bl", "Переключить ЧС: /bl [ник] или в топике без ника", True),
 		("bl_list", "Показать чёрный список", True),
 		("lot", "Информация о лоте: /lot [ID] или в топике", True),
-		("lots", "Управление лотами: /lots on/off", True),
 		("orders", "Заказы пользователя: /orders [ник] или в топике", True),
 		("profit", "Прибыль за период: /profit", True),
 		("actions", "Открыть меню Manual Actions", True),
