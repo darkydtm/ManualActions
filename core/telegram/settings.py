@@ -19,6 +19,7 @@ from ..config.constants import (
 	CBT_GEMINI_PAGE,
 	CBT_GPT_ACCOUNTS_PAGE,
 	CBT_GIST_PAGE,
+	CBT_LOTS_PAGE,
 	CBT_PROFIT_PAGE,
 	CBT_WITHDRAWAL_PAGE,
 	CBT_STATUS_DETAIL,
@@ -288,6 +289,7 @@ class TelegramSettingsUI:
 		keyboard.add(B("📊 Статусы", callback_data=f"{CBT_STATUS_PAGE}{offset}"))
 		keyboard.add(B("📝 Заготовки сообщений", callback_data=f"{CBT_TEMPLATES_PAGE}{offset}"))
 		keyboard.add(B("🤖 Автовыдача", callback_data=f"{CBT_AUTO_DELIVERY_PAGE}{offset}"))
+		keyboard.add(B("🛒 Лоты", callback_data=f"{CBT_LOTS_PAGE}{offset}"))
 		keyboard.add(B("💬 Chat Sync", callback_data=f"{CBT_CHAT_SYNC_PAGE}{offset}"))
 		keyboard.add(B("💰 Прибыль", callback_data=f"{CBT_PROFIT_PAGE}{offset}"))
 		keyboard.add(B("💸 Калькулятор вывода", callback_data=f"{CBT_WITHDRAWAL_PAGE}{offset}"))
