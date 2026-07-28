@@ -130,11 +130,31 @@ class BulkLotsService:
 		on_complete(result)
 
 	def _candidate_ids(self, action: str) -> list[str]:
-		if action == ACTION_ON:
-			return list(self.settings["bulk_lots"]["disabled_lot_ids"])
-		if action != ACTION_OFF:
+		if action not in (ACTION_ON, ACTION_OFF):
 			raise ValueError(f"Unsupported bulk lot action: {action}")
-		return [self._lot_id(lot) for lot in get_profile_lots(self.cardinal) if getattr(lot, "active", True)]
+		lots = get_profile_lots(self.cardinal)
+		if action == ACTION_ON:
+			self._forget_enabled_lot_ids(lots)
+		target_active = action == ACTION_ON
+		return [
+			self._lot_id(lot)
+			for lot in lots
+			if bool(getattr(lot, "active", False)) != target_active
+		]
+
+	def _forget_enabled_lot_ids(self, lots: list[Any]) -> None:
+		enabled_ids = {self._lot_id(lot) for lot in lots if getattr(lot, "active", False)}
+		if not enabled_ids.intersection(self.settings["bulk_lots"]["disabled_lot_ids"]):
+			return
+
+		def mutate(settings: dict[str, Any]) -> None:
+			settings["bulk_lots"]["disabled_lot_ids"][:] = [
+				lot_id
+				for lot_id in settings["bulk_lots"]["disabled_lot_ids"]
+				if lot_id not in enabled_ids
+			]
+
+		update_settings(self.settings, self.save_settings, mutate)
 
 	def _remember_disabled(self, lot_id: str, disabled: bool) -> None:
 		def mutate(settings: dict[str, Any]) -> None:
