@@ -39,6 +39,7 @@ sys.modules.setdefault("Utils", utils_module)
 from core.config import settings as settings_module
 from core.config.constants import (
 	CBT_GIST_PAGE,
+	CBT_LOTS_PAGE,
 	CBT_TEMPLATES_CATEGORY,
 	CBT_TEMPLATE_ADD,
 	CBT_TEMPLATE_DELETE,
@@ -167,6 +168,16 @@ class TelegramSettingsUITest(unittest.TestCase):
 
 		callbacks = [row[0].callback_data for row in bot.edits[0][3].rows]
 		self.assertIn(f"{CBT_WITHDRAWAL_PAGE}0", callbacks)
+
+	def test_root_menu_links_to_bulk_lots_page(self):
+		bot = FakeBot()
+		host = SimpleNamespace(tgbot=bot, settings=settings_module.normalize_settings({}))
+		ui = TelegramSettingsUI(host)
+
+		ui.show_root_menu(1)
+
+		callbacks = [row[0].callback_data for row in bot.messages[-1][2].rows]
+		self.assertIn(f"{CBT_LOTS_PAGE}0", callbacks)
 
 	def test_root_menu_sends_new_message_without_message_id(self):
 		bot = FakeBot()
