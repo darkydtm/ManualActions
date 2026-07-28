@@ -49,6 +49,10 @@ def extract_lot_id(value: str | None) -> str | None:
 
 
 def get_profile_lots(cardinal: Cardinal) -> list[Any]:
+	profile = getattr(cardinal, "profile", None)
+	if profile and hasattr(profile, "get_lots"):
+		return list(profile.get_lots() or [])
+
 	account = getattr(cardinal, "account", None)
 	account_id = getattr(account, "id", None)
 	if account and account_id and hasattr(account, "get_user"):
@@ -57,10 +61,6 @@ def get_profile_lots(cardinal: Cardinal) -> list[Any]:
 			return list(user.get_lots() or [])
 		except Exception as exc:
 			logger.error(f"{LOGGER_PREFIX} Failed to load profile lots: {exc}")
-
-	profile = getattr(cardinal, "profile", None)
-	if profile and hasattr(profile, "get_lots"):
-		return list(profile.get_lots() or [])
 	return []
 
 
