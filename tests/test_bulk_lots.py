@@ -42,10 +42,20 @@ class FakeThread:
 		self.started = True
 
 
-def fake_cardinal(states: dict[str, bool], failing_ids: set[str] | None = None) -> SimpleNamespace:
+def fake_cardinal(
+	states: dict[str, bool],
+	failing_ids: set[str] | None = None,
+	include_active: bool = True,
+) -> SimpleNamespace:
 	account = FakeAccount(states, failing_ids)
+	def get_lots():
+		return [
+			SimpleNamespace(id=lot_id, **({"active": active} if include_active else {}))
+			for lot_id, active in states.items()
+		]
+
 	profile = SimpleNamespace(
-		get_lots=lambda: [SimpleNamespace(id=lot_id, active=active) for lot_id, active in states.items()],
+		get_lots=get_lots,
 	)
 	return SimpleNamespace(account=account, profile=profile)
 
@@ -69,6 +79,15 @@ class BulkLotsServiceTest(unittest.TestCase):
 		self.assertEqual((result.total, result.succeeded, result.skipped), (1, 1, 0))
 		self.assertEqual(cardinal.account.saved, ["1"])
 		self.assertEqual(cardinal.account.states, {"1": True, "2": True})
+
+	def test_on_uses_lot_fields_when_list_items_have_no_active_state(self):
+		settings = {"bulk_lots": {"disabled_lot_ids": []}}
+		cardinal = fake_cardinal({"1": False, "2": True}, include_active=False)
+
+		result = BulkLotsService(cardinal, settings, lambda: None).execute(ACTION_ON)
+
+		self.assertEqual((result.total, result.succeeded, result.skipped), (1, 1, 0))
+		self.assertEqual(cardinal.account.saved, ["1"])
 
 	def test_on_retains_failed_ids_and_removes_completed_ids(self):
 		settings = {"bulk_lots": {"disabled_lot_ids": ["1", "2"]}}
