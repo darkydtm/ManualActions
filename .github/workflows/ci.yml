@@ -61,7 +61,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Publish pre-release
+    name: Publish release
     runs-on: ubuntu-latest
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -197,7 +197,7 @@ jobs:
           mkdir -p release
           mv dist/manual_actions.py "release/manual_actions-${{ steps.release.outputs.target }}.py"
 
-      - name: Publish pre-release
+      - name: Publish release
         if: steps.release.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -206,5 +206,4 @@ jobs:
             "release/manual_actions-${{ steps.release.outputs.target }}.py" \
             --title "V${{ steps.release.outputs.tag }}" \
             --notes-file release-notes.md \
-            --prerelease \
             --target "${{ steps.release.outputs.target }}"

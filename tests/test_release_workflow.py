@@ -42,6 +42,12 @@ class ReleaseWorkflowTest(unittest.TestCase):
 		self.assertIn('manual_actions-${{ steps.release.outputs.target }}.py', source)
 		self.assertIn('--target "${{ steps.release.outputs.target }}"', source)
 
+	def test_publishes_full_releases(self):
+		source = WORKFLOW.read_text(encoding="utf-8")
+
+		self.assertIn("name: Publish release", source)
+		self.assertNotIn("--prerelease", source)
+
 
 	def test_project_validation_runs_before_artifact_build(self):
 		source = WORKFLOW.read_text(encoding="utf-8")
