@@ -133,17 +133,23 @@ class BulkLotsService:
 		if action not in (ACTION_ON, ACTION_OFF):
 			raise ValueError(f"Unsupported bulk lot action: {action}")
 		lots = get_profile_lots(self.cardinal)
-		if action == ACTION_ON:
-			self._forget_enabled_lot_ids(lots)
 		target_active = action == ACTION_ON
-		return [
-			self._lot_id(lot)
-			for lot in lots
-			if bool(getattr(lot, "active", False)) != target_active
-		]
+		lot_ids: list[str] = []
+		enabled_ids: set[str] = set()
+		for lot in lots:
+			lot_id = self._lot_id(lot)
+			fields = self.cardinal.account.get_lot_fields(int(lot_id))
+			is_active = bool(getattr(fields, "active", False))
+			if is_active:
+				enabled_ids.add(lot_id)
+			if is_active != target_active:
+				lot_ids.append(lot_id)
 
-	def _forget_enabled_lot_ids(self, lots: list[Any]) -> None:
-		enabled_ids = {self._lot_id(lot) for lot in lots if getattr(lot, "active", False)}
+		if action == ACTION_ON:
+			self._forget_enabled_lot_ids(enabled_ids)
+		return lot_ids
+
+	def _forget_enabled_lot_ids(self, enabled_ids: set[str]) -> None:
 		if not enabled_ids.intersection(self.settings["bulk_lots"]["disabled_lot_ids"]):
 			return
 
