@@ -220,12 +220,12 @@ def read_github_json(url: str, request_func: Callable[..., Any], timeout: int) -
 
 def first_public_release(data: Any) -> dict[str, Any] | None:
 	if isinstance(data, dict):
-		return data if not data.get("draft") else None
+		return data if not data.get("draft") and not data.get("prerelease") else None
 	if not isinstance(data, list):
 		return None
 
 	for item in data:
-		if isinstance(item, dict) and not item.get("draft"):
+		if isinstance(item, dict) and not item.get("draft") and not item.get("prerelease"):
 			return item
 	return None
 

@@ -33,13 +33,13 @@ class FakeResponse:
 		return json.dumps(self.data).encode("utf-8")
 
 
-def release(version="1.3.1", draft=False, asset_name="manual_actions.py"):
+def release(version="1.3.1", draft=False, prerelease=False, asset_name="manual_actions.py"):
 	return {
 		"tag_name": version,
 		"name": f"V{version}",
 		"html_url": f"https://github.com/darkydtm/ManualActions/releases/tag/{version}",
 		"draft": draft,
-		"prerelease": True,
+		"prerelease": prerelease,
 		"assets": [
 			{
 				"name": asset_name,
@@ -128,6 +128,18 @@ class UpdaterTest(unittest.TestCase):
 		self.assertEqual(result.asset_url, "https://github.com/darkydtm/ManualActions/releases/download/1.3.1/manual_actions.py")
 		self.assertIn("api.github.com", requests[0][0].full_url)
 		self.assertEqual(requests[0][1], 15)
+
+	def test_skips_prerelease_when_fetching_release(self):
+		def request_func(request, timeout=15):
+			return FakeResponse([
+				release("1.3.2", prerelease=True),
+				release("1.3.1"),
+			])
+
+		result = fetch_latest_release(request_func)
+
+		self.assertEqual(result.version, "1.3.1")
+		self.assertTrue(result.asset_url.endswith("/1.3.1/manual_actions.py"))
 
 	def test_rejects_release_without_plugin_asset(self):
 		def request_func(request, timeout=15):
