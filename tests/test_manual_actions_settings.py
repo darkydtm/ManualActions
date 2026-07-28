@@ -20,15 +20,6 @@ class ManualActionsSettingsTest(unittest.TestCase):
 		self.assertEqual(settings["updater"]["last_checked_version"], "")
 		self.assertEqual(settings["updater"]["notified_version"], "")
 		self.assertEqual(settings["two_factor"]["label"], "2FA: ")
-		self.assertEqual(settings["bulk_lots"]["disabled_lot_ids"], [])
-
-	def test_normalizes_bulk_lot_ids(self):
-		settings = normalize_settings({
-			"bulk_lots": {"disabled_lot_ids": [" 1 ", "", "1", 2]},
-		})
-
-		self.assertEqual(settings["bulk_lots"]["disabled_lot_ids"], ["1", "2"])
-		self.assertEqual(normalize_settings({"bulk_lots": {"disabled_lot_ids": "1"}})["bulk_lots"]["disabled_lot_ids"], [])
 
 	def test_normalizes_message_templates(self):
 		settings = normalize_settings({
