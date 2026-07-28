@@ -7,7 +7,6 @@ from ..chat_sync.settings import DEFAULT_CHAT_SYNC_SETTINGS, normalize_chat_sync
 from ..delivery.providers.gemini import DEFAULT_GEMINI_DELIVERY_SETTINGS, normalize_gemini_delivery_settings
 from ..delivery.providers.gpt_accounts import DEFAULT_GPT_ACCOUNTS_DELIVERY_SETTINGS, normalize_gpt_accounts_delivery_settings
 from ..gist.settings import DEFAULT_GIST_SETTINGS, normalize_gist_settings
-from ..lots.bulk import DEFAULT_BULK_LOTS_SETTINGS, normalize_bulk_lots_settings
 from ..lots.scheduling import DEFAULT_LOT_SCHEDULING_SETTINGS, normalize_lot_scheduling_settings
 from ..status.status import STATUS_IDS, normalize_status_id
 
@@ -63,7 +62,6 @@ DEFAULT_SETTINGS = {
 	"updater": DEFAULT_UPDATER_SETTINGS,
 	"two_factor": DEFAULT_TWO_FACTOR_SETTINGS,
 	"lot_scheduling": DEFAULT_LOT_SCHEDULING_SETTINGS,
-	"bulk_lots": DEFAULT_BULK_LOTS_SETTINGS,
 	"profit": DEFAULT_PROFIT_SETTINGS,
 	"chat_sync": DEFAULT_CHAT_SYNC_SETTINGS,
 }
@@ -87,7 +85,6 @@ def normalize_settings(data: dict[str, Any] | None) -> dict[str, Any]:
 	settings["updater"] = normalize_updater_settings(data.get("updater"))
 	settings["two_factor"] = normalize_two_factor_settings(data.get("two_factor"))
 	settings["lot_scheduling"] = normalize_lot_scheduling_settings(data.get("lot_scheduling"))
-	settings["bulk_lots"] = normalize_bulk_lots_settings(data.get("bulk_lots"))
 	settings["profit"] = normalize_profit_settings(data.get("profit"))
 	settings["chat_sync"] = normalize_chat_sync_settings(data.get("chat_sync"))
 	return settings
