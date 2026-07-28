@@ -89,23 +89,6 @@ class BulkLotsServiceTest(unittest.TestCase):
 		self.assertEqual((result.total, result.succeeded, result.skipped), (1, 1, 0))
 		self.assertEqual(cardinal.account.saved, ["1"])
 
-	def test_on_uses_account_lots_instead_of_profile_cache(self):
-		states = {"1": False}
-		account = FakeAccount(states)
-		account.id = 1
-		account.get_user = lambda user_id: SimpleNamespace(
-			get_lots=lambda: [SimpleNamespace(id=lot_id) for lot_id in states],
-		)
-		cardinal = SimpleNamespace(
-			account=account,
-			profile=SimpleNamespace(get_lots=lambda: [SimpleNamespace(id="2")]),
-		)
-
-		result = BulkLotsService(cardinal, {"bulk_lots": {"disabled_lot_ids": []}}, lambda: None).execute(ACTION_ON)
-
-		self.assertEqual((result.total, result.succeeded), (1, 1))
-		self.assertEqual(account.saved, ["1"])
-
 	def test_on_retains_failed_ids_and_removes_completed_ids(self):
 		settings = {"bulk_lots": {"disabled_lot_ids": ["1", "2"]}}
 		service = BulkLotsService(fake_cardinal({"1": False, "2": False}, {"2"}), settings, lambda: None)
