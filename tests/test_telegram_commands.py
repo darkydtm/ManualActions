@@ -64,13 +64,7 @@ class TelegramCommandsTest(unittest.TestCase):
 	def test_registers_all_menu_commands_and_update_handler(self):
 		tg = FakeTelegram()
 		cardinal = FakeCardinal()
-		host = SimpleNamespace(
-			tg=tg,
-			tgbot=SimpleNamespace(),
-			cardinal=cardinal,
-			settings={"bulk_lots": {"disabled_lot_ids": []}},
-			save_settings=lambda: None,
-		)
+		host = SimpleNamespace(tg=tg, tgbot=SimpleNamespace(), cardinal=cardinal)
 		TelegramCommands(host).register()
 
 		menu_commands = {command[0] for command in cardinal.commands}
@@ -82,8 +76,6 @@ class TelegramCommandsTest(unittest.TestCase):
 	}
 		self.assertIn("update", menu_commands)
 		self.assertIn("update", handled_commands)
-		self.assertIn("lots", menu_commands)
-		self.assertIn("lots", handled_commands)
 		self.assertEqual(menu_commands - handled_commands, set())
 
 	def test_actions_opens_root_menu(self):
@@ -92,8 +84,6 @@ class TelegramCommandsTest(unittest.TestCase):
 			tg=FakeTelegram(),
 			tgbot=SimpleNamespace(),
 			cardinal=FakeCardinal(),
-			settings={"bulk_lots": {"disabled_lot_ids": []}},
-			save_settings=lambda: None,
 			telegram_ui=SimpleNamespace(
 				show_root_menu=lambda chat_id, message_id=None, offset="0", edit=False: calls.append(
 					(chat_id, message_id, offset, edit)
@@ -107,9 +97,6 @@ class TelegramCommandsTest(unittest.TestCase):
 
 	def test_describes_actions_command(self):
 		self.assertIn("/actions - открыть меню Manual Actions", DESCRIPTION)
-
-	def test_describes_bulk_lots_command(self):
-		self.assertIn("/lots on/off", DESCRIPTION)
 
 
 if __name__ == "__main__":
