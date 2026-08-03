@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 import types
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 
 telebot_module = types.ModuleType("telebot")
@@ -35,6 +35,8 @@ from core.config.constants import (
 	CBT_GEMINI_EDIT_DELAY,
 	CBT_GEMINI_CATEGORY,
 	CBT_GEMINI_CLEAR_CONFIRM,
+	CBT_GEMINI_CONFIRM_CANCEL,
+	CBT_GEMINI_CONFIRM_SEND,
 	CBT_GEMINI_DELETE,
 	CBT_GEMINI_DELETE_CANCEL,
 	CBT_GEMINI_DELETE_CONFIRM,
@@ -47,9 +49,11 @@ from core.config.constants import (
 	CBT_GEMINI_STOCK,
 )
 from core.delivery.providers import gemini_ui as gemini_ui_module
+from core.delivery.models import OUTCOME_AWAITING_CONFIRMATION, OUTCOME_IGNORED
 from core.delivery.providers.gemini_service import DeliveryOutcome, OUTCOME_COMPLETED
 from core.delivery.providers.gemini_storage import GeminiDeliveryStorage, OrderReservationRequest
 from core.delivery.providers.gemini_ui import TelegramGeminiDeliveryUI
+from core.funpay.chat_sync import ChatSyncTopic
 from core.delivery.providers import gpt_accounts_ui as gpt_accounts_ui_module
 from core.delivery.providers.gpt_accounts_storage import GptAccountsDeliveryStorage
 from core.delivery.providers.gpt_accounts_ui import TelegramGptAccountsDeliveryUI
@@ -88,9 +92,12 @@ class FakeBot:
 		self.answers = []
 		self.replies = []
 		self.file_content = b""
+		self.topic_messages = []
 
-	def send_message(self, chat_id, text, reply_markup=None):
+	def send_message(self, chat_id, text, reply_markup=None, message_thread_id=None):
 		self.messages.append((chat_id, text, reply_markup))
+		if message_thread_id is not None:
+			self.topic_messages.append((chat_id, message_thread_id, text, reply_markup))
 		return SimpleNamespace(id=len(self.messages))
 
 	def edit_message_text(self, text, chat_id, message_id, reply_markup=None):
@@ -146,6 +153,7 @@ class GeminiDeliveryUITest(unittest.TestCase):
 		self.tg = FakeTelegram()
 		self.saved = []
 		self.service = Mock()
+		self.admin_notifier = Mock()
 		self.host = SimpleNamespace(
 			tg=self.tg,
 			tgbot=self.bot,
@@ -153,6 +161,7 @@ class GeminiDeliveryUITest(unittest.TestCase):
 			save_settings=lambda: self.saved.append("save"),
 			gemini_storage=self.storage,
 			gemini_service=self.service,
+			send_telegram_admin_message=self.admin_notifier,
 		)
 		self.ui = TelegramGeminiDeliveryUI(self.host)
 
@@ -178,12 +187,120 @@ class GeminiDeliveryUITest(unittest.TestCase):
 	def callbacks(self, keyboard):
 		return [button.callback_data for row in keyboard.rows for button in row]
 
+	def prepare_confirmation(self, duplicate_indices=()):
+		self.storage.add_links((LINK_ONE, LINK_TWO))
+		self.storage.reserve(OrderReservationRequest("ORDER-1", 2, "buyer", 77), "partial")
+		self.storage.set_provider("ORDER-1", "short_io")
+		self.storage.append_prepared_link(
+			"ORDER-1",
+			LINK_ONE,
+			"https://redirectlink.s.gy/one",
+			1 in duplicate_indices,
+		)
+		self.storage.append_prepared_link(
+			"ORDER-1",
+			LINK_TWO,
+			"https://redirectlink.s.gy/two",
+			2 in duplicate_indices,
+		)
+		self.storage.mark_awaiting_confirmation("ORDER-1")
+
 	def test_registers_states_and_callbacks(self):
 		self.ui.register()
 
 		self.assertEqual(len(self.tg.handlers), 5)
 		self.assertEqual(self.tg.handlers[0][1]["content_types"], ["text", "document"])
 		self.assertGreaterEqual(len(self.tg.callbacks), 10)
+		self.service.set_confirmation_notifier.assert_called_once_with(self.ui.send_confirmation)
+
+	def test_sends_confirmation_to_chat_sync_topic_with_duplicate_warning(self):
+		self.prepare_confirmation((2,))
+
+		with patch(
+			"core.delivery.providers.gemini_ui.find_chat_sync_topic",
+			return_value=ChatSyncTopic(-1001, 12),
+		):
+			result = self.ui.send_confirmation("ORDER-1")
+
+		self.assertTrue(result)
+		chat_id, thread_id, text, keyboard = self.bot.topic_messages[0]
+		self.assertEqual((chat_id, thread_id), (-1001, 12))
+		self.assertLess(text.index("⚠️ Обнаружены дубликаты"), text.index("1. https://"))
+		self.assertIn("ссылки №2", text)
+		callbacks = self.callbacks(keyboard)
+		self.assertTrue(any(value.startswith(CBT_GEMINI_CONFIRM_SEND) for value in callbacks))
+		self.assertTrue(any(value.startswith(CBT_GEMINI_CONFIRM_CANCEL) for value in callbacks))
+		self.admin_notifier.assert_not_called()
+
+	def test_confirmation_falls_back_to_admin_messages(self):
+		self.prepare_confirmation()
+
+		with patch("core.delivery.providers.gemini_ui.find_chat_sync_topic", return_value=None):
+			result = self.ui.send_confirmation("ORDER-1")
+
+		self.assertTrue(result)
+		text, keyboard = self.admin_notifier.call_args.args
+		self.assertIn("Заказ: #ORDER-1", text)
+		self.assertTrue(self.callbacks(keyboard))
+
+	def test_confirmation_falls_back_when_topic_send_fails(self):
+		self.prepare_confirmation()
+		self.bot.send_message = Mock(side_effect=RuntimeError("offline"))
+
+		with patch(
+			"core.delivery.providers.gemini_ui.find_chat_sync_topic",
+			return_value=ChatSyncTopic(-1001, 12),
+		):
+			result = self.ui.send_confirmation("ORDER-1")
+
+		self.assertTrue(result)
+		self.admin_notifier.assert_called_once()
+
+	def test_confirms_prepared_delivery(self):
+		self.prepare_confirmation()
+		token = self.ui.confirmation_payloads.put("ORDER-1")
+		self.service.confirm_order.return_value = DeliveryOutcome(OUTCOME_COMPLETED, "ORDER-1")
+
+		self.ui.confirm_delivery(self.call(f"{CBT_GEMINI_CONFIRM_SEND}{token}"))
+
+		self.service.confirm_order.assert_called_once_with("ORDER-1")
+		self.assertIn("отправлены покупателю", self.bot.edits[-1][0])
+		self.assertIsNone(self.bot.edits[-1][3])
+
+	def test_cancels_prepared_delivery(self):
+		self.prepare_confirmation()
+		token = self.ui.confirmation_payloads.put("ORDER-1")
+		self.service.cancel_order.return_value = DeliveryOutcome(
+			OUTCOME_IGNORED,
+			"ORDER-1",
+			"Выдача отменена администратором.",
+		)
+
+		self.ui.cancel_delivery(self.call(f"{CBT_GEMINI_CONFIRM_CANCEL}{token}"))
+
+		self.service.cancel_order.assert_called_once_with("ORDER-1")
+		self.assertIn("не отправлены", self.bot.edits[-1][0])
+
+	def test_rejects_expired_confirmation_callback(self):
+		self.ui.confirm_delivery(self.call(f"{CBT_GEMINI_CONFIRM_SEND}expired"))
+
+		self.service.confirm_order.assert_not_called()
+		self.assertEqual(self.bot.answers[-1][1], "Действие истекло.")
+
+	def test_keeps_confirmation_payload_for_repeated_click(self):
+		self.prepare_confirmation()
+		token = self.ui.confirmation_payloads.put("ORDER-1")
+		self.service.confirm_order.side_effect = (
+			DeliveryOutcome(OUTCOME_COMPLETED, "ORDER-1"),
+			DeliveryOutcome(OUTCOME_COMPLETED, "ORDER-1"),
+		)
+
+		call = self.call(f"{CBT_GEMINI_CONFIRM_SEND}{token}")
+		self.ui.confirm_delivery(call)
+		self.ui.confirm_delivery(call)
+
+		self.assertEqual(self.service.confirm_order.call_count, 2)
+		self.assertIsNotNone(self.ui.confirmation_payloads.get(token))
 
 	def test_main_page_shows_stock_and_gist_navigation(self):
 		self.storage.add_links((LINK_ONE,))
@@ -408,6 +525,40 @@ class GeminiDeliveryUITest(unittest.TestCase):
 
 		self.service.retry_order.assert_called_once_with("ORDER-1")
 		self.assertIn("выдан", self.bot.answers[-1][1])
+
+	def test_lists_confirmation_orders_and_reopens_confirmation_card(self):
+		self.prepare_confirmation()
+
+		self.ui.show_waiting_page(1)
+
+		_, text, keyboard = self.bot.messages[0]
+		self.assertIn("Заказы Gemini", text)
+		retry_callback = next(
+			value
+			for value in self.callbacks(keyboard)
+			if value.startswith(CBT_GEMINI_RETRY)
+		)
+		self.service.retry_order.return_value = DeliveryOutcome(OUTCOME_AWAITING_CONFIRMATION, "ORDER-1")
+
+		self.ui.retry_order(self.call(retry_callback))
+
+		self.service.retry_order.assert_called_once_with("ORDER-1")
+		self.assertIn("подтверждения", self.bot.answers[-1][1])
+
+	def test_lists_preparation_and_send_failures(self):
+		self.storage.reserve(OrderReservationRequest("PREPARE", 1, "buyer", 1), "partial")
+		self.storage.mark_preparation_failed("PREPARE", "offline")
+		self.prepare_confirmation()
+		self.storage.mark_send_failed("ORDER-1", "buyer offline")
+
+		self.ui.show_waiting_page(1)
+
+		_, text, keyboard = self.bot.messages[0]
+		self.assertIn("Всего: <b>2</b>", text)
+		self.assertEqual(
+			len([value for value in self.callbacks(keyboard) if value.startswith(CBT_GEMINI_RETRY)]),
+			2,
+		)
 
 	def test_stock_navigation_keeps_page_and_offset(self):
 		self.storage.add_links((LINK_ONE,))

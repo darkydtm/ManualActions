@@ -128,6 +128,8 @@ CBT_GEMINI_SET_PROVIDER = "ma_gemini_set_provider:"
 CBT_GEMINI_SHORT_IO = "ma_gemini_short_io:"
 CBT_GEMINI_EDIT_SHORT_IO_KEY = "ma_gemini_edit_short_io_key:"
 CBT_GEMINI_EDIT_SHORT_IO_DOMAIN = "ma_gemini_edit_short_io_domain:"
+CBT_GEMINI_CONFIRM_SEND = "ma_gemini_confirm_send:"
+CBT_GEMINI_CONFIRM_CANCEL = "ma_gemini_confirm_cancel:"
 
 CBT_AUTO_DELIVERY_PAGE = "ma_auto_delivery:"
 CBT_GPT_ACCOUNTS_PAGE = "ma_gpt_accounts:"
