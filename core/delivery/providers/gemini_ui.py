@@ -19,11 +19,16 @@ from ...config.constants import (
 	CBT_GEMINI_DELETE_CANCEL,
 	CBT_GEMINI_DELETE_CONFIRM,
 	CBT_GEMINI_EDIT_DELAY,
+	CBT_GEMINI_EDIT_SHORT_IO_DOMAIN,
+	CBT_GEMINI_EDIT_SHORT_IO_KEY,
 	CBT_GEMINI_EDIT_TEMPLATE,
 	CBT_GEMINI_LINK,
 	CBT_GEMINI_PAGE,
+	CBT_GEMINI_PROVIDER,
 	CBT_GEMINI_RETRY,
+	CBT_GEMINI_SET_PROVIDER,
 	CBT_GEMINI_SET_SHORTAGE,
+	CBT_GEMINI_SHORT_IO,
 	CBT_GEMINI_SHORTAGE,
 	CBT_GEMINI_STOCK,
 	CBT_GEMINI_TOGGLE,
@@ -31,6 +36,8 @@ from ...config.constants import (
 	CBT_GIST_PAGE,
 	STATE_GEMINI_ADD,
 	STATE_GEMINI_DELAY,
+	STATE_GEMINI_SHORT_IO_DOMAIN,
+	STATE_GEMINI_SHORT_IO_KEY,
 	STATE_GEMINI_TEMPLATE,
 	UUID,
 )
@@ -38,6 +45,7 @@ from ...common.payloads import CallbackPayloadCache
 from ...runtime.settings import update_host_settings
 from .gemini_service import OUTCOME_COMPLETED, OUTCOME_SEND_FAILED, OUTCOME_WAITING_STOCK
 from .gemini import (
+	GEMINI_LINK_PROVIDERS,
 	GEMINI_SHORTAGE_MODES,
 	parse_gemini_link_batch,
 )
@@ -48,6 +56,11 @@ PAGE_SIZE = 8
 SHORTAGE_MODE_LABELS = {
 	"partial": "Выдать остаток",
 	"all_or_nothing": "Не выдавать",
+}
+
+LINK_PROVIDER_LABELS = {
+	"github": "GitHub",
+	"short_io": "Short.io",
 }
 
 
@@ -82,6 +95,14 @@ class TelegramGeminiDeliveryUI:
 			self.save_delay,
 			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_GEMINI_DELAY),
 		)
+		self.host.tg.msg_handler(
+			self.save_short_io_api_key,
+			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_GEMINI_SHORT_IO_KEY),
+		)
+		self.host.tg.msg_handler(
+			self.save_short_io_domain,
+			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_GEMINI_SHORT_IO_DOMAIN),
+		)
 		callbacks = (
 			(self.open_page, CBT_GEMINI_PAGE),
 			(self.open_category, CBT_GEMINI_CATEGORY),
@@ -100,6 +121,11 @@ class TelegramGeminiDeliveryUI:
 			(self.ask_delay, CBT_GEMINI_EDIT_DELAY),
 			(self.open_waiting_page, CBT_GEMINI_WAITING),
 			(self.retry_order, CBT_GEMINI_RETRY),
+			(self.open_link_provider_page, CBT_GEMINI_PROVIDER),
+			(self.set_link_provider, CBT_GEMINI_SET_PROVIDER),
+			(self.open_short_io_page, CBT_GEMINI_SHORT_IO),
+			(self.edit_short_io_api_key, CBT_GEMINI_EDIT_SHORT_IO_KEY),
+			(self.edit_short_io_domain, CBT_GEMINI_EDIT_SHORT_IO_DOMAIN),
 		)
 		for handler, prefix in callbacks:
 			self.host.tg.cbq_handler(
@@ -121,15 +147,25 @@ class TelegramGeminiDeliveryUI:
 	) -> None:
 		config = self.host.settings["gemini_delivery"]
 		enabled = "включена" if config["enabled"] else "выключена"
-		token = "задан" if self.host.settings["gist"]["token"] else "не задан"
+		provider = config["link_provider"]
+		provider_label = LINK_PROVIDER_LABELS[provider]
+		if provider == "short_io":
+			short_io = config["short_io"]
+			connection = (
+				f"Short.io API key: <b>{'задан' if short_io['api_key'] else 'не задан'}</b>\n"
+				f"Short.io домен: <b>{escape(short_io['domain'] or 'не задан')}</b>"
+			)
+		else:
+			connection = f"GitHub token: <b>{'задан' if self.host.settings['gist']['token'] else 'не задан'}</b>"
 		template = self.preview(config["message_template"])
 		text = (
 			"<b>Gemini автовыдача</b>\n\n"
 			f"Автовыдача: <b>{enabled}</b>\n"
 			f"В стоке: <b>{self.host.gemini_storage.stock_count()}</b>\n"
+			f"Сервис ссылок: <b>{provider_label}</b>\n"
 			f"Нехватка: <b>{SHORTAGE_MODE_LABELS[config['shortage_mode']]}</b>\n"
 			f"Задержка: <b>{config['delay_seconds']} сек.</b>\n"
-			f"GitHub token: <b>{token}</b>\n\n"
+			f"{connection}\n\n"
 			f"<b>Сообщение покупателю</b>\n<code>{escape(template)}</code>"
 		)
 		keyboard = K(row_width=1)
@@ -157,9 +193,11 @@ class TelegramGeminiDeliveryUI:
 			if self.host.gemini_storage.stock_count():
 				keyboard.add(B("🧹 Очистить сток", callback_data=f"{CBT_GEMINI_CLEAR}{offset}"))
 		elif category == "settings":
+			keyboard.add(B("🔗 Сервис ссылок", callback_data=f"{CBT_GEMINI_PROVIDER}{offset}"))
 			keyboard.add(B("⚖️ Режим нехватки", callback_data=f"{CBT_GEMINI_SHORTAGE}{offset}"))
 			keyboard.add(B("⏱ Задержка", callback_data=f"{CBT_GEMINI_EDIT_DELAY}{offset}"))
 			keyboard.add(B("✏️ Текст выдачи", callback_data=f"{CBT_GEMINI_EDIT_TEMPLATE}{offset}"))
+			keyboard.add(B("🔑 Short.io", callback_data=f"{CBT_GEMINI_SHORT_IO}{offset}"))
 			keyboard.add(B("🔑 GitHub Gists", callback_data=f"{CBT_GIST_PAGE}{offset}"))
 		elif category == "orders":
 			keyboard.add(B("⏳ Ожидающие заказы", callback_data=f"{CBT_GEMINI_WAITING}0:{offset}"))
@@ -178,6 +216,113 @@ class TelegramGeminiDeliveryUI:
 			call.id,
 			"Автовыдача включена." if config["enabled"] else "Автовыдача выключена.",
 		)
+
+	def open_link_provider_page(self, call: telebot.types.CallbackQuery) -> None:
+		offset = self.get_offset(call.data)
+		current = self.host.settings["gemini_delivery"]["link_provider"]
+		keyboard = K(row_width=1)
+		for provider in GEMINI_LINK_PROVIDERS:
+			marker = "✅ " if provider == current else ""
+			keyboard.add(B(
+				f"{marker}{LINK_PROVIDER_LABELS[provider]}",
+				callback_data=f"{CBT_GEMINI_SET_PROVIDER}{provider}:{offset}",
+			))
+		keyboard.add(B("◀️ К Gemini", callback_data=f"{CBT_GEMINI_PAGE}{offset}"))
+		self.send_or_edit(
+			"<b>Сервис ссылок Gemini</b>\n\nGitHub используется по умолчанию.",
+			call.message.chat.id,
+			call.message.id,
+			keyboard,
+			True,
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def set_link_provider(self, call: telebot.types.CallbackQuery) -> None:
+		provider, offset = self.parse_value_callback(call.data, CBT_GEMINI_SET_PROVIDER)
+		if provider not in GEMINI_LINK_PROVIDERS:
+			self.host.tgbot.answer_callback_query(call.id)
+			return
+		update_host_settings(
+			self.host,
+			lambda settings: settings["gemini_delivery"].__setitem__("link_provider", provider),
+		)
+		self.show_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
+		self.host.tgbot.answer_callback_query(call.id, LINK_PROVIDER_LABELS[provider])
+
+	def open_short_io_page(self, call: telebot.types.CallbackQuery) -> None:
+		offset = self.get_offset(call.data)
+		self.show_short_io_page(call.message.chat.id, call.message.id, offset, True)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def show_short_io_page(
+		self,
+		chat_id: int,
+		message_id: int | None = None,
+		offset: str = "0",
+		edit: bool = False,
+	) -> None:
+		short_io = self.host.settings["gemini_delivery"]["short_io"]
+		text = (
+			"<b>Short.io</b>\n\n"
+			f"API key: <b>{'задан' if short_io['api_key'] else 'не задан'}</b>\n"
+			f"Домен: <b>{escape(short_io['domain'] or 'не задан')}</b>"
+		)
+		keyboard = K(row_width=1)
+		keyboard.add(B("🔑 Изменить API key", callback_data=f"{CBT_GEMINI_EDIT_SHORT_IO_KEY}{offset}"))
+		keyboard.add(B("🌐 Изменить домен", callback_data=f"{CBT_GEMINI_EDIT_SHORT_IO_DOMAIN}{offset}"))
+		keyboard.add(B("◀️ К Gemini", callback_data=f"{CBT_GEMINI_PAGE}{offset}"))
+		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
+
+	def edit_short_io_api_key(self, call: telebot.types.CallbackQuery) -> None:
+		self.ask_short_io_setting(
+			call,
+			STATE_GEMINI_SHORT_IO_KEY,
+			"Введите Short.io API key. Отправьте - чтобы очистить.",
+		)
+
+	def edit_short_io_domain(self, call: telebot.types.CallbackQuery) -> None:
+		self.ask_short_io_setting(
+			call,
+			STATE_GEMINI_SHORT_IO_DOMAIN,
+			"Введите домен Short.io без протокола. Отправьте - чтобы очистить.",
+		)
+
+	def ask_short_io_setting(self, call: telebot.types.CallbackQuery, state: str, prompt: str) -> None:
+		offset = self.get_offset(call.data)
+		result = self.host.tgbot.send_message(
+			call.message.chat.id,
+			prompt,
+			reply_markup=tg_bot.static_keyboards.CLEAR_STATE_BTN(),
+		)
+		self.host.tg.set_state(
+			call.message.chat.id,
+			result.id,
+			call.from_user.id,
+			state,
+			{"offset": offset},
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def save_short_io_api_key(self, message: telebot.types.Message) -> None:
+		self.save_short_io_setting(message, "api_key", "Short.io API key сохранён.")
+
+	def save_short_io_domain(self, message: telebot.types.Message) -> None:
+		self.save_short_io_setting(message, "domain", "Домен Short.io сохранён.")
+
+	def save_short_io_setting(self, message: telebot.types.Message, field: str, success: str) -> None:
+		state = self.host.tg.get_state(message.chat.id, message.from_user.id) or {}
+		offset = state.get("data", {}).get("offset", "0")
+		value = (message.text or "").strip()
+		if value == "-":
+			value = ""
+		update_host_settings(
+			self.host,
+			lambda settings: settings["gemini_delivery"]["short_io"].__setitem__(field, value),
+		)
+		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
+		keyboard = K(row_width=1)
+		keyboard.add(B("◀️ К Short.io", callback_data=f"{CBT_GEMINI_SHORT_IO}{offset}"))
+		self.host.tgbot.reply_to(message, success, reply_markup=keyboard)
 
 	def ask_stock(self, call: telebot.types.CallbackQuery) -> None:
 		offset = self.get_offset(call.data)
@@ -395,7 +540,7 @@ class TelegramGeminiDeliveryUI:
 		offset = self.get_offset(call.data)
 		result = self.host.tgbot.send_message(
 			call.message.chat.id,
-			"Введите текст выдачи. Обязательно оставьте {link}.",
+			"Введите текст выдачи. Обязательно оставьте {link}. Номер ссылки можно добавить через {number}.",
 			reply_markup=tg_bot.static_keyboards.CLEAR_STATE_BTN(),
 		)
 		self.host.tg.set_state(

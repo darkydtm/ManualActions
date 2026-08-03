@@ -39,8 +39,11 @@ from core.config.constants import (
 	CBT_GEMINI_DELETE_CANCEL,
 	CBT_GEMINI_DELETE_CONFIRM,
 	CBT_GEMINI_LINK,
+	CBT_GEMINI_PROVIDER,
 	CBT_GEMINI_RETRY,
+	CBT_GEMINI_SET_PROVIDER,
 	CBT_GEMINI_SET_SHORTAGE,
+	CBT_GEMINI_SHORT_IO,
 	CBT_GEMINI_STOCK,
 )
 from core.delivery.providers import gemini_ui as gemini_ui_module
@@ -178,7 +181,7 @@ class GeminiDeliveryUITest(unittest.TestCase):
 	def test_registers_states_and_callbacks(self):
 		self.ui.register()
 
-		self.assertEqual(len(self.tg.handlers), 3)
+		self.assertEqual(len(self.tg.handlers), 5)
 		self.assertEqual(self.tg.handlers[0][1]["content_types"], ["text", "document"])
 		self.assertGreaterEqual(len(self.tg.callbacks), 10)
 
@@ -189,9 +192,46 @@ class GeminiDeliveryUITest(unittest.TestCase):
 
 		_, text, keyboard = self.bot.messages[0]
 		self.assertIn("В стоке: <b>1</b>", text)
+		self.assertIn("Сервис ссылок: <b>GitHub</b>", text)
 		self.assertIn(f"{CBT_GEMINI_CATEGORY}settings:0", self.callbacks(keyboard))
 		self.ui.show_category(1, 2, "settings", "0", True)
 		self.assertIn("ma_gist_page:0", self.callbacks(self.bot.edits[-1][3]))
+		self.assertIn(f"{CBT_GEMINI_PROVIDER}0", self.callbacks(self.bot.edits[-1][3]))
+		self.assertIn(f"{CBT_GEMINI_SHORT_IO}0", self.callbacks(self.bot.edits[-1][3]))
+
+	def test_selects_short_io_provider(self):
+		self.ui.set_link_provider(self.call(f"{CBT_GEMINI_SET_PROVIDER}short_io:0"))
+
+		self.assertEqual(self.host.settings["gemini_delivery"]["link_provider"], "short_io")
+		self.assertEqual(self.saved, ["save"])
+
+	def test_short_io_page_masks_api_key(self):
+		self.host.settings["gemini_delivery"]["short_io"] = {
+			"api_key": "secret-value",
+			"domain": "redirectlink.s.gy",
+		}
+
+		self.ui.show_short_io_page(1)
+
+		_, text, _ = self.bot.messages[0]
+		self.assertIn("API key: <b>задан</b>", text)
+		self.assertIn("redirectlink.s.gy", text)
+		self.assertNotIn("secret-value", text)
+
+	def test_saves_short_io_api_key_and_domain(self):
+		self.ui.save_short_io_api_key(self.message(" new-secret "))
+		self.ui.save_short_io_domain(self.message(" redirectlink.s.gy "))
+
+		self.assertEqual(self.host.settings["gemini_delivery"]["short_io"], {
+			"api_key": "new-secret",
+			"domain": "redirectlink.s.gy",
+		})
+		self.assertEqual(self.saved, ["save", "save"])
+
+	def test_template_prompt_mentions_number_placeholder(self):
+		self.ui.edit_message_template(self.call("ma_gemini_edit_template:0"))
+
+		self.assertIn("{number}", self.bot.messages[0][1])
 
 	def test_toggle_enabled_saves_setting(self):
 		self.ui.toggle_enabled(self.call("ma_gemini_toggle:0"))
