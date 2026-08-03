@@ -78,6 +78,25 @@ class ChatSyncBackgroundLookupTest(unittest.TestCase):
 		self.assertTrue(result)
 		bot.send_message.assert_called_once_with(-1001, "Warning", message_thread_id=12)
 
+	def test_sends_message_to_topic_with_keyboard(self):
+		bot = Mock()
+		keyboard = object()
+
+		result = send_chat_sync_topic_message(
+			bot,
+			ChatSyncTopic(-1001, 12),
+			"Confirm",
+			reply_markup=keyboard,
+		)
+
+		self.assertTrue(result)
+		bot.send_message.assert_called_once_with(
+			-1001,
+			"Confirm",
+			message_thread_id=12,
+			reply_markup=keyboard,
+		)
+
 	def test_send_returns_false_for_external_exception(self):
 		bot = Mock()
 		bot.send_message.side_effect = RuntimeError("offline")
