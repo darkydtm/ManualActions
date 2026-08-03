@@ -7,6 +7,7 @@ OUTCOME_IGNORED = "ignored"
 OUTCOME_WAITING_STOCK = "waiting_stock"
 OUTCOME_COMPLETED = "completed"
 OUTCOME_SEND_FAILED = "send_failed"
+OUTCOME_AWAITING_CONFIRMATION = "awaiting_confirmation"
 
 
 @dataclass(frozen=True)
