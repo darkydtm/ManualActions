@@ -78,8 +78,20 @@ def find_chat_sync_topic(
 	return None
 
 
-def send_chat_sync_topic_message(bot, topic: ChatSyncTopic, text: str) -> bool:
-	result = call_external(lambda: bot.send_message(topic.chat_id, text, message_thread_id=topic.thread_id))
+def send_chat_sync_topic_message(bot, topic: ChatSyncTopic, text: str, reply_markup=None) -> bool:
+	if reply_markup is None:
+		result = call_external(lambda: bot.send_message(
+			topic.chat_id,
+			text,
+			message_thread_id=topic.thread_id,
+		))
+	else:
+		result = call_external(lambda: bot.send_message(
+			topic.chat_id,
+			text,
+			message_thread_id=topic.thread_id,
+			reply_markup=reply_markup,
+		))
 	if result.succeeded:
 		return True
 	logger.warning("%s Failed to send Chat Sync warning: %s", LOGGER_PREFIX, result.error)

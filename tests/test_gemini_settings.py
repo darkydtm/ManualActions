@@ -4,6 +4,7 @@ import unittest
 
 from core.delivery.providers.gemini import (
 	DEFAULT_GEMINI_MESSAGE_TEMPLATE,
+	format_gemini_delivery_message,
 	parse_gemini_link_batch,
 	normalize_gemini_delivery_settings,
 	validate_gemini_link,
@@ -27,6 +28,8 @@ class GeminiSettingsTest(unittest.TestCase):
 		self.assertFalse(settings["enabled"])
 		self.assertEqual(settings["shortage_mode"], "partial")
 		self.assertEqual(settings["message_template"], DEFAULT_GEMINI_MESSAGE_TEMPLATE)
+		self.assertEqual(settings["link_provider"], "github")
+		self.assertEqual(settings["short_io"], {"api_key": "", "domain": ""})
 
 	def test_keeps_valid_settings(self):
 		settings = normalize_gemini_delivery_settings({
@@ -44,11 +47,46 @@ class GeminiSettingsTest(unittest.TestCase):
 			"enabled": "yes",
 			"shortage_mode": "invalid",
 			"message_template": "Missing placeholder",
+			"link_provider": "invalid",
+			"short_io": {"api_key": 123, "domain": False},
 		})
 
 		self.assertFalse(settings["enabled"])
 		self.assertEqual(settings["shortage_mode"], "partial")
 		self.assertEqual(settings["message_template"], DEFAULT_GEMINI_MESSAGE_TEMPLATE)
+		self.assertEqual(settings["link_provider"], "github")
+		self.assertEqual(settings["short_io"], {"api_key": "", "domain": ""})
+
+	def test_keeps_short_io_settings(self):
+		settings = normalize_gemini_delivery_settings({
+			"link_provider": "short_io",
+			"short_io": {
+				"api_key": " secret ",
+				"domain": " redirectlink.s.gy ",
+			},
+		})
+
+		self.assertEqual(settings["link_provider"], "short_io")
+		self.assertEqual(settings["short_io"], {
+			"api_key": "secret",
+			"domain": "redirectlink.s.gy",
+		})
+
+	def test_formats_numbered_short_links(self):
+		message = format_gemini_delivery_message(
+			"Ссылка {number}: {link}",
+			("https://s.gy/a", "https://s.gy/b"),
+		)
+
+		self.assertEqual(
+			message,
+			"Ссылка 1: https://s.gy/a\n\nСсылка 2: https://s.gy/b",
+		)
+
+	def test_formats_backward_compatible_template(self):
+		message = format_gemini_delivery_message("Delivery: {link}", ("https://gist/raw",))
+
+		self.assertEqual(message, "Delivery: https://gist/raw")
 
 	def test_adds_gemini_settings_to_plugin_settings(self):
 		settings = normalize_settings({

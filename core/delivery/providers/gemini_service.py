@@ -13,14 +13,25 @@ from ...funpay.chat_sync import (
 )
 from ...gist.service import create_gist_result, resolve_gist_filename
 from ...gist.settings import normalize_gist_settings
-from ..models import DeliveryOutcome, OUTCOME_COMPLETED, OUTCOME_IGNORED, OUTCOME_SEND_FAILED, OUTCOME_WAITING_STOCK
+from ...short_io.client import create_short_link
+from ..models import (
+	DeliveryOutcome,
+	OUTCOME_AWAITING_CONFIRMATION,
+	OUTCOME_COMPLETED,
+	OUTCOME_IGNORED,
+	OUTCOME_SEND_FAILED,
+	OUTCOME_WAITING_STOCK,
+)
 from ..service import AutoDeliveryService
-from .gemini import normalize_gemini_delivery_settings
+from .gemini import format_gemini_delivery_message, normalize_gemini_delivery_settings
 from .gemini_storage import (
 	GeminiDeliveryStorage,
 	OrderReservationRequest,
+	STATUS_AWAITING_CONFIRMATION,
+	STATUS_CANCELLED,
 	STATUS_COMPLETED,
 	STATUS_GIST_CREATED,
+	STATUS_PREPARATION_FAILED,
 	STATUS_RESERVED,
 	STATUS_SEND_FAILED,
 	STATUS_WAITING_STOCK,
@@ -40,6 +51,7 @@ class GeminiDeliveryService(AutoDeliveryService):
 		settings_getter: Callable[[], dict[str, Any]],
 		storage: GeminiDeliveryStorage,
 		gist_creator: Callable[..., Any] = create_gist_result,
+		short_link_creator: Callable[..., Any] = create_short_link,
 		topic_notifier: Callable[[dict[str, Any], str], bool] | None = None,
 		admin_notifier: Callable[[str], None] | None = None,
 		timer_factory: Callable[[int, Callable[[], None]], Any] = Timer,
@@ -53,12 +65,17 @@ class GeminiDeliveryService(AutoDeliveryService):
 			timer_factory,
 		)
 		self.gist_creator = gist_creator
+		self.short_link_creator = short_link_creator
 		self.topic_notifier = topic_notifier or self.notify_chat_sync
 		self.admin_notifier = admin_notifier or (lambda text: None)
+		self.confirmation_notifier: Callable[[str], bool] = lambda order_id: False
 		self.handle_new_order = AutoDeliveryService.handle_new_order.__get__(self)
 		self.handle_delayed_new_order = AutoDeliveryService.handle_delayed_new_order.__get__(self)
 		self.handle_new_order_locked = AutoDeliveryService.handle_new_order_locked.__get__(self)
 		self.is_matching_new_order = AutoDeliveryService.is_matching_new_order.__get__(self)
+
+	def set_confirmation_notifier(self, notifier: Callable[[str], bool]) -> None:
+		self.confirmation_notifier = notifier
 
 	def handle_new_order(self, event: object) -> DeliveryOutcome:
 		with self.lock:
@@ -110,6 +127,10 @@ class GeminiDeliveryService(AutoDeliveryService):
 				return DeliveryOutcome(OUTCOME_SEND_FAILED, request.order_id, existing.get("last_error", ""))
 			if status == STATUS_WAITING_STOCK:
 				return DeliveryOutcome(OUTCOME_WAITING_STOCK, request.order_id)
+			if status == STATUS_AWAITING_CONFIRMATION:
+				return DeliveryOutcome(OUTCOME_AWAITING_CONFIRMATION, request.order_id)
+			if status == STATUS_CANCELLED:
+				return DeliveryOutcome(OUTCOME_IGNORED, request.order_id, "Выдача отменена администратором.")
 
 		return self.deliver(request, config, settings)
 
@@ -138,6 +159,16 @@ class GeminiDeliveryService(AutoDeliveryService):
 			config = normalize_gemini_delivery_settings(settings.get("gemini_delivery"))
 			if not config["enabled"]:
 				return DeliveryOutcome(OUTCOME_IGNORED, request.order_id, "Gemini delivery is disabled.")
+			status = order.get("status")
+			if status == STATUS_AWAITING_CONFIRMATION:
+				self.notify_confirmation(request.order_id)
+				return DeliveryOutcome(OUTCOME_AWAITING_CONFIRMATION, request.order_id)
+			if status == STATUS_COMPLETED:
+				return DeliveryOutcome(OUTCOME_COMPLETED, request.order_id)
+			if status == STATUS_SEND_FAILED:
+				return DeliveryOutcome(OUTCOME_SEND_FAILED, request.order_id, order.get("last_error", ""))
+			if status == STATUS_CANCELLED:
+				return DeliveryOutcome(OUTCOME_IGNORED, request.order_id, "Выдача отменена администратором.")
 			return self.deliver(request, config, settings)
 
 	def deliver(
@@ -155,11 +186,15 @@ class GeminiDeliveryService(AutoDeliveryService):
 			if status == STATUS_SEND_FAILED:
 				return DeliveryOutcome(OUTCOME_SEND_FAILED, request.order_id, existing.get("last_error", ""))
 			if status == STATUS_GIST_CREATED:
-				return self.send_gist(request.order_id, existing["raw_url"], config)
+				return self.request_confirmation(request.order_id)
+			if status == STATUS_AWAITING_CONFIRMATION:
+				return DeliveryOutcome(OUTCOME_AWAITING_CONFIRMATION, request.order_id)
+			if status == STATUS_CANCELLED:
+				return DeliveryOutcome(OUTCOME_IGNORED, request.order_id, "Выдача отменена администратором.")
 
-		gist_config = normalize_gist_settings(settings.get("gist"))
-		if not gist_config["token"]:
-			error = "GitHub token не задан."
+		provider = str((existing or {}).get("provider") or config["link_provider"])
+		error = self.provider_config_error(provider, config, settings)
+		if error:
 			if self.storage.record_error(request, error):
 				record = self.storage.get_order(request.order_id) or {}
 				self.topic_notifier(record, f"⚠️ Автовыдача #{request.order_id}: {error}")
@@ -167,7 +202,9 @@ class GeminiDeliveryService(AutoDeliveryService):
 
 		reservation = self.storage.reserve(request, config["shortage_mode"])
 		if reservation.status == STATUS_GIST_CREATED:
-			return self.send_gist(request.order_id, reservation.raw_url, config)
+			return self.request_confirmation(request.order_id)
+		if reservation.status == STATUS_AWAITING_CONFIRMATION:
+			return DeliveryOutcome(OUTCOME_AWAITING_CONFIRMATION, request.order_id)
 		if reservation.status == STATUS_WAITING_STOCK:
 			self.notify_shortage_once(
 				request.order_id,
@@ -175,15 +212,47 @@ class GeminiDeliveryService(AutoDeliveryService):
 				self.storage.stock_count(),
 			)
 			return DeliveryOutcome(OUTCOME_WAITING_STOCK, request.order_id)
-		if reservation.status != STATUS_RESERVED:
+		if reservation.status not in {STATUS_RESERVED, STATUS_PREPARATION_FAILED}:
 			return DeliveryOutcome(OUTCOME_IGNORED, request.order_id)
 
+		provider = self.storage.set_provider(request.order_id, provider)
 		if reservation.shortage:
 			self.notify_shortage_once(
 				request.order_id,
 				reservation,
 				self.storage.stock_count(),
 			)
+		reservation = self.storage.reserve(request, config["shortage_mode"])
+		if provider == "short_io":
+			return self.prepare_short_io(request, reservation, config)
+		return self.prepare_github(request, reservation, settings)
+
+	def provider_config_error(
+		self,
+		provider: str,
+		config: dict[str, Any],
+		settings: dict[str, Any],
+	) -> str:
+		if provider == "short_io":
+			short_io = config["short_io"]
+			if not short_io["api_key"]:
+				return "Short.io API key не задан."
+			if not short_io["domain"]:
+				return "Short.io домен не задан."
+			return ""
+		gist_config = normalize_gist_settings(settings.get("gist"))
+		return "" if gist_config["token"] else "GitHub token не задан."
+
+	def prepare_github(
+		self,
+		request: OrderReservationRequest,
+		reservation,
+		settings: dict[str, Any],
+	) -> DeliveryOutcome:
+		if reservation.prepared_links:
+			return self.request_confirmation(request.order_id)
+
+		gist_config = normalize_gist_settings(settings.get("gist"))
 
 		gist_settings = {
 			"token": gist_config["token"],
@@ -211,39 +280,108 @@ class GeminiDeliveryService(AutoDeliveryService):
 			return DeliveryOutcome(OUTCOME_IGNORED, request.order_id, error)
 
 		self.storage.mark_gist_created(request.order_id, result.url)
-		return self.send_gist(request.order_id, result.url, config)
+		return self.request_confirmation(request.order_id)
 
-	def send_gist(
+	def prepare_short_io(
 		self,
-		order_id: str,
-		raw_url: str,
+		request: OrderReservationRequest,
+		reservation,
 		config: dict[str, Any],
 	) -> DeliveryOutcome:
-		record = self.storage.get_order(order_id) or {}
-		try:
-			chat_id = self.resolve_chat_id(record)
-			if chat_id is None:
-				raise RuntimeError("Не удалось определить чат покупателя.")
-			sent = self.cardinal.send_message(
-				chat_id=chat_id,
-				message_text=config["message_template"].format(link=raw_url),
+		short_io = config["short_io"]
+		prepared_count = len(reservation.prepared_links)
+		for original_url in reservation.links[prepared_count:]:
+			try:
+				result = self.short_link_creator(
+					short_io["api_key"],
+					short_io["domain"],
+					original_url,
+				)
+			except Exception as exc:
+				error = str(exc)
+				self.storage.mark_preparation_failed(request.order_id, error)
+				self.notify_preparation_failure(request.order_id, "Short.io", error)
+				return DeliveryOutcome(OUTCOME_IGNORED, request.order_id, error)
+			self.storage.append_prepared_link(
+				request.order_id,
+				original_url,
+				result.url,
+				result.duplicate,
 			)
-			if sent is False:
-				raise RuntimeError("Cardinal не подтвердил отправку.")
-		except Exception as exc:
-			error = str(exc)
-			self.storage.mark_send_failed(order_id, error)
-			record = self.storage.get_order(order_id) or record
-			self.topic_notifier(
-				record,
-				f"❌ Автовыдача #{order_id}: не удалось отправить сообщение покупателю.\n"
-				f"Отправьте ссылку вручную:\n{raw_url}\n"
-				f"Ошибка: {error}",
-			)
-			return DeliveryOutcome(OUTCOME_SEND_FAILED, order_id, error)
+		return self.request_confirmation(request.order_id)
 
-		self.storage.mark_completed(order_id)
-		return DeliveryOutcome(OUTCOME_COMPLETED, order_id)
+	def request_confirmation(self, order_id: str) -> DeliveryOutcome:
+		self.storage.mark_awaiting_confirmation(order_id)
+		self.notify_confirmation(order_id)
+		return DeliveryOutcome(OUTCOME_AWAITING_CONFIRMATION, order_id)
+
+	def notify_confirmation(self, order_id: str) -> bool:
+		try:
+			return self.confirmation_notifier(order_id)
+		except Exception as exc:
+			logger.warning(f"{LOGGER_PREFIX} Failed to request Gemini confirmation for {order_id}: {exc}")
+			logger.debug("TRACEBACK", exc_info=True)
+			return False
+
+	def notify_preparation_failure(self, order_id: str, provider: str, error: str) -> None:
+		record = self.storage.get_order(order_id) or {}
+		warning = f"⚠️ Автовыдача #{order_id}: ошибка {provider}.\n{error}"
+		try:
+			self.topic_notifier(record, warning)
+		except Exception:
+			logger.debug("TRACEBACK", exc_info=True)
+		try:
+			self.admin_notifier(warning)
+		except Exception:
+			logger.debug("TRACEBACK", exc_info=True)
+
+	def confirm_order(self, order_id: str) -> DeliveryOutcome:
+		with self.lock:
+			record = self.storage.begin_send(order_id)
+			if record is None:
+				existing = self.storage.get_order(order_id) or {}
+				status = existing.get("status")
+				if status == STATUS_COMPLETED:
+					return DeliveryOutcome(OUTCOME_COMPLETED, order_id)
+				if status == STATUS_SEND_FAILED:
+					return DeliveryOutcome(OUTCOME_SEND_FAILED, order_id, existing.get("last_error", ""))
+				return DeliveryOutcome(OUTCOME_IGNORED, order_id, "Заказ уже обработан.")
+
+			prepared_urls = tuple(item["url"] for item in record.get("prepared_links", []))
+			manual_links = "\n".join(prepared_urls)
+			config = normalize_gemini_delivery_settings(self.settings_getter().get("gemini_delivery"))
+			try:
+				chat_id = self.resolve_chat_id(record)
+				if chat_id is None:
+					raise RuntimeError("Не удалось определить чат покупателя.")
+				sent = self.cardinal.send_message(
+					chat_id=chat_id,
+					message_text=format_gemini_delivery_message(config["message_template"], prepared_urls),
+				)
+				if sent is False:
+					raise RuntimeError("Cardinal не подтвердил отправку.")
+			except Exception as exc:
+				error = str(exc)
+				self.storage.mark_send_failed(order_id, error)
+				self.topic_notifier(
+					record,
+					f"❌ Автовыдача #{order_id}: не удалось отправить сообщение покупателю.\n"
+					f"Отправьте ссылки вручную:\n{manual_links}\n"
+					f"Ошибка: {error}",
+				)
+				return DeliveryOutcome(OUTCOME_SEND_FAILED, order_id, error)
+
+			self.storage.mark_completed(order_id)
+			return DeliveryOutcome(OUTCOME_COMPLETED, order_id)
+
+	def cancel_order(self, order_id: str) -> DeliveryOutcome:
+		with self.lock:
+			if self.storage.mark_cancelled(order_id):
+				return DeliveryOutcome(OUTCOME_IGNORED, order_id, "Выдача отменена администратором.")
+			record = self.storage.get_order(order_id) or {}
+			if record.get("status") == STATUS_COMPLETED:
+				return DeliveryOutcome(OUTCOME_COMPLETED, order_id)
+			return DeliveryOutcome(OUTCOME_IGNORED, order_id, "Заказ уже обработан.")
 
 	def notify_shortage_once(self, order_id: str, reservation, stock_left: int) -> None:
 		if not self.storage.mark_shortage_notified(order_id):
@@ -255,7 +393,6 @@ class GeminiDeliveryService(AutoDeliveryService):
 			f"Выдано: {len(reservation.links)}\n"
 			f"Осталось в стоке: {stock_left}"
 		)
-		self.notify_buyer_shortage(record, warning)
 		try:
 			self.topic_notifier(record, warning)
 		except Exception as exc:
@@ -265,16 +402,6 @@ class GeminiDeliveryService(AutoDeliveryService):
 			self.admin_notifier(warning)
 		except Exception as exc:
 			logger.warning(f"{LOGGER_PREFIX} Failed to notify administrators about Gemini shortage: {exc}")
-			logger.debug("TRACEBACK", exc_info=True)
-
-	def notify_buyer_shortage(self, record: dict[str, Any], warning: str) -> None:
-		try:
-			chat_id = self.resolve_chat_id(record)
-			if chat_id is None:
-				raise RuntimeError("Не удалось определить чат покупателя.")
-			self.cardinal.send_message(chat_id=chat_id, message_text=warning)
-		except Exception as exc:
-			logger.warning(f"{LOGGER_PREFIX} Failed to notify buyer about Gemini shortage: {exc}")
 			logger.debug("TRACEBACK", exc_info=True)
 
 	def notify_chat_sync(self, record: dict[str, Any], text: str) -> bool:

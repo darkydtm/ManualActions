@@ -22,8 +22,17 @@ STATUS_GIST_CREATED = "gist_created"
 STATUS_COMPLETED = "completed"
 STATUS_SEND_FAILED = "send_failed"
 STATUS_RETRYABLE = "retryable"
+STATUS_PREPARATION_FAILED = "preparation_failed"
+STATUS_AWAITING_CONFIRMATION = "awaiting_confirmation"
+STATUS_SENDING = "sending"
+STATUS_CANCELLED = "cancelled"
 
-TERMINAL_STATUSES = {
+RESERVATION_HELD_STATUSES = {
+	STATUS_RESERVED,
+	STATUS_PREPARATION_FAILED,
+	STATUS_AWAITING_CONFIRMATION,
+	STATUS_SENDING,
+	STATUS_CANCELLED,
 	STATUS_COMPLETED,
 	STATUS_SEND_FAILED,
 	STATUS_GIST_CREATED,
@@ -43,6 +52,13 @@ class OrderReservationRequest:
 
 
 @dataclass(frozen=True)
+class PreparedGeminiLink:
+	original_url: str
+	url: str
+	duplicate: bool = False
+
+
+@dataclass(frozen=True)
 class GeminiReservationResult:
 	order_id: str
 	status: str
@@ -50,6 +66,8 @@ class GeminiReservationResult:
 	requested_amount: int
 	shortage: bool
 	raw_url: str = ""
+	provider: str = ""
+	prepared_links: tuple[PreparedGeminiLink, ...] = ()
 
 
 class GeminiDeliveryStorage:
@@ -144,7 +162,7 @@ class GeminiDeliveryStorage:
 		def mutate(state: dict[str, Any]) -> GeminiReservationResult:
 			orders = state["orders"]
 			order = orders.get(order_id)
-			if order and order["status"] in TERMINAL_STATUSES | {STATUS_RESERVED}:
+			if order and order["status"] in RESERVATION_HELD_STATUSES:
 				return self.reservation_result(order)
 
 			now = self.time_func()
@@ -164,6 +182,8 @@ class GeminiDeliveryStorage:
 					"fp_chat_id": request.fp_chat_id,
 					"reserved_links": [],
 					"raw_url": "",
+					"provider": "",
+					"prepared_links": [],
 					"last_error": "",
 					"shortage_notified": False,
 					"created_at": now,
@@ -194,16 +214,111 @@ class GeminiDeliveryStorage:
 			state["stock"] = list(order["reserved_links"]) + state["stock"]
 			order["reserved_links"] = []
 			order["delivered_amount"] = 0
+			order["provider"] = ""
+			order["prepared_links"] = []
+			order["raw_url"] = ""
 			order["status"] = STATUS_RETRYABLE
 			order["last_error"] = error
 			order["updated_at"] = self.time_func()
 
 		self.mutate(mutate)
 
+	def set_provider(self, order_id: str, provider: str) -> str:
+		def mutate(state: dict[str, Any]) -> str:
+			order = self.require_order(state, order_id)
+			current = order.get("provider", "")
+			if current:
+				return current
+			order["provider"] = provider
+			order["updated_at"] = self.time_func()
+			return provider
+
+		return self.mutate(mutate)
+
+	def append_prepared_link(
+		self,
+		order_id: str,
+		original_url: str,
+		url: str,
+		duplicate: bool,
+	) -> PreparedGeminiLink:
+		def mutate(state: dict[str, Any]) -> PreparedGeminiLink:
+			order = self.require_order(state, order_id)
+			prepared_links = order.setdefault("prepared_links", [])
+			for item in prepared_links:
+				if item["original_url"] == original_url:
+					return self.prepared_link_result(item)
+
+			reserved_links = order.get("reserved_links", [])
+			prepared_count = len(prepared_links)
+			if prepared_count >= len(reserved_links) or reserved_links[prepared_count] != original_url:
+				raise ValueError("Prepared Gemini link is out of order.")
+
+			item = {
+				"original_url": original_url,
+				"url": url,
+				"duplicate": duplicate is True,
+			}
+			prepared_links.append(item)
+			order["last_error"] = ""
+			order["updated_at"] = self.time_func()
+			return self.prepared_link_result(item)
+
+		return self.mutate(mutate)
+
+	def mark_preparation_failed(self, order_id: str, error: str) -> None:
+		def mutate(state: dict[str, Any]) -> None:
+			order = self.require_order(state, order_id)
+			order["status"] = STATUS_PREPARATION_FAILED
+			order["last_error"] = error
+			order["updated_at"] = self.time_func()
+
+		self.mutate(mutate)
+
+	def mark_awaiting_confirmation(self, order_id: str) -> dict[str, Any]:
+		def mutate(state: dict[str, Any]) -> dict[str, Any]:
+			order = self.require_order(state, order_id)
+			if not order.get("prepared_links"):
+				raise ValueError("Gemini order has no prepared links.")
+			order["status"] = STATUS_AWAITING_CONFIRMATION
+			order["last_error"] = ""
+			order["updated_at"] = self.time_func()
+			return deepcopy(order)
+
+		return self.mutate(mutate)
+
+	def begin_send(self, order_id: str) -> dict[str, Any] | None:
+		def mutate(state: dict[str, Any]) -> dict[str, Any] | None:
+			order = self.require_order(state, order_id)
+			if order["status"] != STATUS_AWAITING_CONFIRMATION:
+				return None
+			order["status"] = STATUS_SENDING
+			order["updated_at"] = self.time_func()
+			return deepcopy(order)
+
+		return self.mutate(mutate)
+
+	def mark_cancelled(self, order_id: str) -> bool:
+		def mutate(state: dict[str, Any]) -> bool:
+			order = self.require_order(state, order_id)
+			if order["status"] != STATUS_AWAITING_CONFIRMATION:
+				return False
+			order["status"] = STATUS_CANCELLED
+			order["updated_at"] = self.time_func()
+			return True
+
+		return self.mutate(mutate)
+
 	def mark_gist_created(self, order_id: str, raw_url: str) -> dict[str, Any]:
 		def mutate(state: dict[str, Any]) -> dict[str, Any]:
 			order = self.require_order(state, order_id)
 			order["status"] = STATUS_GIST_CREATED
+			order["provider"] = "github"
+			order["prepared_links"] = [{
+				"original_url": "",
+				"url": raw_url,
+				"duplicate": False,
+			}]
 			order["raw_url"] = raw_url
 			order["last_error"] = ""
 			order["updated_at"] = self.time_func()
@@ -248,6 +363,8 @@ class GeminiDeliveryStorage:
 					"fp_chat_id": request.fp_chat_id,
 					"reserved_links": [],
 					"raw_url": "",
+					"provider": "",
+					"prepared_links": [],
 					"shortage_notified": False,
 					"created_at": now,
 				}
@@ -284,6 +401,21 @@ class GeminiDeliveryStorage:
 				deepcopy(order)
 				for order in self.state["orders"].values()
 				if order["status"] == STATUS_WAITING_STOCK
+			]
+		return sorted(orders, key=lambda order: order.get("updated_at", 0), reverse=True)
+
+	def actionable_orders(self) -> list[dict[str, Any]]:
+		actionable_statuses = {
+			STATUS_WAITING_STOCK,
+			STATUS_PREPARATION_FAILED,
+			STATUS_AWAITING_CONFIRMATION,
+			STATUS_SEND_FAILED,
+		}
+		with self.lock:
+			orders = [
+				deepcopy(order)
+				for order in self.state["orders"].values()
+				if order["status"] in actionable_statuses
 			]
 		return sorted(orders, key=lambda order: order.get("updated_at", 0), reverse=True)
 
@@ -333,6 +465,10 @@ class GeminiDeliveryStorage:
 	def reservation_result(order: dict[str, Any]) -> GeminiReservationResult:
 		requested_amount = int(order.get("requested_amount") or 1)
 		links = tuple(order.get("reserved_links", []))
+		prepared_links = tuple(
+			GeminiDeliveryStorage.prepared_link_result(item)
+			for item in order.get("prepared_links", [])
+		)
 		return GeminiReservationResult(
 			order_id=order["order_id"],
 			status=order["status"],
@@ -340,6 +476,16 @@ class GeminiDeliveryStorage:
 			requested_amount=requested_amount,
 			shortage=len(links) < requested_amount,
 			raw_url=order.get("raw_url", ""),
+			provider=order.get("provider", ""),
+			prepared_links=prepared_links,
+		)
+
+	@staticmethod
+	def prepared_link_result(item: dict[str, Any]) -> PreparedGeminiLink:
+		return PreparedGeminiLink(
+			original_url=item["original_url"],
+			url=item["url"],
+			duplicate=item.get("duplicate") is True,
 		)
 
 	@staticmethod
@@ -373,6 +519,10 @@ class GeminiDeliveryStorage:
 				STATUS_COMPLETED,
 				STATUS_SEND_FAILED,
 				STATUS_RETRYABLE,
+				STATUS_PREPARATION_FAILED,
+				STATUS_AWAITING_CONFIRMATION,
+				STATUS_SENDING,
+				STATUS_CANCELLED,
 			}:
 				continue
 			normalized = deepcopy(order)
@@ -382,6 +532,45 @@ class GeminiDeliveryStorage:
 				for link in order.get("reserved_links", [])
 				if isinstance(link, str)
 			]
+			provider = order.get("provider")
+			normalized["provider"] = provider if provider in {"github", "short_io"} else ""
+			normalized["prepared_links"] = [
+				{
+					"original_url": item["original_url"],
+					"url": item["url"],
+					"duplicate": item.get("duplicate") is True,
+				}
+				for item in order.get("prepared_links", [])
+				if (
+					isinstance(item, dict)
+					and isinstance(item.get("original_url"), str)
+					and isinstance(item.get("url"), str)
+					and item["url"]
+				)
+			]
+			raw_url = order.get("raw_url")
+			normalized["raw_url"] = raw_url if isinstance(raw_url, str) else ""
+			if status == STATUS_GIST_CREATED:
+				normalized["status"] = STATUS_AWAITING_CONFIRMATION
+				normalized["provider"] = "github"
+				if normalized["raw_url"] and not normalized["prepared_links"]:
+					normalized["prepared_links"] = [{
+						"original_url": "",
+						"url": normalized["raw_url"],
+						"duplicate": False,
+					}]
+			elif status == STATUS_SENDING:
+				normalized["status"] = STATUS_SEND_FAILED
+				normalized["last_error"] = "Отправка была прервана перезапуском плагина."
+			normalized.setdefault("prepared_links", [])
+			normalized.setdefault("provider", "")
+			normalized.setdefault("last_error", "")
+			normalized.setdefault("shortage_notified", False)
+			normalized.setdefault("requested_amount", 1)
+			normalized.setdefault("delivered_amount", len(normalized["reserved_links"]))
+			normalized.setdefault("buyer_username", "")
+			normalized.setdefault("fp_chat_id", None)
+			normalized.setdefault("updated_at", 0)
 			normalized_orders[order_id] = normalized
 
 		return {

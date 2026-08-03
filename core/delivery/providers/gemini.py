@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Iterable
 
 
 GEMINI_LINK_PREFIXES = (
@@ -10,6 +10,7 @@ GEMINI_LINK_PREFIXES = (
 	"https://serviceactivation.google.com/subscription/new/",
 )
 GEMINI_SHORTAGE_MODES = ("partial", "all_or_nothing")
+GEMINI_LINK_PROVIDERS = ("github", "short_io")
 
 DEFAULT_GEMINI_MESSAGE_TEMPLATE = "Спасибо за покупку!\nВаша ссылка: {link}"
 
@@ -19,6 +20,11 @@ DEFAULT_GEMINI_DELIVERY_SETTINGS = {
 	"quantity": 1,
 	"delay_seconds": 0,
 	"message_template": DEFAULT_GEMINI_MESSAGE_TEMPLATE,
+	"link_provider": "github",
+	"short_io": {
+		"api_key": "",
+		"domain": "",
+	},
 }
 
 
@@ -54,7 +60,25 @@ def normalize_gemini_delivery_settings(data: Any) -> dict[str, Any]:
 	if isinstance(message_template, str) and "{link}" in message_template:
 		settings["message_template"] = message_template
 
+	link_provider = data.get("link_provider")
+	if link_provider in GEMINI_LINK_PROVIDERS:
+		settings["link_provider"] = link_provider
+
+	short_io = data.get("short_io")
+	if isinstance(short_io, dict):
+		for field in ("api_key", "domain"):
+			value = short_io.get(field)
+			if isinstance(value, str):
+				settings["short_io"][field] = value.strip()
+
 	return settings
+
+
+def format_gemini_delivery_message(template: str, links: Iterable[str]) -> str:
+	return "\n\n".join(
+		template.format(link=link, number=index)
+		for index, link in enumerate(links, start=1)
+	)
 
 
 def validate_gemini_link(value: str) -> bool:
