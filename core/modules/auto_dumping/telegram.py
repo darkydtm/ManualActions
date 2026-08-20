@@ -105,33 +105,33 @@ class TelegramAutoDumpingFlow:
 
 	@staticmethod
 	def _page_callback(prefix: str, context: str, page: int) -> str:
-		try:
-			page = int(page)
-		except (TypeError, ValueError):
-			page = 0
-		if not 0 <= page <= MAX_CALLBACK_PAGE:
-			raise ValueError("page is outside the callback range")
+		page = TelegramAutoDumpingFlow._validate_callback_page(page)
 		context = str(context)
 		parts = context.rsplit(":", 1)
 		if len(parts) == 2 and parts[-1] in ("sellers", "keywords"):
 			kind = 0 if parts[-1] == "sellers" else 1
 			payload = parts[0].encode("utf-8") + bytes((kind,)) + page.to_bytes(PAGE_TOKEN_BYTES, "big")
-			return f"{prefix}~{urlsafe_b64encode(payload).decode().rstrip('=')}"
-		page_token = urlsafe_b64encode(page.to_bytes(PAGE_TOKEN_BYTES, "big")).decode().rstrip("=")
-		return f"{prefix}{context}:{page_token}"
+			callback = f"{prefix}~{urlsafe_b64encode(payload).decode().rstrip('=')}"
+		else:
+			page_token = urlsafe_b64encode(page.to_bytes(PAGE_TOKEN_BYTES, "big")).decode().rstrip("=")
+			callback = f"{prefix}{context}:{page_token}"
+		if len(callback.encode("utf-8")) > 64:
+			raise ValueError("callback data exceeds Telegram's 64-byte limit")
+		return callback
 
 	@staticmethod
 	def _parse_page_callback(data: str, prefix: str) -> tuple[str, int]:
 		if not isinstance(data, str) or not data.startswith(prefix):
-			return "", 0
+			raise ValueError("invalid page callback")
 		payload = data[len(prefix):]
 		if payload.startswith("~"):
 			compact = TelegramAutoDumpingFlow._decode_compact_page(payload[1:])
-			if compact is not None:
-				return compact
+			if compact is None:
+				raise ValueError("invalid page callback")
+			return compact
 		context, separator, page = payload.rpartition(":")
 		if not separator:
-			return TelegramAutoDumpingFlow._expand_rule_context(payload), 0
+			raise ValueError("invalid page callback")
 		try:
 			page_bytes = urlsafe_b64decode(page + "=" * (-len(page) % 4))
 			if len(page_bytes) != PAGE_TOKEN_BYTES:
@@ -139,10 +139,24 @@ class TelegramAutoDumpingFlow:
 			page = int.from_bytes(page_bytes, "big")
 		except (Base64Error, TypeError, ValueError):
 			try:
-				page = max(int(page), 0)
+				page = int(page)
 			except (TypeError, ValueError):
-				page = 0
-		return TelegramAutoDumpingFlow._expand_rule_context(context), page
+				raise ValueError("invalid callback page") from None
+		return TelegramAutoDumpingFlow._expand_rule_context(context), TelegramAutoDumpingFlow._validate_callback_page(page)
+
+	@staticmethod
+	def _validate_callback_page(page: Any) -> int:
+		if isinstance(page, bool):
+			raise ValueError("invalid callback page")
+		try:
+			value = int(page)
+		except (TypeError, ValueError):
+			raise ValueError("invalid callback page") from None
+		if isinstance(page, float) and page != value:
+			raise ValueError("invalid callback page")
+		if not 0 <= value <= MAX_CALLBACK_PAGE:
+			raise ValueError("page is outside the callback range")
+		return value
 
 	@staticmethod
 	def _decode_compact_page(token: str) -> tuple[str, int] | None:
@@ -163,7 +177,7 @@ class TelegramAutoDumpingFlow:
 			return None
 		if not rule_id or len(rule_id.encode("utf-8")) > 36:
 			return None
-		return f"{rule_id}:{'sellers' if kind == 0 else 'keywords'}", int.from_bytes(payload[-PAGE_TOKEN_BYTES:], "big")
+		return f"{rule_id}:{'sellers' if kind == 0 else 'keywords'}", TelegramAutoDumpingFlow._validate_callback_page(int.from_bytes(payload[-PAGE_TOKEN_BYTES:], "big"))
 
 	@staticmethod
 	def _expand_rule_context(context: str) -> str:
