@@ -47,10 +47,12 @@ from ...config.constants import (
 	CBT_AUTO_DUMPING_STATUS,
 	CBT_AUTO_DUMPING_TOGGLE,
 	STATE_AUTO_DUMPING_INTERVAL,
+	STATE_AUTO_DUMPING_KEYWORDS,
 	STATE_AUTO_DUMPING_RULE,
+	STATE_AUTO_DUMPING_SELLERS,
 )
 from ...runtime.settings import update_host_settings
-from .settings import INTERVAL_PRESETS, normalize_rule
+from .settings import INTERVAL_PRESETS, normalize_rule, normalize_words
 
 
 PAGE_SIZE = 5
@@ -89,14 +91,13 @@ class TelegramAutoDumpingFlow:
 		self.host.tg.cbq_handler(self.add_rule, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULE_ADD))
 		self.host.tg.cbq_handler(self.open_period, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_PERIOD_PAGE))
 		self.host.tg.cbq_handler(self.open_rules, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULES_PAGE))
-		self.host.tg.cbq_handler(self._pending_page_callback, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_BLACKLIST_PAGE))
-		for prefix in (
-			CBT_AUTO_DUMPING_BLACKLIST_DELETE,
-			CBT_AUTO_DUMPING_BLACKLIST_ADD,
-		):
-			self.host.tg.cbq_handler(self._pending_callback, lambda c, prefix=prefix: (c.data or "").startswith(prefix))
+		self.host.tg.cbq_handler(self._blacklist_page_callback, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_BLACKLIST_PAGE))
+		self.host.tg.cbq_handler(self._add_blacklist, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_BLACKLIST_ADD))
+		self.host.tg.cbq_handler(self._delete_blacklist, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_BLACKLIST_DELETE))
 		self.host.tg.msg_handler(self.save_interval, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_INTERVAL))
 		self.host.tg.msg_handler(self.save_rule, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_RULE))
+		self.host.tg.msg_handler(self.save_rule_blacklist, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_SELLERS))
+		self.host.tg.msg_handler(self.save_rule_blacklist, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_KEYWORDS))
 
 	@staticmethod
 	def _page_items(items: list[Any], page: int) -> tuple[list[Any], int]:
@@ -188,6 +189,40 @@ class TelegramAutoDumpingFlow:
 			return None
 		return rule_index, "sellers" if kind == 0 else "keywords", TelegramAutoDumpingFlow._validate_callback_page(int.from_bytes(payload[-PAGE_TOKEN_BYTES:], "big"))
 
+	@staticmethod
+	def _blacklist_item_callback(prefix: str, rule_index: int, kind: str, page: int, item_index: int) -> str:
+		if kind not in ("sellers", "keywords"):
+			raise ValueError("invalid callback list kind")
+		if not isinstance(item_index, int) or not 0 <= item_index <= MAX_CALLBACK_PAGE:
+			raise ValueError("invalid blacklist item")
+		payload = (
+			TelegramAutoDumpingFlow._validate_rule_reference(rule_index).to_bytes(PAGE_TOKEN_BYTES, "big")
+			+ bytes((0 if kind == "sellers" else 1,))
+			+ TelegramAutoDumpingFlow._validate_callback_page(page).to_bytes(PAGE_TOKEN_BYTES, "big")
+			+ item_index.to_bytes(PAGE_TOKEN_BYTES, "big")
+		)
+		callback = f"{prefix}~{urlsafe_b64encode(payload).decode().rstrip('=')}"
+		if len(callback.encode("utf-8")) > 64:
+			raise ValueError("callback data exceeds Telegram's 64-byte limit")
+		return callback
+
+	@classmethod
+	def _parse_blacklist_item_callback(cls, data: str, prefix: str) -> tuple[int, str, int, int]:
+		if not isinstance(data, str) or not data.startswith(prefix) or not data[len(prefix):].startswith("~"):
+			raise ValueError("invalid blacklist item callback")
+		try:
+			payload = urlsafe_b64decode(data[len(prefix) + 1:] + "=" * (-len(data[len(prefix) + 1:]) % 4))
+		except (Base64Error, TypeError, ValueError):
+			raise ValueError("invalid blacklist item callback") from None
+		if len(payload) != PAGE_TOKEN_BYTES * 3 + 1 or payload[PAGE_TOKEN_BYTES] not in (0, 1):
+			raise ValueError("invalid blacklist item callback")
+		return (
+			cls._validate_rule_reference(int.from_bytes(payload[:PAGE_TOKEN_BYTES], "big")),
+			"sellers" if payload[PAGE_TOKEN_BYTES] == 0 else "keywords",
+			cls._validate_callback_page(int.from_bytes(payload[PAGE_TOKEN_BYTES + 1:PAGE_TOKEN_BYTES * 2 + 1], "big")),
+			int.from_bytes(payload[-PAGE_TOKEN_BYTES:], "big"),
+		)
+
 	def _rule_id_from_reference(self, rule_index: int) -> str:
 		rules = self.host.settings["auto_dumping"]["rules"]
 		index = self._rule_index_in_settings(self.host.settings, rule_index)
@@ -251,13 +286,25 @@ class TelegramAutoDumpingFlow:
 		try:
 			if prefix is None:
 				raise ValueError
-			parsed = self._parse_page_callback(call.data, prefix)
-			if prefix == CBT_AUTO_DUMPING_BLACKLIST_PAGE:
-				self._rule_id_from_reference(parsed[0])
+			self._parse_page_callback(call.data, prefix)
 		except ValueError:
 			self.host.tgbot.answer_callback_query(call.id, "Некорректная страница.", show_alert=True)
 			return
 		self.host.tgbot.answer_callback_query(call.id)
+
+	def _blacklist_page_callback(self, call: telebot.types.CallbackQuery) -> None:
+		try:
+			rule_reference, kind, page = self._parse_page_callback(call.data, CBT_AUTO_DUMPING_BLACKLIST_PAGE)
+			rule_index = self._rule_index_in_settings(self.host.settings, rule_reference)
+			if not hasattr(call, "message"):
+				self.host.tgbot.answer_callback_query(call.id)
+				return
+			if kind is None:
+				self.show_blacklist(call, rule_index, page)
+			else:
+				self.show_blacklist_items(call, rule_index, kind, page)
+		except ValueError:
+			self.host.tgbot.answer_callback_query(call.id, "Некорректная страница.", show_alert=True)
 
 	def show_main(self, chat_id: int, message_id: int | None = None, edit: bool = False) -> None:
 		settings = self.host.settings["auto_dumping"]
@@ -440,7 +487,7 @@ class TelegramAutoDumpingFlow:
 		rule = self.host.settings["auto_dumping"]["rules"][rule_index]
 		keyboard = K(row_width=1)
 		keyboard.add(B("⏹ Выключить" if rule.get("enabled", True) else "▶️ Включить", callback_data=self._rule_callback_with_page(CBT_AUTO_DUMPING_RULE_TOGGLE, rule_index, page)))
-		keyboard.add(B("Черный список", callback_data=self._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, rule_index, "sellers", 0)))
+		keyboard.add(B("Черный список", callback_data=self._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, rule_index, None, 0)))
 		keyboard.add(B("🗑 Удалить", callback_data=self._rule_callback_with_page(CBT_AUTO_DUMPING_RULE_DELETE, rule_index, page)))
 		keyboard.add(B("◀️ К правилам", callback_data=self._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, call.message.chat.id, None, page)))
 		text = f"<b>Правило {escape(str(rule.get('id', '')))}</b>\nПодкатегория: {escape(str(rule.get('subcategory', '')))}\nКлючевые слова: {escape(', '.join(rule.get('keywords', [])))}"
@@ -484,6 +531,117 @@ class TelegramAutoDumpingFlow:
 		update_host_settings(self.host, lambda settings: settings["auto_dumping"]["rules"].append(rule))
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
 		self.host.tgbot.send_message(message.chat.id, "Правило сохранено.")
+
+	def _find_rule(self, rule_id: str) -> dict[str, Any]:
+		for rule in self.host.settings["auto_dumping"]["rules"]:
+			if rule.get("id") == rule_id:
+				return rule
+		raise ValueError("Правило не найдено.")
+
+	def _blacklist_rule(self, settings: dict[str, Any], rule_index: int) -> dict[str, Any]:
+		index = self._rule_index_in_settings(settings, rule_index)
+		return settings["auto_dumping"]["rules"][index]
+
+	def show_blacklist(self, call: telebot.types.CallbackQuery, rule_id: int | str, page: int) -> None:
+		try:
+			rule_index = self._rule_index_in_settings(self.host.settings, rule_id) if isinstance(rule_id, int) else next(
+				index for index, rule in enumerate(self.host.settings["auto_dumping"]["rules"]) if rule.get("id") == rule_id
+			)
+		except (StopIteration, ValueError):
+			self.host.tgbot.answer_callback_query(call.id, "Правило не найдено.", show_alert=True)
+			return
+		keyboard = K(row_width=1)
+		keyboard.add(B("Продавцы", callback_data=self._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, rule_index, "sellers", 0)))
+		keyboard.add(B("Ключевые слова", callback_data=self._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, rule_index, "keywords", 0)))
+		keyboard.add(B("◀️ Назад", callback_data=self._rule_callback_with_page(CBT_AUTO_DUMPING_RULE, rule_index, page)))
+		self.host.tgbot.edit_message_text("<b>Черный список правила</b>", call.message.chat.id, call.message.id, reply_markup=keyboard)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def show_blacklist_items(self, call: telebot.types.CallbackQuery, rule_id: int | str, kind: str, page: int) -> None:
+		try:
+			rule_index = self._rule_index_in_settings(self.host.settings, rule_id) if isinstance(rule_id, int) else next(
+				index for index, rule in enumerate(self.host.settings["auto_dumping"]["rules"]) if rule.get("id") == rule_id
+			)
+			if kind not in ("sellers", "keywords"):
+				raise ValueError
+			rule = self._blacklist_rule(self.host.settings, rule_index)
+		except (StopIteration, ValueError):
+			self.host.tgbot.answer_callback_query(call.id, "Правило не найдено.", show_alert=True)
+			return
+		field = f"{kind}_blacklist"
+		items, pages = self._page_items(rule.get(field, []), page)
+		page = self._display_page(page, pages)
+		keyboard = K(row_width=1)
+		for offset, item in enumerate(items, page * PAGE_SIZE):
+			keyboard.add(B(f"{item}  ✖️", callback_data=self._blacklist_item_callback(CBT_AUTO_DUMPING_BLACKLIST_DELETE, rule_index, kind, page, offset)))
+		keyboard.add(B("➕ Добавить", callback_data=self._page_callback(CBT_AUTO_DUMPING_BLACKLIST_ADD, rule_index, kind, page)))
+		keyboard.row(
+			B("◀️", callback_data=self._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, rule_index, kind, max(page - 1, 0))),
+			B(f"{page + 1}/{pages}", callback_data=self._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, rule_index, kind, page)),
+			B("▶️", callback_data=self._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, rule_index, kind, min(page + 1, pages - 1))),
+			B("◀️ Назад", callback_data=self._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, rule_index, None, page)),
+		)
+		self.host.tgbot.edit_message_text(
+			f"<b>{'Продавцы' if kind == 'sellers' else 'Ключевые слова'}</b>\nВсего: {len(rule.get(field, []))}",
+			call.message.chat.id,
+			call.message.id,
+			reply_markup=keyboard,
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def _add_blacklist(self, call: telebot.types.CallbackQuery) -> None:
+		try:
+			rule_index, kind, page = self._parse_page_callback(call.data, CBT_AUTO_DUMPING_BLACKLIST_ADD)
+			rule_id = self._rule_id_from_reference(rule_index)
+			if kind not in ("sellers", "keywords"):
+				raise ValueError
+		except ValueError:
+			self.host.tgbot.answer_callback_query(call.id, "Правило не найдено.", show_alert=True)
+			return
+		state = STATE_AUTO_DUMPING_SELLERS if kind == "sellers" else STATE_AUTO_DUMPING_KEYWORDS
+		message = self.host.tgbot.send_message(call.message.chat.id, "Введите значения через запятую.")
+		self.host.tg.set_state(call.message.chat.id, message.id, call.from_user.id, state, {"rule_id": rule_id, "rule_index": rule_index, "kind": kind, "page": page})
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def save_rule_blacklist(self, message: telebot.types.Message) -> str | None:
+		state = self.host.tg.get_state(message.chat.id, message.from_user.id) or {}
+		data = state.get("data") if isinstance(state, dict) else None
+		if not isinstance(data, dict) or data.get("kind") not in ("sellers", "keywords"):
+			self.host.tgbot.reply_to(message, "Некорректное состояние списка.")
+			return None
+		try:
+			self._validate_callback_page(data.get("page", 0))
+			if "rule_index" in data:
+				rule_index = self._rule_index_in_settings(self.host.settings, data["rule_index"])
+				rule = self._blacklist_rule(self.host.settings, rule_index)
+				if rule.get("id") != data["rule_id"]:
+					raise ValueError
+			else:
+				rule = self._find_rule(data["rule_id"])
+				rule_index = self.host.settings["auto_dumping"]["rules"].index(rule)
+		except (KeyError, TypeError, ValueError):
+			self.host.tgbot.send_message(message.chat.id, "Правило не найдено.")
+			return None
+		field = f"{data['kind']}_blacklist"
+		values = normalize_words((message.text or "").split(","))
+		update_host_settings(self.host, lambda settings: self._blacklist_rule(settings, rule_index).__setitem__(field, values))
+		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
+		confirmation = "Черный список сохранен."
+		self.host.tgbot.send_message(message.chat.id, confirmation)
+		return confirmation
+
+	def _delete_blacklist(self, call: telebot.types.CallbackQuery) -> None:
+		try:
+			rule_index, kind, page, item_index = self._parse_blacklist_item_callback(call.data, CBT_AUTO_DUMPING_BLACKLIST_DELETE)
+			rule = self._blacklist_rule(self.host.settings, rule_index)
+			field = f"{kind}_blacklist"
+			if item_index >= len(rule.get(field, [])):
+				raise ValueError
+		except ValueError:
+			self.host.tgbot.answer_callback_query(call.id, "Элемент не найден.", show_alert=True)
+			return
+		update_host_settings(self.host, lambda settings: self._blacklist_rule(settings, rule_index)[field].pop(item_index))
+		self.show_blacklist_items(call, rule_index, kind, page)
 
 	def _sync_scheduler(self) -> None:
 		if self.host.settings["auto_dumping"]["enabled"]:

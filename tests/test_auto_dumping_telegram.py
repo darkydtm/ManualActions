@@ -36,6 +36,8 @@ from core.config.constants import (
 	CBT_AUTO_DUMPING_PERIOD_PAGE,
 	CBT_AUTO_DUMPING_RULES_PAGE,
 	CBT_AUTO_DUMPING_STATUS,
+	STATE_AUTO_DUMPING_KEYWORDS,
+	STATE_AUTO_DUMPING_SELLERS,
 )
 from core.modules.auto_dumping.telegram import MAX_CALLBACK_PAGE, TelegramAutoDumpingFlow, validate_rule_input
 from core.modules.auto_dumping.settings import normalize_rule
@@ -128,6 +130,23 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 			from_user=SimpleNamespace(id=7),
 			message=SimpleNamespace(chat=SimpleNamespace(id=1), id=2),
 		)
+
+	def _message(self, text, state_data=None):
+		if state_data is not None:
+			self.host.tg.states[7] = (state_data.pop("state", "unused"), state_data)
+		return SimpleNamespace(chat=SimpleNamespace(id=1), from_user=SimpleNamespace(id=7), text=text)
+
+	def _rule(self, rule_id, **changes):
+		rule = {
+			"id": rule_id,
+			"enabled": True,
+			"subcategory": "game",
+			"keywords": ["gold"],
+			"sellers_blacklist": [],
+			"keywords_blacklist": [],
+		}
+		rule.update(changes)
+		return rule
 
 	def test_main_screen_has_only_top_level_sections(self):
 		self.flow.show_main(1)
@@ -264,6 +283,65 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 			callbacks,
 		)
 
+	def test_blacklist_screen_has_local_list_buttons(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule")]
+		self.flow.show_blacklist(self._call("blacklist-page"), 0, 0)
+
+		labels = [button.text for row in self.host.tgbot.edits[-1][3].rows for button in row]
+
+		self.assertEqual(labels[:2], ["Продавцы", "Ключевые слова"])
+		self.assertIn("◀️ Назад", labels)
+
+	def test_blacklist_items_are_paginated(self):
+		rule = self._rule("rule", sellers_blacklist=[str(index) for index in range(6)])
+		self.host.settings["auto_dumping"]["rules"] = [rule]
+
+		self.flow.show_blacklist_items(self._call("blacklist-items:rule:sellers:0"), 0, "sellers", 0)
+
+		keyboard = self.host.tgbot.edits[-1][3]
+		self.assertEqual(len(keyboard.rows[-1]), 4)
+		self.assertEqual(len(keyboard.rows) - 2, 5)
+		self.assertTrue(all(row[0].callback_data.startswith(CBT_AUTO_DUMPING_BLACKLIST_DELETE) for row in keyboard.rows[:5]))
+		self.assertEqual(self.flow._parse_blacklist_item_callback(keyboard.rows[0][0].callback_data, CBT_AUTO_DUMPING_BLACKLIST_DELETE)[:2], (0, "sellers"))
+
+	def test_blacklist_add_stores_rule_reference_kind_and_page(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule")]
+		call = self._call(self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_ADD, 0, "keywords", 2))
+
+		self.flow._add_blacklist(call)
+
+		state = self.host.tg.get_state(1, 7)
+		self.assertEqual(state["state"], STATE_AUTO_DUMPING_KEYWORDS)
+		self.assertEqual(state["data"], {"rule_id": "rule", "rule_index": 0, "kind": "keywords", "page": 2})
+
+	def test_save_rule_blacklist_deduplicates_case_insensitively(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule", sellers_blacklist=["Existing"], keywords_blacklist=["Keep"])]
+		message = self._message("Seller, seller, Other", {"rule_id": "rule", "rule_index": 0, "kind": "sellers", "page": 0})
+
+		confirmation = self.flow.save_rule_blacklist(message)
+
+		self.assertEqual(confirmation, "Черный список сохранен.")
+		self.assertEqual(self.flow._find_rule("rule")["sellers_blacklist"], ["Seller", "Other"])
+		self.assertEqual(self.flow._find_rule("rule")["keywords_blacklist"], ["Keep"])
+		self.assertNotIn(7, self.host.tg.states)
+
+	def test_save_rule_blacklist_accepts_rule_id_without_index(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule")]
+		message = self._message("Seller", {"rule_id": "rule", "kind": "sellers"})
+
+		self.flow.save_rule_blacklist(message)
+
+		self.assertEqual(self.flow._find_rule("rule")["sellers_blacklist"], ["Seller"])
+
+	def test_blacklist_delete_removes_only_selected_item(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule", sellers_blacklist=["one", "two"], keywords_blacklist=["keep"])]
+		callback = self.flow._blacklist_item_callback(CBT_AUTO_DUMPING_BLACKLIST_DELETE, 0, "sellers", 0, 1)
+
+		self.flow._delete_blacklist(self._call(callback))
+
+		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["sellers_blacklist"], ["one"])
+		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["keywords_blacklist"], ["keep"])
+
 	def test_main_screen_uses_section_callbacks(self):
 		self.flow.show_main(1)
 
@@ -314,7 +392,7 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 			expected = {
 				CBT_AUTO_DUMPING_PERIOD_PAGE: ["open_period"],
 				CBT_AUTO_DUMPING_RULES_PAGE: ["open_rules"],
-				CBT_AUTO_DUMPING_BLACKLIST_PAGE: ["_pending_page_callback"],
+				CBT_AUTO_DUMPING_BLACKLIST_PAGE: ["_blacklist_page_callback"],
 			}[prefix]
 			self.assertEqual([handler.__name__ for handler in handlers], expected)
 
