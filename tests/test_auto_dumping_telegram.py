@@ -148,6 +148,33 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		for prefix in prefixes:
 			self.assertTrue(any(predicate(SimpleNamespace(data=f"{prefix}payload")) for predicate in predicates))
 
+	def test_blacklist_page_uses_planned_callback_prefix(self):
+		self.assertEqual(CBT_AUTO_DUMPING_BLACKLIST_PAGE, "ma_auto_dumping_blacklist_page:")
+
+	def test_registers_page_callbacks_with_validation_handler(self):
+		self.flow.register()
+		page_prefixes = (
+			CBT_AUTO_DUMPING_PERIOD_PAGE,
+			CBT_AUTO_DUMPING_RULES_PAGE,
+			CBT_AUTO_DUMPING_BLACKLIST_PAGE,
+		)
+
+		for prefix in page_prefixes:
+			handlers = [handler for handler, predicate in self.host.tg.callbacks if predicate(SimpleNamespace(data=f"{prefix}payload"))]
+			self.assertEqual([handler.__name__ for handler in handlers], ["_pending_page_callback"])
+
+	def test_page_callback_handler_acknowledges_valid_and_invalid_data(self):
+		self.flow.register()
+		handler = next(handler for handler, predicate in self.host.tg.callbacks if predicate(SimpleNamespace(data=f"{CBT_AUTO_DUMPING_RULES_PAGE}context:0")))
+
+		handler(SimpleNamespace(id="valid", data=f"{CBT_AUTO_DUMPING_RULES_PAGE}context:0"))
+		handler(SimpleNamespace(id="invalid", data=f"{CBT_AUTO_DUMPING_RULES_PAGE}not-a-page"))
+
+		self.assertEqual(self.host.tgbot.answers, [
+			("valid", None, False),
+			("invalid", "Некорректная страница.", True),
+		])
+
 	def test_page_slice_limits_items_to_five(self):
 		items = list(range(12))
 		self.assertEqual(self.flow._page_items(items, 1), (items[5:10], 3))
@@ -160,19 +187,19 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), ("rule:sellers", 2))
 
 	def test_blacklist_page_callback_compacts_arbitrary_rule_context(self):
-		rule_id = "rule-id-with-hyphens-0123456789ab"
+		rule_id = "rule-id-0123456789"
 		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, f"{rule_id}:keywords", 0)
 
 		self.assertLessEqual(len(data.encode("utf-8")), 64)
 		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (f"{rule_id}:keywords", 0))
 
 	def test_blacklist_page_callback_uses_full_64_byte_budget(self):
-		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, f"{'x' * 36}:keywords", 0)
+		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, f"{'x' * 19}:keywords", 0)
 
 		self.assertLessEqual(len(data.encode("utf-8")), 64)
 
 	def test_maximum_rule_id_round_trips_compact_pages(self):
-		rule_id = "x" * 36
+		rule_id = "x" * 19
 
 		for page in (0, 10, 123456789, MAX_CALLBACK_PAGE):
 			with self.subTest(page=page):
@@ -196,14 +223,14 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 			self.flow._page_callback("x" * 65, "context", 0)
 
 	def test_blacklist_page_callback_preserves_uppercase_rule_id(self):
-		rule_id = "ABCDEF0123456789ABCDEF0123456789"
+		rule_id = "ABCDEF0123456789ABC"
 		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, f"{rule_id}:sellers", 0)
 
 		self.assertLessEqual(len(data.encode("utf-8")), 64)
 		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (f"{rule_id}:sellers", 0))
 
 	def test_blacklist_page_callback_preserves_delimiters_in_rule_context(self):
-		context = "rule:id-with-hyphens:keywords"
+		context = "rule:id-123456789:keywords"
 		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, context, 0)
 
 		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (context, 0))
@@ -221,6 +248,12 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 	def test_page_slice_clamps_page_to_last_available_page(self):
 		self.assertEqual(self.flow._page_items(list(range(6)), 99), ([5], 2))
+
+	def test_page_slice_normalizes_non_finite_and_fractional_pages(self):
+		items = list(range(12))
+		for page in (float("nan"), float("inf"), float("-inf"), 1.5):
+			with self.subTest(page=page):
+				self.assertEqual(self.flow._page_items(items, page), (items[:5], 3))
 
 	def test_interval_callback_accepts_positive_custom_value(self):
 		call = SimpleNamespace(
