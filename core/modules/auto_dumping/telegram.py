@@ -3,7 +3,7 @@ from __future__ import annotations
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from binascii import Error as Base64Error
 from html import escape
-from math import ceil
+from math import ceil, isfinite
 from typing import Any
 from uuid import uuid4
 
@@ -81,10 +81,13 @@ class TelegramAutoDumpingFlow:
 		self.host.tg.cbq_handler(self.delete_rule, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULE_DELETE))
 		self.host.tg.cbq_handler(self.add_rule, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULE_ADD))
 		for prefix in (
-			CBT_AUTO_DUMPING_STATUS,
 			CBT_AUTO_DUMPING_PERIOD_PAGE,
 			CBT_AUTO_DUMPING_RULES_PAGE,
 			CBT_AUTO_DUMPING_BLACKLIST_PAGE,
+		):
+			self.host.tg.cbq_handler(self._pending_page_callback, lambda c, prefix=prefix: (c.data or "").startswith(prefix))
+		for prefix in (
+			CBT_AUTO_DUMPING_STATUS,
 			CBT_AUTO_DUMPING_BLACKLIST_DELETE,
 			CBT_AUTO_DUMPING_BLACKLIST_ADD,
 		):
@@ -95,8 +98,10 @@ class TelegramAutoDumpingFlow:
 	@staticmethod
 	def _page_items(items: list[Any], page: int) -> tuple[list[Any], int]:
 		try:
+			if isinstance(page, float) and (not isfinite(page) or not page.is_integer()):
+				raise ValueError
 			page = max(int(page), 0)
-		except (TypeError, ValueError):
+		except (TypeError, ValueError, OverflowError):
 			page = 0
 		pages = max(1, ceil(len(items) / PAGE_SIZE))
 		page = min(page, pages - 1)
@@ -150,9 +155,9 @@ class TelegramAutoDumpingFlow:
 			raise ValueError("invalid callback page")
 		try:
 			value = int(page)
-		except (TypeError, ValueError):
+		except (TypeError, ValueError, OverflowError):
 			raise ValueError("invalid callback page") from None
-		if isinstance(page, float) and page != value:
+		if isinstance(page, float) and (not isfinite(page) or page != value):
 			raise ValueError("invalid callback page")
 		if not 0 <= value <= MAX_CALLBACK_PAGE:
 			raise ValueError("page is outside the callback range")
@@ -196,6 +201,22 @@ class TelegramAutoDumpingFlow:
 		return f"{rule_id}:{parts[-1]}"
 
 	def _pending_callback(self, call: telebot.types.CallbackQuery) -> None:
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def _pending_page_callback(self, call: telebot.types.CallbackQuery) -> None:
+		prefixes = (
+			CBT_AUTO_DUMPING_PERIOD_PAGE,
+			CBT_AUTO_DUMPING_RULES_PAGE,
+			CBT_AUTO_DUMPING_BLACKLIST_PAGE,
+		)
+		prefix = next((prefix for prefix in prefixes if (call.data or "").startswith(prefix)), None)
+		try:
+			if prefix is None:
+				raise ValueError
+			self._parse_page_callback(call.data, prefix)
+		except ValueError:
+			self.host.tgbot.answer_callback_query(call.id, "Некорректная страница.", show_alert=True)
+			return
 		self.host.tgbot.answer_callback_query(call.id)
 
 	def show_main(self, chat_id: int, message_id: int | None = None, edit: bool = False) -> None:

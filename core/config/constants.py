@@ -185,7 +185,7 @@ CBT_AUTO_DUMPING_RULE_ADD = "ma_auto_dumping_rule_add:"
 CBT_AUTO_DUMPING_STATUS = "ma_auto_dumping_status:"
 CBT_AUTO_DUMPING_PERIOD_PAGE = "ma_auto_dumping_period_page:"
 CBT_AUTO_DUMPING_RULES_PAGE = "ma_auto_dumping_rules_page:"
-CBT_AUTO_DUMPING_BLACKLIST_PAGE = "mab:"
+CBT_AUTO_DUMPING_BLACKLIST_PAGE = "ma_auto_dumping_blacklist_page:"
 CBT_AUTO_DUMPING_BLACKLIST_ADD = "ma_auto_dumping_blacklist_add:"
 CBT_AUTO_DUMPING_BLACKLIST_DELETE = "ma_auto_dumping_blacklist_delete:"
 
