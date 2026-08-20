@@ -35,10 +35,12 @@ class AutoDumpingSettingsTest(unittest.TestCase):
 			}, {"subcategory": "", "keywords": []}],
 		})
 
-		self.assertEqual(settings["global_sellers_blacklist"], ["Seller"])
-		self.assertEqual(settings["global_keywords_blacklist"], ["beta"])
+		self.assertNotIn("global_sellers_blacklist", settings)
+		self.assertNotIn("global_keywords_blacklist", settings)
 		self.assertEqual(len(settings["rules"]), 1)
 		self.assertEqual(settings["rules"][0]["id"], "rule-1")
+		self.assertEqual(settings["rules"][0]["sellers_blacklist"], ["bad"])
+		self.assertEqual(settings["rules"][0]["keywords_blacklist"], ["beta"])
 		self.assertEqual(DumpingRule.from_dict(settings["rules"][0]).keyword_mode, "all")
 
 	def test_rejects_duplicate_rule_keywords_in_one_subcategory(self):

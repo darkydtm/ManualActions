@@ -70,6 +70,4 @@ class PriceDecision:
 class AutoDumpingConfig:
 	enabled: bool
 	interval_minutes: int
-	global_sellers_blacklist: tuple[str, ...]
-	global_keywords_blacklist: tuple[str, ...]
 	rules: tuple[DumpingRule, ...]
