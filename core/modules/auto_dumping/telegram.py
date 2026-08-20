@@ -51,6 +51,7 @@ from .settings import INTERVAL_PRESETS, normalize_rule
 PAGE_SIZE = 5
 PAGE_TOKEN_BYTES = 4
 MAX_CALLBACK_PAGE = (1 << (PAGE_TOKEN_BYTES * 8)) - 1
+MAX_RULE_REFERENCE = (1 << (PAGE_TOKEN_BYTES * 8)) - 1
 
 
 def validate_rule_input(data: dict[str, Any]) -> dict[str, Any]:
@@ -109,15 +110,17 @@ class TelegramAutoDumpingFlow:
 		return items[start:start + PAGE_SIZE], pages
 
 	@staticmethod
-	def _page_callback(prefix: str, context: str, page: int) -> str:
+	def _page_callback(prefix: str, context: int | str | None, list_kind: str | None, page: int) -> str:
 		page = TelegramAutoDumpingFlow._validate_callback_page(page)
-		context = str(context)
-		parts = context.rsplit(":", 1)
-		if len(parts) == 2 and parts[-1] in ("sellers", "keywords"):
-			kind = 0 if parts[-1] == "sellers" else 1
-			payload = parts[0].encode("utf-8") + bytes((kind,)) + page.to_bytes(PAGE_TOKEN_BYTES, "big")
+		if list_kind is not None:
+			if list_kind not in ("sellers", "keywords"):
+				raise ValueError("invalid callback list kind")
+			rule_index = TelegramAutoDumpingFlow._validate_rule_reference(context)
+			kind = 0 if list_kind == "sellers" else 1
+			payload = rule_index.to_bytes(PAGE_TOKEN_BYTES, "big") + bytes((kind,)) + page.to_bytes(PAGE_TOKEN_BYTES, "big")
 			callback = f"{prefix}~{urlsafe_b64encode(payload).decode().rstrip('=')}"
 		else:
+			context = "" if context is None else str(context)
 			page_token = urlsafe_b64encode(page.to_bytes(PAGE_TOKEN_BYTES, "big")).decode().rstrip("=")
 			callback = f"{prefix}{context}:{page_token}"
 		if len(callback.encode("utf-8")) > 64:
@@ -125,7 +128,7 @@ class TelegramAutoDumpingFlow:
 		return callback
 
 	@staticmethod
-	def _parse_page_callback(data: str, prefix: str) -> tuple[str, int]:
+	def _parse_page_callback(data: str, prefix: str) -> tuple[int | str, str | None, int]:
 		if not isinstance(data, str) or not data.startswith(prefix):
 			raise ValueError("invalid page callback")
 		payload = data[len(prefix):]
@@ -147,7 +150,7 @@ class TelegramAutoDumpingFlow:
 				page = int(page)
 			except (TypeError, ValueError):
 				raise ValueError("invalid callback page") from None
-		return TelegramAutoDumpingFlow._expand_rule_context(context), TelegramAutoDumpingFlow._validate_callback_page(page)
+		return context, None, TelegramAutoDumpingFlow._validate_callback_page(page)
 
 	@staticmethod
 	def _validate_callback_page(page: Any) -> int:
@@ -164,41 +167,41 @@ class TelegramAutoDumpingFlow:
 		return value
 
 	@staticmethod
-	def _decode_compact_page(token: str) -> tuple[str, int] | None:
+	def _decode_compact_page(token: str) -> tuple[int, str, int] | None:
 		if not token or any(char not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" for char in token):
 			return None
 		try:
 			payload = urlsafe_b64decode(token + "=" * (-len(token) % 4))
 		except (Base64Error, TypeError, ValueError):
 			return None
-		if len(payload) <= PAGE_TOKEN_BYTES:
+		if len(payload) != PAGE_TOKEN_BYTES * 2 + 1:
 			return None
-		kind = payload[-PAGE_TOKEN_BYTES - 1]
+		rule_index = int.from_bytes(payload[:PAGE_TOKEN_BYTES], "big")
+		kind = payload[PAGE_TOKEN_BYTES]
 		if kind not in (0, 1):
 			return None
-		try:
-			rule_id = payload[:-PAGE_TOKEN_BYTES - 1].decode("utf-8")
-		except UnicodeDecodeError:
-			return None
-		if not rule_id or len(rule_id.encode("utf-8")) > 36:
-			return None
-		return f"{rule_id}:{'sellers' if kind == 0 else 'keywords'}", TelegramAutoDumpingFlow._validate_callback_page(int.from_bytes(payload[-PAGE_TOKEN_BYTES:], "big"))
+		return rule_index, "sellers" if kind == 0 else "keywords", TelegramAutoDumpingFlow._validate_callback_page(int.from_bytes(payload[-PAGE_TOKEN_BYTES:], "big"))
+
+	def _rule_id_from_reference(self, rule_index: int) -> str:
+		index = self._validate_rule_reference(rule_index)
+		rules = self.host.settings["auto_dumping"]["rules"]
+		if not 0 <= index < len(rules):
+			raise ValueError("rule reference not found")
+		return rules[index]["id"]
 
 	@staticmethod
-	def _expand_rule_context(context: str) -> str:
-		parts = context.rsplit(":", 1)
-		if len(parts) != 2 or parts[-1] not in ("sellers", "keywords"):
-			return context
-		if not parts[0].startswith("~"):
-			return context
-		token = parts[0][1:]
-		if not token or any(char not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" for char in token):
-			return context
+	def _validate_rule_reference(rule_index: Any) -> int:
+		if isinstance(rule_index, bool):
+			raise ValueError("invalid rule reference")
 		try:
-			rule_id = urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode("utf-8")
-		except (UnicodeDecodeError, ValueError, TypeError):
-			return context
-		return f"{rule_id}:{parts[-1]}"
+			value = int(rule_index)
+		except (TypeError, ValueError, OverflowError):
+			raise ValueError("invalid rule reference") from None
+		if isinstance(rule_index, float) and (not isfinite(rule_index) or rule_index != value):
+			raise ValueError("invalid rule reference")
+		if not 0 <= value <= MAX_RULE_REFERENCE:
+			raise ValueError("rule reference is outside the callback range")
+		return value
 
 	def _pending_callback(self, call: telebot.types.CallbackQuery) -> None:
 		self.host.tgbot.answer_callback_query(call.id)
@@ -213,7 +216,9 @@ class TelegramAutoDumpingFlow:
 		try:
 			if prefix is None:
 				raise ValueError
-			self._parse_page_callback(call.data, prefix)
+			parsed = self._parse_page_callback(call.data, prefix)
+			if prefix == CBT_AUTO_DUMPING_BLACKLIST_PAGE:
+				self._rule_id_from_reference(parsed[0])
 		except ValueError:
 			self.host.tgbot.answer_callback_query(call.id, "Некорректная страница.", show_alert=True)
 			return
