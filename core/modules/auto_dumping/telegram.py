@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from html import escape
 from math import ceil
+from string import hexdigits
 from typing import Any
 from uuid import uuid4
 
@@ -101,18 +103,46 @@ class TelegramAutoDumpingFlow:
 
 	@staticmethod
 	def _page_callback(prefix: str, context: str, page: int) -> str:
-		return f"{prefix}{context}:{max(int(page), 0)}"
+		try:
+			page = max(int(page), 0)
+		except (TypeError, ValueError):
+			page = 0
+		parts = str(context).split(":")
+		if len(parts) > 1 and parts[-1] in ("sellers", "keywords"):
+			rule_id = parts[-2]
+			if len(rule_id) == 32 and all(char in hexdigits for char in rule_id):
+				parts[-2] = urlsafe_b64encode(bytes.fromhex(rule_id)).decode().rstrip("=")
+		context = ":".join(parts)
+		return f"{prefix}{context}:{page}"
 
 	@staticmethod
 	def _parse_page_callback(data: str, prefix: str) -> tuple[str, int]:
-		payload = data.replace(prefix, "", 1)
+		if not isinstance(data, str) or not data.startswith(prefix):
+			return "", 0
+		payload = data[len(prefix):]
 		context, separator, page = payload.rpartition(":")
 		if not separator:
-			return payload, 0
+			return TelegramAutoDumpingFlow._expand_rule_context(payload), 0
 		try:
-			return context, max(int(page), 0)
-		except ValueError:
-			return context, 0
+			page = max(int(page), 0)
+		except (TypeError, ValueError):
+			page = 0
+		return TelegramAutoDumpingFlow._expand_rule_context(context), page
+
+	@staticmethod
+	def _expand_rule_context(context: str) -> str:
+		parts = context.split(":")
+		if len(parts) > 1 and parts[-1] in ("sellers", "keywords"):
+			token = parts[-2]
+			if len(token) != 22 or any(char not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" for char in token):
+				return context
+			try:
+				rule_id = urlsafe_b64decode(token + "=" * (-len(token) % 4)).hex()
+			except (ValueError, TypeError):
+				return context
+			if len(rule_id) == 32:
+				parts[-2] = rule_id
+		return ":".join(parts)
 
 	def _pending_callback(self, call: telebot.types.CallbackQuery) -> None:
 		self.host.tgbot.answer_callback_query(call.id)
