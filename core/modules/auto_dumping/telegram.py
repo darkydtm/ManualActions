@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from html import escape
+from math import ceil
 from typing import Any
 from uuid import uuid4
 
@@ -23,20 +24,29 @@ except ModuleNotFoundError:
 
 
 from ...config.constants import (
+	CBT_AUTO_DUMPING_BLACKLIST_ADD,
+	CBT_AUTO_DUMPING_BLACKLIST_DELETE,
+	CBT_AUTO_DUMPING_BLACKLIST_PAGE,
 	CBT_AUTO_DUMPING_INTERVAL,
 	CBT_AUTO_DUMPING_PAGE,
+	CBT_AUTO_DUMPING_PERIOD_PAGE,
 	CBT_AUTO_DUMPING_RULE,
 	CBT_AUTO_DUMPING_RULE_ADD,
 	CBT_AUTO_DUMPING_RULE_DELETE,
 	CBT_AUTO_DUMPING_RULE_TOGGLE,
 	CBT_AUTO_DUMPING_RULES,
+	CBT_AUTO_DUMPING_RULES_PAGE,
 	CBT_AUTO_DUMPING_RUN,
+	CBT_AUTO_DUMPING_STATUS,
 	CBT_AUTO_DUMPING_TOGGLE,
 	STATE_AUTO_DUMPING_INTERVAL,
 	STATE_AUTO_DUMPING_RULE,
 )
 from ...runtime.settings import update_host_settings
 from .settings import INTERVAL_PRESETS, normalize_rule
+
+
+PAGE_SIZE = 5
 
 
 def validate_rule_input(data: dict[str, Any]) -> dict[str, Any]:
@@ -66,8 +76,46 @@ class TelegramAutoDumpingFlow:
 		self.host.tg.cbq_handler(self.toggle_rule, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULE_TOGGLE))
 		self.host.tg.cbq_handler(self.delete_rule, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULE_DELETE))
 		self.host.tg.cbq_handler(self.add_rule, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULE_ADD))
+		for prefix in (
+			CBT_AUTO_DUMPING_STATUS,
+			CBT_AUTO_DUMPING_PERIOD_PAGE,
+			CBT_AUTO_DUMPING_RULES_PAGE,
+			CBT_AUTO_DUMPING_BLACKLIST_PAGE,
+			CBT_AUTO_DUMPING_BLACKLIST_DELETE,
+			CBT_AUTO_DUMPING_BLACKLIST_ADD,
+		):
+			self.host.tg.cbq_handler(self._pending_callback, lambda c, prefix=prefix: (c.data or "").startswith(prefix))
 		self.host.tg.msg_handler(self.save_interval, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_INTERVAL))
 		self.host.tg.msg_handler(self.save_rule, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_RULE))
+
+	@staticmethod
+	def _page_items(items: list[Any], page: int) -> tuple[list[Any], int]:
+		try:
+			page = max(int(page), 0)
+		except (TypeError, ValueError):
+			page = 0
+		pages = max(1, ceil(len(items) / PAGE_SIZE))
+		page = min(page, pages - 1)
+		start = page * PAGE_SIZE
+		return items[start:start + PAGE_SIZE], pages
+
+	@staticmethod
+	def _page_callback(prefix: str, context: str, page: int) -> str:
+		return f"{prefix}{context}:{max(int(page), 0)}"
+
+	@staticmethod
+	def _parse_page_callback(data: str, prefix: str) -> tuple[str, int]:
+		payload = data.replace(prefix, "", 1)
+		context, separator, page = payload.rpartition(":")
+		if not separator:
+			return payload, 0
+		try:
+			return context, max(int(page), 0)
+		except ValueError:
+			return context, 0
+
+	def _pending_callback(self, call: telebot.types.CallbackQuery) -> None:
+		self.host.tgbot.answer_callback_query(call.id)
 
 	def show_main(self, chat_id: int, message_id: int | None = None, edit: bool = False) -> None:
 		settings = self.host.settings["auto_dumping"]
