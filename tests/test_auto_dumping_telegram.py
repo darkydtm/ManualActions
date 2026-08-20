@@ -28,7 +28,15 @@ sys.modules.setdefault("tg_bot", tg_bot_module)
 sys.modules.setdefault("tg_bot.static_keyboards", tg_bot_static_keyboards_module)
 sys.modules.setdefault("tg_bot.utils", tg_bot_utils_module)
 
-from core.config.constants import CBT_AUTO_DUMPING_INTERVAL
+from core.config.constants import (
+	CBT_AUTO_DUMPING_BLACKLIST_ADD,
+	CBT_AUTO_DUMPING_BLACKLIST_DELETE,
+	CBT_AUTO_DUMPING_BLACKLIST_PAGE,
+	CBT_AUTO_DUMPING_INTERVAL,
+	CBT_AUTO_DUMPING_PERIOD_PAGE,
+	CBT_AUTO_DUMPING_RULES_PAGE,
+	CBT_AUTO_DUMPING_STATUS,
+)
 from core.modules.auto_dumping.telegram import TelegramAutoDumpingFlow, validate_rule_input
 
 
@@ -124,6 +132,36 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.assertNotIn("edit_keywords", callback_handlers)
 		self.assertNotIn("save_sellers", message_handlers)
 		self.assertNotIn("save_keywords", message_handlers)
+
+	def test_registers_new_auto_dumping_callback_prefixes(self):
+		self.flow.register()
+		prefixes = (
+			CBT_AUTO_DUMPING_STATUS,
+			CBT_AUTO_DUMPING_PERIOD_PAGE,
+			CBT_AUTO_DUMPING_RULES_PAGE,
+			CBT_AUTO_DUMPING_BLACKLIST_PAGE,
+			CBT_AUTO_DUMPING_BLACKLIST_DELETE,
+			CBT_AUTO_DUMPING_BLACKLIST_ADD,
+		)
+
+		predicates = [predicate for _, predicate in self.host.tg.callbacks]
+		for prefix in prefixes:
+			self.assertTrue(any(predicate(SimpleNamespace(data=f"{prefix}payload")) for predicate in predicates))
+
+	def test_page_slice_limits_items_to_five(self):
+		items = list(range(12))
+		self.assertEqual(self.flow._page_items(items, 1), (items[5:10], 3))
+
+	def test_empty_page_still_has_one_total_page(self):
+		self.assertEqual(self.flow._page_items([], 0), ([], 1))
+
+	def test_page_callback_keeps_context_and_zero_based_page(self):
+		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, "rule:sellers", 2)
+		self.assertEqual(data, f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}rule:sellers:2")
+		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), ("rule:sellers", 2))
+
+	def test_page_slice_clamps_page_to_last_available_page(self):
+		self.assertEqual(self.flow._page_items(list(range(6)), 99), ([5], 2))
 
 	def test_interval_callback_accepts_positive_custom_value(self):
 		call = SimpleNamespace(
