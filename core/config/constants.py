@@ -41,6 +41,7 @@ GEMINI_DELIVERY_FILE = os.path.join(PLUGIN_FOLDER, "gemini_delivery.json")
 GPT_ACCOUNTS_DELIVERY_FILE = os.path.join(PLUGIN_FOLDER, "gpt_accounts_delivery.json")
 TWO_FACTOR_FILE = os.path.join(PLUGIN_FOLDER, "two_factor.json")
 CHAT_SYNC_TOPICS_FILE = os.path.join(PLUGIN_FOLDER, "chat_sync_topics.json")
+AUTO_DUMPING_STATE_FILE = os.path.join(PLUGIN_FOLDER, "auto_dumping_state.json")
 
 SYNC_PLUGIN_UUID = "745ed27e-3196-47c3-9483-e382c09fd2d8"
 
