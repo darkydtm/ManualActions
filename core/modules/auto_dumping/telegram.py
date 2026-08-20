@@ -109,9 +109,8 @@ class TelegramAutoDumpingFlow:
 		context = str(context)
 		parts = context.rsplit(":", 1)
 		if len(parts) == 2 and parts[-1] in ("sellers", "keywords"):
-			parent, rule_id = parts[0].rsplit(":", 1) if ":" in parts[0] else ("", parts[0])
-			token = urlsafe_b64encode(rule_id.encode("utf-8")).decode().rstrip("=")
-			context = ":".join(filter(None, (parent, f"~{token}", parts[-1])))
+			token = urlsafe_b64encode(parts[0].encode("utf-8")).decode().rstrip("=")
+			context = f"~{token}:{parts[-1]}"
 		return f"{prefix}{context}:{page}"
 
 	@staticmethod
@@ -133,17 +132,16 @@ class TelegramAutoDumpingFlow:
 		parts = context.rsplit(":", 1)
 		if len(parts) != 2 or parts[-1] not in ("sellers", "keywords"):
 			return context
-		parent, token = parts[0].rsplit(":", 1) if ":" in parts[0] else ("", parts[0])
-		if not token.startswith("~"):
+		if not parts[0].startswith("~"):
 			return context
-		token = token[1:]
+		token = parts[0][1:]
 		if not token or any(char not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" for char in token):
 			return context
 		try:
 			rule_id = urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode("utf-8")
 		except (UnicodeDecodeError, ValueError, TypeError):
 			return context
-		return ":".join(filter(None, (parent, rule_id, parts[-1])))
+		return f"{rule_id}:{parts[-1]}"
 
 	def _pending_callback(self, call: telebot.types.CallbackQuery) -> None:
 		self.host.tgbot.answer_callback_query(call.id)

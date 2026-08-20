@@ -166,12 +166,23 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.assertLessEqual(len(data.encode("utf-8")), 64)
 		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (f"{rule_id}:keywords", 0))
 
+	def test_blacklist_page_callback_uses_full_64_byte_budget(self):
+		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, f"{'x' * 36}:keywords", 0)
+
+		self.assertEqual(len(data.encode("utf-8")), 64)
+
 	def test_blacklist_page_callback_preserves_uppercase_rule_id(self):
 		rule_id = "ABCDEF0123456789ABCDEF0123456789"
 		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, f"{rule_id}:sellers", 0)
 
 		self.assertLessEqual(len(data.encode("utf-8")), 64)
 		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (f"{rule_id}:sellers", 0))
+
+	def test_blacklist_page_callback_preserves_delimiters_in_rule_context(self):
+		context = "rule:id-with-hyphens:keywords"
+		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, context, 0)
+
+		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (context, 0))
 
 	def test_page_callback_handles_malformed_and_negative_pages(self):
 		self.assertEqual(self.flow._parse_page_callback(f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}rule:sellers:-2", CBT_AUTO_DUMPING_BLACKLIST_PAGE), ("rule:sellers", 0))

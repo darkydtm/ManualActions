@@ -73,13 +73,20 @@ Task 2 is complete. The implementation is limited to callback constants, callbac
 ## Reviewer-Fix Follow-Up
 
 - Root cause: UUID raw-byte encoding was only valid for lowercase 32-character hexadecimal IDs and decoded uppercase IDs through `.hex()`, losing case. It also did not cover arbitrary normalized IDs.
-- Rule IDs are now encoded as unpadded URL-safe base64 of their UTF-8 text when used in rule/list page contexts, preserving the exact original ID without runtime state. The blacklist page prefix is compacted to leave room for the encoded context.
+- Rule contexts are now encoded as unpadded URL-safe base64 of their UTF-8 text before the list kind, preserving parent context, delimiters, and exact ID casing without runtime state. The blacklist page prefix is compacted to leave room for the encoded context.
 - `normalize_rule` rejects IDs over 36 UTF-8 bytes, the maximum accepted size that fits the 64-byte Telegram callback limit with the current payload.
 - Added tests for hyphenated/arbitrary IDs, uppercase IDs, exact round trips, malformed encoded input, and byte-length limits.
+- Added a delimiter-preserving round-trip test and an exact 64-byte boundary test for the largest accepted ID.
 
 ## Reviewer-Fix Follow-Up Verification
 
 - RED: focused tests failed because the hyphenated callback was 75 bytes and uppercase IDs decoded lowercase.
 - GREEN: `python -m unittest tests.test_auto_dumping_telegram` - 12 tests passed.
-- Full suite: `python -m unittest discover -s tests` - 517 tests passed.
+- GREEN: `python -m unittest tests.test_auto_dumping_telegram` - 13 tests passed.
+- Full suite: `python -m unittest discover -s tests` - 518 tests passed.
 - `git diff --check` - passed.
+
+## Final Verification
+
+- `python -m unittest tests.test_auto_dumping_telegram` - 14 tests passed.
+- `python -m unittest discover -s tests` - 519 tests passed.
