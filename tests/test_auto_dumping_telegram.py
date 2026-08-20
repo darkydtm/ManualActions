@@ -115,12 +115,85 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.scheduler = Mock()
 		self.flow = TelegramAutoDumpingFlow(self.host, Mock(), self.scheduler)
 
-	def test_main_screen_contains_interval_and_enable_controls(self):
+	def _call(self, data, call_id="call"):
+		return SimpleNamespace(
+			id=call_id,
+			data=data,
+			from_user=SimpleNamespace(id=7),
+			message=SimpleNamespace(chat=SimpleNamespace(id=1), id=2),
+		)
+
+	def test_main_screen_has_only_top_level_sections(self):
+		self.flow.show_main(1)
+
+		labels = [button.text for row in self.host.tgbot.messages[0][2].rows for button in row]
+
+		self.assertIn("Статус", labels)
+		self.assertIn("Период", labels)
+		self.assertIn("Правила", labels)
+		self.assertIn("Запустить цикл", labels)
+		self.assertNotIn("Общий чёрный список продавцов", labels)
+		self.assertEqual(len(labels), 4)
+
+	def test_status_buttons_set_explicit_state_idempotently(self):
+		call = self._call(CBT_AUTO_DUMPING_STATUS + "page:1")
+		self.flow.show_status(call)
+
+		self.assertEqual(len(self.host.tgbot.edits[-1][3].rows), 2)
+		self.flow.toggle(self._call(CBT_AUTO_DUMPING_STATUS + "1"))
+		self.flow.toggle(self._call(CBT_AUTO_DUMPING_STATUS + "1"))
+
+		self.assertTrue(self.host.settings["auto_dumping"]["enabled"])
+
+	def test_period_screen_has_no_status_controls(self):
+		self.flow.show_period(self._call(CBT_AUTO_DUMPING_PERIOD_PAGE + "1"))
+
+		labels = [button.text for row in self.host.tgbot.edits[-1][3].rows for button in row]
+
+		self.assertIn("Своё значение", labels)
+		self.assertNotIn("Включено", labels)
+		self.assertNotIn("Выключено", labels)
+
+	def test_rules_screen_has_five_rules_and_four_navigation_buttons(self):
+		self.host.settings["auto_dumping"]["rules"] = [
+			{"id": str(index), "enabled": True, "subcategory": "game", "keywords": [str(index)]}
+			for index in range(6)
+		]
+		call = self._call(self.flow._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, 1, None, 0))
+
+		self.flow.open_rules(call)
+
+		keyboard = self.host.tgbot.edits[-1][3]
+		navigation = keyboard.rows[-1]
+		self.assertEqual(len(keyboard.rows) - 2, 5)
+		self.assertEqual(len(navigation), 4)
+
+	def test_rule_detail_keeps_originating_rules_page(self):
+		self.host.settings["auto_dumping"]["rules"] = [
+			{"id": str(index), "subcategory": "game", "keywords": [str(index)]}
+			for index in range(6)
+		]
+		page = 1
+		call = self._call(self.flow._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, 1, None, page))
+		self.flow.open_rules(call)
+		rule_callback = self.host.tgbot.edits[-1][3].rows[0][0].callback_data
+
+		self.flow.show_rule(self._call(rule_callback))
+
+		labels = [button.text for row in self.host.tgbot.edits[-1][3].rows for button in row]
+		callbacks = [button.callback_data for row in self.host.tgbot.edits[-1][3].rows for button in row]
+		self.assertIn("Черный список", labels)
+		self.assertIn(
+			self.flow._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, 1, None, page),
+			callbacks,
+		)
+
+	def test_main_screen_uses_section_callbacks(self):
 		self.flow.show_main(1)
 
 		text, keyboard = self.host.tgbot.messages[0][1:]
 		callbacks = [button.callback_data for row in keyboard.rows for button in row]
-		self.assertIn(f"{CBT_AUTO_DUMPING_INTERVAL}1", callbacks)
+		self.assertIn(f"{CBT_AUTO_DUMPING_PERIOD_PAGE}1:AAAAAA", callbacks)
 		self.assertFalse(any("чёрный список" in button.text for row in keyboard.rows for button in row))
 		self.assertIn("Автодемпинг", text)
 
@@ -162,14 +235,19 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 		for prefix in page_prefixes:
 			handlers = [handler for handler, predicate in self.host.tg.callbacks if predicate(SimpleNamespace(data=f"{prefix}payload"))]
-			self.assertEqual([handler.__name__ for handler in handlers], ["_pending_page_callback"])
+			expected = {
+				CBT_AUTO_DUMPING_PERIOD_PAGE: ["show_period"],
+				CBT_AUTO_DUMPING_RULES_PAGE: ["open_rules"],
+				CBT_AUTO_DUMPING_BLACKLIST_PAGE: ["_pending_page_callback"],
+			}[prefix]
+			self.assertEqual([handler.__name__ for handler in handlers], expected)
 
 	def test_page_callback_handler_acknowledges_valid_and_invalid_data(self):
 		self.flow.register()
 		handler = next(handler for handler, predicate in self.host.tg.callbacks if predicate(SimpleNamespace(data=f"{CBT_AUTO_DUMPING_RULES_PAGE}context:0")))
 
-		handler(SimpleNamespace(id="valid", data=f"{CBT_AUTO_DUMPING_RULES_PAGE}context:0"))
-		handler(SimpleNamespace(id="invalid", data=f"{CBT_AUTO_DUMPING_RULES_PAGE}not-a-page"))
+		handler(self._call(f"{CBT_AUTO_DUMPING_RULES_PAGE}context:0", "valid"))
+		handler(self._call(f"{CBT_AUTO_DUMPING_RULES_PAGE}not-a-page", "invalid"))
 
 		self.assertEqual(self.host.tgbot.answers, [
 			("valid", None, False),
@@ -229,7 +307,10 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 		self.flow.open_rules(call)
 		list_callbacks = [button.callback_data for row in self.host.tgbot.edits[0][3].rows for button in row]
-		self.assertEqual(list_callbacks[:2], ["ma_auto_dumping_rule:0", "ma_auto_dumping_rule:1"])
+		self.assertEqual(
+			[self.flow._parse_page_callback(callback, "ma_auto_dumping_rule:") for callback in list_callbacks[:2]],
+			[("0", None, 0), ("1", None, 0)],
+		)
 		self.assertTrue(all(len(callback.encode("utf-8")) <= 64 for callback in list_callbacks))
 
 		self.flow.show_rule(SimpleNamespace(
@@ -238,12 +319,15 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 			message=call.message,
 		))
 		detail_callbacks = [button.callback_data for row in self.host.tgbot.edits[1][3].rows for button in row]
-		self.assertEqual(detail_callbacks[:2], ["ma_auto_dumping_rule_toggle:0", "ma_auto_dumping_rule_delete:0"])
+		self.assertEqual(
+			[self.flow._parse_page_callback(detail_callbacks[index], prefix)[0::2] for index, prefix in ((0, "ma_auto_dumping_rule_toggle:"), (2, "ma_auto_dumping_rule_delete:"))],
+			[("0", 0), ("0", 0)],
+		)
 		self.assertTrue(all(len(callback.encode("utf-8")) <= 64 for callback in detail_callbacks))
 
 		self.flow.toggle_rule(SimpleNamespace(id="toggle", data=detail_callbacks[0], message=call.message))
 		self.assertTrue(self.host.settings["auto_dumping"]["rules"][0]["enabled"])
-		self.flow.delete_rule(SimpleNamespace(id="delete", data=detail_callbacks[1], message=call.message))
+		self.flow.delete_rule(SimpleNamespace(id="delete", data=detail_callbacks[2], message=call.message))
 		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["id"], "second-rule")
 
 	def test_show_rule_uses_index_when_rule_ids_are_duplicate(self):
