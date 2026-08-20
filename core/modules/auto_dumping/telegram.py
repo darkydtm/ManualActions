@@ -189,6 +189,16 @@ class TelegramAutoDumpingFlow:
 			raise ValueError("rule reference not found")
 		return rules[index]["id"]
 
+	@classmethod
+	def _rule_callback(cls, prefix: str, rule_index: int) -> str:
+		return f"{prefix}{cls._validate_rule_reference(rule_index)}"
+
+	@classmethod
+	def _rule_index_from_callback(cls, data: str, prefix: str) -> int:
+		if not isinstance(data, str) or not data.startswith(prefix):
+			raise ValueError("invalid rule callback")
+		return cls._validate_rule_reference(data[len(prefix):])
+
 	@staticmethod
 	def _validate_rule_reference(rule_index: Any) -> int:
 		if isinstance(rule_index, bool):
@@ -308,33 +318,44 @@ class TelegramAutoDumpingFlow:
 
 	def open_rules(self, call: telebot.types.CallbackQuery) -> None:
 		keyboard = K(row_width=1)
-		for rule in self.host.settings["auto_dumping"]["rules"]:
-			keyboard.add(B(rule["subcategory"] + ": " + ", ".join(rule["keywords"]), callback_data=f"{CBT_AUTO_DUMPING_RULE}{rule['id']}"))
+		for index, rule in enumerate(self.host.settings["auto_dumping"]["rules"]):
+			keyboard.add(B(rule["subcategory"] + ": " + ", ".join(rule["keywords"]), callback_data=self._rule_callback(CBT_AUTO_DUMPING_RULE, index)))
 		keyboard.add(B("➕ Добавить правило", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}{call.message.chat.id}"))
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT_AUTO_DUMPING_PAGE}{call.message.chat.id}"))
 		self.host.tgbot.edit_message_text("<b>Правила автодемпинга</b>", call.message.chat.id, call.message.id, reply_markup=keyboard)
 		self.host.tgbot.answer_callback_query(call.id)
 
 	def show_rule(self, call: telebot.types.CallbackQuery) -> None:
-		rule = self._find_rule(call.data.replace(CBT_AUTO_DUMPING_RULE, "", 1))
-		if not rule:
+		try:
+			rule_index = self._rule_index_from_callback(call.data, CBT_AUTO_DUMPING_RULE)
+			rule_id = self._rule_id_from_reference(rule_index)
+		except ValueError:
 			self.host.tgbot.answer_callback_query(call.id, "Правило не найдено.", show_alert=True)
 			return
+		rule = self._find_rule(rule_id)
 		keyboard = K(row_width=1)
-		keyboard.add(B("⏹ Выключить" if rule["enabled"] else "▶️ Включить", callback_data=f"{CBT_AUTO_DUMPING_RULE_TOGGLE}{rule['id']}"))
-		keyboard.add(B("🗑 Удалить", callback_data=f"{CBT_AUTO_DUMPING_RULE_DELETE}{rule['id']}"))
+		keyboard.add(B("⏹ Выключить" if rule["enabled"] else "▶️ Включить", callback_data=self._rule_callback(CBT_AUTO_DUMPING_RULE_TOGGLE, rule_index)))
+		keyboard.add(B("🗑 Удалить", callback_data=self._rule_callback(CBT_AUTO_DUMPING_RULE_DELETE, rule_index)))
 		keyboard.add(B("◀️ К правилам", callback_data=f"{CBT_AUTO_DUMPING_RULES}{call.message.chat.id}"))
 		text = f"<b>Правило {escape(rule['id'])}</b>\nПодкатегория: {escape(rule['subcategory'])}\nКлючевые слова: {escape(', '.join(rule['keywords']))}"
 		self.host.tgbot.edit_message_text(text, call.message.chat.id, call.message.id, reply_markup=keyboard)
 		self.host.tgbot.answer_callback_query(call.id)
 
 	def toggle_rule(self, call: telebot.types.CallbackQuery) -> None:
-		rule_id = call.data.replace(CBT_AUTO_DUMPING_RULE_TOGGLE, "", 1)
+		try:
+			rule_id = self._rule_id_from_reference(self._rule_index_from_callback(call.data, CBT_AUTO_DUMPING_RULE_TOGGLE))
+		except ValueError:
+			self.host.tgbot.answer_callback_query(call.id, "Правило не найдено.", show_alert=True)
+			return
 		update_host_settings(self.host, lambda settings: self._mutate_rule(settings, rule_id, lambda rule: rule.__setitem__("enabled", not rule["enabled"])))
 		self._refresh(call)
 
 	def delete_rule(self, call: telebot.types.CallbackQuery) -> None:
-		rule_id = call.data.replace(CBT_AUTO_DUMPING_RULE_DELETE, "", 1)
+		try:
+			rule_id = self._rule_id_from_reference(self._rule_index_from_callback(call.data, CBT_AUTO_DUMPING_RULE_DELETE))
+		except ValueError:
+			self.host.tgbot.answer_callback_query(call.id, "Правило не найдено.", show_alert=True)
+			return
 		update_host_settings(self.host, lambda settings: settings["auto_dumping"].__setitem__("rules", [rule for rule in settings["auto_dumping"]["rules"] if rule["id"] != rule_id]))
 		self.open_rules(call)
 
