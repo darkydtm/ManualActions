@@ -4,6 +4,7 @@ from base64 import urlsafe_b64decode, urlsafe_b64encode
 from binascii import Error as Base64Error
 from html import escape
 from math import ceil, isfinite
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
@@ -73,6 +74,7 @@ class TelegramAutoDumpingFlow:
 		if not self.host.tg:
 			return
 		self.host.tg.cbq_handler(self.open_page, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_PAGE))
+		self.host.tg.cbq_handler(self._status_callback, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_STATUS))
 		self.host.tg.cbq_handler(self.toggle, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_TOGGLE))
 		self.host.tg.cbq_handler(self.set_interval, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_INTERVAL))
 		self.host.tg.cbq_handler(self.run_now, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RUN))
@@ -81,14 +83,10 @@ class TelegramAutoDumpingFlow:
 		self.host.tg.cbq_handler(self.toggle_rule, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULE_TOGGLE))
 		self.host.tg.cbq_handler(self.delete_rule, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULE_DELETE))
 		self.host.tg.cbq_handler(self.add_rule, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULE_ADD))
+		self.host.tg.cbq_handler(self.show_period, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_PERIOD_PAGE))
+		self.host.tg.cbq_handler(self.open_rules, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULES_PAGE))
+		self.host.tg.cbq_handler(self._pending_page_callback, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_BLACKLIST_PAGE))
 		for prefix in (
-			CBT_AUTO_DUMPING_PERIOD_PAGE,
-			CBT_AUTO_DUMPING_RULES_PAGE,
-			CBT_AUTO_DUMPING_BLACKLIST_PAGE,
-		):
-			self.host.tg.cbq_handler(self._pending_page_callback, lambda c, prefix=prefix: (c.data or "").startswith(prefix))
-		for prefix in (
-			CBT_AUTO_DUMPING_STATUS,
 			CBT_AUTO_DUMPING_BLACKLIST_DELETE,
 			CBT_AUTO_DUMPING_BLACKLIST_ADD,
 		):
@@ -98,16 +96,20 @@ class TelegramAutoDumpingFlow:
 
 	@staticmethod
 	def _page_items(items: list[Any], page: int) -> tuple[list[Any], int]:
+		pages = max(1, ceil(len(items) / PAGE_SIZE))
+		page = TelegramAutoDumpingFlow._display_page(page, pages)
+		start = page * PAGE_SIZE
+		return items[start:start + PAGE_SIZE], pages
+
+	@staticmethod
+	def _display_page(page: Any, pages: int) -> int:
 		try:
 			if isinstance(page, float) and (not isfinite(page) or not page.is_integer()):
 				raise ValueError
 			page = max(int(page), 0)
 		except (TypeError, ValueError, OverflowError):
 			page = 0
-		pages = max(1, ceil(len(items) / PAGE_SIZE))
-		page = min(page, pages - 1)
-		start = page * PAGE_SIZE
-		return items[start:start + PAGE_SIZE], pages
+		return min(page, pages - 1)
 
 	@staticmethod
 	def _page_callback(prefix: str, context: int | str | None, list_kind: str | None, page: int) -> str:
@@ -199,6 +201,20 @@ class TelegramAutoDumpingFlow:
 		return f"{prefix}{cls._validate_rule_reference(rule_index)}"
 
 	@classmethod
+	def _rule_callback_with_page(cls, prefix: str, rule_index: int, page: int) -> str:
+		return cls._page_callback(prefix, cls._validate_rule_reference(rule_index), None, page)
+
+	@classmethod
+	def _rule_callback_parts(cls, data: str, prefix: str) -> tuple[int, int]:
+		if not isinstance(data, str) or not data.startswith(prefix):
+			raise ValueError("invalid rule callback")
+		payload = data[len(prefix):]
+		if ":" not in payload:
+			return cls._validate_rule_reference(payload), 0
+		context, _, page = cls._parse_page_callback(data, prefix)
+		return cls._validate_rule_reference(context), page
+
+	@classmethod
 	def _rule_index_from_callback(cls, data: str, prefix: str) -> int:
 		if not isinstance(data, str) or not data.startswith(prefix):
 			raise ValueError("invalid rule callback")
@@ -250,31 +266,54 @@ class TelegramAutoDumpingFlow:
 			f"Последний цикл: <code>{escape(str(last or 'не было'))}</code>"
 		)
 		keyboard = K(row_width=1)
-		keyboard.add(B("⏹ Выключить" if settings["enabled"] else "▶️ Включить", callback_data=f"{CBT_AUTO_DUMPING_TOGGLE}{chat_id}"))
-		keyboard.add(B("⏱ 1 мин.", callback_data=f"{CBT_AUTO_DUMPING_INTERVAL}1"))
-		keyboard.add(B("⏱ Период", callback_data=f"{CBT_AUTO_DUMPING_INTERVAL}page:{chat_id}"))
-		keyboard.add(B("📋 Правила", callback_data=f"{CBT_AUTO_DUMPING_RULES}{chat_id}"))
-		keyboard.add(B("▶️ Запустить цикл", callback_data=f"{CBT_AUTO_DUMPING_RUN}{chat_id}"))
+		keyboard.add(B("Статус", callback_data=f"{CBT_AUTO_DUMPING_STATUS}page:{chat_id}"))
+		keyboard.add(B("Период", callback_data=self._page_callback(CBT_AUTO_DUMPING_PERIOD_PAGE, chat_id, None, 0)))
+		keyboard.add(B("Правила", callback_data=self._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, chat_id, None, 0)))
+		keyboard.add(B("Запустить цикл", callback_data=f"{CBT_AUTO_DUMPING_RUN}{chat_id}"))
 		self._send_or_edit(text, chat_id, message_id, keyboard, edit)
 
 	def open_page(self, call: telebot.types.CallbackQuery) -> None:
 		self.host.tgbot.answer_callback_query(call.id)
 		self.show_main(call.message.chat.id, call.message.id, True)
 
+	def _status_callback(self, call: telebot.types.CallbackQuery) -> None:
+		value = call.data.replace(CBT_AUTO_DUMPING_STATUS, "", 1)
+		if value.startswith("page:"):
+			self.show_status(call)
+			return
+		self.toggle(call)
+
+	def show_status(self, call: telebot.types.CallbackQuery) -> None:
+		settings = self.host.settings["auto_dumping"]
+		state = "включен" if settings["enabled"] else "выключен"
+		keyboard = K(row_width=2)
+		keyboard.add(
+			B("✅ Включено" if settings["enabled"] else "Включить", callback_data=f"{CBT_AUTO_DUMPING_STATUS}1"),
+			B("⛔ Выключено" if not settings["enabled"] else "Выключить", callback_data=f"{CBT_AUTO_DUMPING_STATUS}0"),
+		)
+		keyboard.add(B("◀️ Назад", callback_data=f"{CBT_AUTO_DUMPING_PAGE}{call.message.chat.id}"))
+		self.host.tgbot.edit_message_text(
+			f"<b>Статус автодемпинга</b>\n\nСостояние: <b>{state}</b>",
+			call.message.chat.id,
+			call.message.id,
+			reply_markup=keyboard,
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
 	def toggle(self, call: telebot.types.CallbackQuery) -> None:
-		update_host_settings(self.host, lambda settings: settings["auto_dumping"].__setitem__("enabled", not settings["auto_dumping"]["enabled"]))
-		self._refresh(call)
+		prefix = CBT_AUTO_DUMPING_STATUS if call.data.startswith(CBT_AUTO_DUMPING_STATUS) else CBT_AUTO_DUMPING_TOGGLE
+		value = call.data.replace(prefix, "", 1)
+		if value not in ("0", "1"):
+			self.host.tgbot.answer_callback_query(call.id, "Некорректный статус.", show_alert=True)
+			return
+		update_host_settings(self.host, lambda settings: settings["auto_dumping"].__setitem__("enabled", value == "1"))
 		self._sync_scheduler()
+		self.show_status(call)
 
 	def set_interval(self, call: telebot.types.CallbackQuery) -> None:
 		value = call.data.replace(CBT_AUTO_DUMPING_INTERVAL, "", 1)
 		if value.startswith("page:"):
-			keyboard = K(row_width=2)
-			for minutes in INTERVAL_PRESETS:
-				keyboard.add(B(f"{minutes} мин.", callback_data=f"{CBT_AUTO_DUMPING_INTERVAL}{minutes}"))
-			keyboard.add(B("Своё значение", callback_data=f"{CBT_AUTO_DUMPING_INTERVAL}custom"))
-			self.host.tgbot.edit_message_text("<b>Период автодемпинга</b>", call.message.chat.id, call.message.id, reply_markup=keyboard)
-			self.host.tgbot.answer_callback_query(call.id)
+			self.show_period(call)
 			return
 		if value == "custom":
 			message = self.host.tgbot.send_message(call.message.chat.id, "Введите период в минутах.")
@@ -287,6 +326,15 @@ class TelegramAutoDumpingFlow:
 			self.host.tgbot.answer_callback_query(call.id, "Некорректный период.", show_alert=True)
 			return
 		self._save_interval(minutes, call)
+
+	def show_period(self, call: telebot.types.CallbackQuery) -> None:
+		keyboard = K(row_width=2)
+		for minutes in INTERVAL_PRESETS:
+			keyboard.add(B(f"{minutes} мин.", callback_data=f"{CBT_AUTO_DUMPING_INTERVAL}{minutes}"))
+		keyboard.add(B("Своё значение", callback_data=f"{CBT_AUTO_DUMPING_INTERVAL}custom"))
+		keyboard.add(B("◀️ Назад", callback_data=f"{CBT_AUTO_DUMPING_PAGE}{call.message.chat.id}"))
+		self.host.tgbot.edit_message_text("<b>Период автодемпинга</b>", call.message.chat.id, call.message.id, reply_markup=keyboard)
+		self.host.tgbot.answer_callback_query(call.id)
 
 	def save_interval(self, message: telebot.types.Message) -> None:
 		try:
@@ -322,53 +370,73 @@ class TelegramAutoDumpingFlow:
 		self._refresh(call)
 
 	def open_rules(self, call: telebot.types.CallbackQuery) -> None:
+		page = 0
+		if getattr(call, "data", "").startswith(CBT_AUTO_DUMPING_RULES_PAGE):
+			try:
+				_, _, page = self._parse_page_callback(call.data, CBT_AUTO_DUMPING_RULES_PAGE)
+			except ValueError:
+				self.host.tgbot.answer_callback_query(call.id, "Некорректная страница.", show_alert=True)
+				return
+		self.show_rules(call, page)
+
+	def show_rules(self, call: telebot.types.CallbackQuery, page: int = 0) -> None:
+		rules = self.host.settings["auto_dumping"]["rules"]
+		items, pages = self._page_items(rules, page)
+		page = self._display_page(page, pages)
 		keyboard = K(row_width=1)
-		for index, rule in enumerate(self.host.settings["auto_dumping"]["rules"]):
-			keyboard.add(B(rule["subcategory"] + ": " + ", ".join(rule["keywords"]), callback_data=self._rule_callback(CBT_AUTO_DUMPING_RULE, index)))
+		for offset, rule in enumerate(items, page * PAGE_SIZE):
+			keyboard.add(B(
+				rule["subcategory"] + ": " + ", ".join(rule["keywords"]),
+				callback_data=self._rule_callback_with_page(CBT_AUTO_DUMPING_RULE, offset, page),
+			))
+		if not items:
+			keyboard.add(B("Правил пока нет", callback_data=self._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, call.message.chat.id, None, page)))
 		keyboard.add(B("➕ Добавить правило", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}{call.message.chat.id}"))
-		keyboard.add(B("◀️ Назад", callback_data=f"{CBT_AUTO_DUMPING_PAGE}{call.message.chat.id}"))
+		keyboard.add(
+			B("◀️", callback_data=self._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, call.message.chat.id, None, max(page - 1, 0))),
+			B(f"{page + 1}/{pages}", callback_data=self._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, call.message.chat.id, None, page)),
+			B("▶️", callback_data=self._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, call.message.chat.id, None, min(page + 1, pages - 1))),
+			B("◀️ Назад", callback_data=f"{CBT_AUTO_DUMPING_PAGE}{call.message.chat.id}"),
+		)
 		self.host.tgbot.edit_message_text("<b>Правила автодемпинга</b>", call.message.chat.id, call.message.id, reply_markup=keyboard)
 		self.host.tgbot.answer_callback_query(call.id)
 
 	def show_rule(self, call: telebot.types.CallbackQuery) -> None:
 		try:
-			rule_index = self._rule_index_from_callback(call.data, CBT_AUTO_DUMPING_RULE)
+			rule_index, page = self._rule_callback_parts(call.data, CBT_AUTO_DUMPING_RULE)
 			rule_index = self._rule_index_in_settings(self.host.settings, rule_index)
 		except ValueError:
 			self.host.tgbot.answer_callback_query(call.id, "Правило не найдено.", show_alert=True)
 			return
 		rule = self.host.settings["auto_dumping"]["rules"][rule_index]
 		keyboard = K(row_width=1)
-		keyboard.add(B("⏹ Выключить" if rule["enabled"] else "▶️ Включить", callback_data=self._rule_callback(CBT_AUTO_DUMPING_RULE_TOGGLE, rule_index)))
-		keyboard.add(B("🗑 Удалить", callback_data=self._rule_callback(CBT_AUTO_DUMPING_RULE_DELETE, rule_index)))
-		keyboard.add(B("◀️ К правилам", callback_data=f"{CBT_AUTO_DUMPING_RULES}{call.message.chat.id}"))
-		text = f"<b>Правило {escape(rule['id'])}</b>\nПодкатегория: {escape(rule['subcategory'])}\nКлючевые слова: {escape(', '.join(rule['keywords']))}"
+		keyboard.add(B("⏹ Выключить" if rule.get("enabled", True) else "▶️ Включить", callback_data=self._rule_callback_with_page(CBT_AUTO_DUMPING_RULE_TOGGLE, rule_index, page)))
+		keyboard.add(B("Черный список", callback_data=self._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, rule_index, "sellers", 0)))
+		keyboard.add(B("🗑 Удалить", callback_data=self._rule_callback_with_page(CBT_AUTO_DUMPING_RULE_DELETE, rule_index, page)))
+		keyboard.add(B("◀️ К правилам", callback_data=self._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, call.message.chat.id, None, page)))
+		text = f"<b>Правило {escape(str(rule.get('id', '')))}</b>\nПодкатегория: {escape(str(rule.get('subcategory', '')))}\nКлючевые слова: {escape(', '.join(rule.get('keywords', [])))}"
 		self.host.tgbot.edit_message_text(text, call.message.chat.id, call.message.id, reply_markup=keyboard)
 		self.host.tgbot.answer_callback_query(call.id)
 
 	def toggle_rule(self, call: telebot.types.CallbackQuery) -> None:
 		try:
-			rule_index = self._rule_index_in_settings(
-				self.host.settings,
-				self._rule_index_from_callback(call.data, CBT_AUTO_DUMPING_RULE_TOGGLE),
-			)
+			rule_index, page = self._rule_callback_parts(call.data, CBT_AUTO_DUMPING_RULE_TOGGLE)
+			rule_index = self._rule_index_in_settings(self.host.settings, rule_index)
 		except ValueError:
 			self.host.tgbot.answer_callback_query(call.id, "Правило не найдено.", show_alert=True)
 			return
 		update_host_settings(self.host, lambda settings: self._mutate_rule(settings, rule_index, lambda rule: rule.__setitem__("enabled", not rule["enabled"])))
-		self._refresh(call)
+		self.show_rule(SimpleNamespace(id=call.id, data=self._rule_callback_with_page(CBT_AUTO_DUMPING_RULE, rule_index, page), message=call.message))
 
 	def delete_rule(self, call: telebot.types.CallbackQuery) -> None:
 		try:
-			rule_index = self._rule_index_in_settings(
-				self.host.settings,
-				self._rule_index_from_callback(call.data, CBT_AUTO_DUMPING_RULE_DELETE),
-			)
+			rule_index, page = self._rule_callback_parts(call.data, CBT_AUTO_DUMPING_RULE_DELETE)
+			rule_index = self._rule_index_in_settings(self.host.settings, rule_index)
 		except ValueError:
 			self.host.tgbot.answer_callback_query(call.id, "Правило не найдено.", show_alert=True)
 			return
 		update_host_settings(self.host, lambda settings: self._delete_rule(settings, rule_index))
-		self.open_rules(call)
+		self.show_rules(call, page)
 
 	def add_rule(self, call: telebot.types.CallbackQuery) -> None:
 		message = self.host.tgbot.send_message(call.message.chat.id, "Введите правило JSON: subcategory, keywords, keyword_mode, price_mode, dumping_value, competitor_min_price, own_min_price.")
