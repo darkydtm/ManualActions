@@ -3,7 +3,6 @@ from __future__ import annotations
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from html import escape
 from math import ceil
-from string import hexdigits
 from typing import Any
 from uuid import uuid4
 
@@ -107,12 +106,12 @@ class TelegramAutoDumpingFlow:
 			page = max(int(page), 0)
 		except (TypeError, ValueError):
 			page = 0
-		parts = str(context).split(":")
-		if len(parts) > 1 and parts[-1] in ("sellers", "keywords"):
-			rule_id = parts[-2]
-			if len(rule_id) == 32 and all(char in hexdigits for char in rule_id):
-				parts[-2] = urlsafe_b64encode(bytes.fromhex(rule_id)).decode().rstrip("=")
-		context = ":".join(parts)
+		context = str(context)
+		parts = context.rsplit(":", 1)
+		if len(parts) == 2 and parts[-1] in ("sellers", "keywords"):
+			parent, rule_id = parts[0].rsplit(":", 1) if ":" in parts[0] else ("", parts[0])
+			token = urlsafe_b64encode(rule_id.encode("utf-8")).decode().rstrip("=")
+			context = ":".join(filter(None, (parent, f"~{token}", parts[-1])))
 		return f"{prefix}{context}:{page}"
 
 	@staticmethod
@@ -131,18 +130,20 @@ class TelegramAutoDumpingFlow:
 
 	@staticmethod
 	def _expand_rule_context(context: str) -> str:
-		parts = context.split(":")
-		if len(parts) > 1 and parts[-1] in ("sellers", "keywords"):
-			token = parts[-2]
-			if len(token) != 22 or any(char not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" for char in token):
-				return context
-			try:
-				rule_id = urlsafe_b64decode(token + "=" * (-len(token) % 4)).hex()
-			except (ValueError, TypeError):
-				return context
-			if len(rule_id) == 32:
-				parts[-2] = rule_id
-		return ":".join(parts)
+		parts = context.rsplit(":", 1)
+		if len(parts) != 2 or parts[-1] not in ("sellers", "keywords"):
+			return context
+		parent, token = parts[0].rsplit(":", 1) if ":" in parts[0] else ("", parts[0])
+		if not token.startswith("~"):
+			return context
+		token = token[1:]
+		if not token or any(char not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" for char in token):
+			return context
+		try:
+			rule_id = urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode("utf-8")
+		except (UnicodeDecodeError, ValueError, TypeError):
+			return context
+		return ":".join(filter(None, (parent, rule_id, parts[-1])))
 
 	def _pending_callback(self, call: telebot.types.CallbackQuery) -> None:
 		self.host.tgbot.answer_callback_query(call.id)

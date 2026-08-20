@@ -53,6 +53,13 @@ class AutoDumpingSettingsTest(unittest.TestCase):
 
 		self.assertEqual([rule["id"] for rule in settings["rules"]], ["one"])
 
+	def test_rejects_rule_ids_that_cannot_fit_callback_context(self):
+		settings = normalize_auto_dumping_settings({"rules": [{
+			"id": "x" * 37, "subcategory": "game", "keywords": ["gold"],
+		}]})
+
+		self.assertEqual(settings["rules"], [])
+
 	def test_normalize_settings_includes_auto_dumping_section(self):
 		settings = normalize_settings({"auto_dumping": {"enabled": True, "interval_minutes": 10}})
 
