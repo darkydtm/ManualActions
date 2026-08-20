@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from core.modules.contracts import ModuleDefinition, SettingsSection
+from core.modules import registry as registry_module
 from core.modules.registry import ModuleRegistry
 
 
@@ -34,3 +37,14 @@ class ModuleRegistryTests(unittest.TestCase):
 		))
 
 		self.assertEqual(registry.create_services(object()), {"first": 1, "second": 2})
+
+	def test_discover_imports_modules_even_when_one_was_already_registered(self):
+		with patch.object(registry_module, "REGISTERED_MODULES", [ModuleDefinition("already_loaded")]):
+			with patch.object(registry_module.pkgutil, "iter_modules", return_value=[
+				SimpleNamespace(ispkg=True, name="first"),
+			]):
+				package = unittest.mock.Mock(__path__=["core/modules"])
+				with patch.object(registry_module.importlib, "import_module", return_value=package) as import_module:
+					ModuleRegistry.discover()
+
+			import_module.assert_any_call("core.modules.first.module")
