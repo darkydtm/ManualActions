@@ -38,7 +38,7 @@ class AutoDumpingSettingsTest(unittest.TestCase):
 		self.assertNotIn("global_sellers_blacklist", settings)
 		self.assertNotIn("global_keywords_blacklist", settings)
 		self.assertEqual(len(settings["rules"]), 1)
-		self.assertEqual(settings["rules"][0]["id"], "rule-1")
+		self.assertEqual(settings["rules"][0]["id"], " rule-1 ")
 		self.assertEqual(settings["rules"][0]["sellers_blacklist"], ["bad"])
 		self.assertEqual(settings["rules"][0]["keywords_blacklist"], ["beta"])
 		self.assertEqual(DumpingRule.from_dict(settings["rules"][0]).keyword_mode, "all")
@@ -53,12 +53,13 @@ class AutoDumpingSettingsTest(unittest.TestCase):
 
 		self.assertEqual([rule["id"] for rule in settings["rules"]], ["one"])
 
-	def test_rejects_rule_ids_that_cannot_fit_callback_context(self):
+	def test_preserves_rule_ids_of_any_utf8_length(self):
+		rule_id = "идентификатор-" + "x" * 100
 		settings = normalize_auto_dumping_settings({"rules": [{
-			"id": "x" * 37, "subcategory": "game", "keywords": ["gold"],
+			"id": rule_id, "subcategory": "game", "keywords": ["gold"],
 		}]})
 
-		self.assertEqual(settings["rules"], [])
+		self.assertEqual(settings["rules"][0]["id"], rule_id)
 
 	def test_generates_ids_for_empty_rule_ids_and_preserves_normal_ids(self):
 		for rule_id in ("", "   "):

@@ -216,6 +216,36 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 			("invalid", "Некорректная страница.", True),
 		])
 
+	def test_rule_callbacks_use_indexes_and_resolve_exact_long_ids(self):
+		rule_ids = ("x" * 200, "second-rule")
+		self.host.settings["auto_dumping"]["rules"] = [
+			{"id": rule_id, "enabled": False, "subcategory": "game", "keywords": ["gold"]}
+			for rule_id in rule_ids
+		]
+		call = SimpleNamespace(
+			id="open",
+			message=SimpleNamespace(chat=SimpleNamespace(id=1), id=2),
+		)
+
+		self.flow.open_rules(call)
+		list_callbacks = [button.callback_data for row in self.host.tgbot.edits[0][3].rows for button in row]
+		self.assertEqual(list_callbacks[:2], ["ma_auto_dumping_rule:0", "ma_auto_dumping_rule:1"])
+		self.assertTrue(all(len(callback.encode("utf-8")) <= 64 for callback in list_callbacks))
+
+		self.flow.show_rule(SimpleNamespace(
+			id="show",
+			data="ma_auto_dumping_rule:0",
+			message=call.message,
+		))
+		detail_callbacks = [button.callback_data for row in self.host.tgbot.edits[1][3].rows for button in row]
+		self.assertEqual(detail_callbacks[:2], ["ma_auto_dumping_rule_toggle:0", "ma_auto_dumping_rule_delete:0"])
+		self.assertTrue(all(len(callback.encode("utf-8")) <= 64 for callback in detail_callbacks))
+
+		self.flow.toggle_rule(SimpleNamespace(id="toggle", data=detail_callbacks[0], message=call.message))
+		self.assertTrue(self.host.settings["auto_dumping"]["rules"][0]["enabled"])
+		self.flow.delete_rule(SimpleNamespace(id="delete", data=detail_callbacks[1], message=call.message))
+		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["id"], "second-rule")
+
 	def test_page_callback_rejects_pages_outside_callback_range(self):
 		with self.assertRaises(ValueError):
 			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, 0, "keywords", MAX_CALLBACK_PAGE + 1)
