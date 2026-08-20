@@ -4,7 +4,7 @@ import sys
 import types
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 
 telebot_module = types.ModuleType("telebot")
@@ -151,6 +151,40 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 		self.assertTrue(self.host.settings["auto_dumping"]["enabled"])
 
+	def test_fallback_keyboard_supports_explicit_rows(self):
+		import importlib.util
+
+		spec = importlib.util.spec_from_file_location(
+			"core.modules.auto_dumping.telegram_fallback_test",
+			"core/modules/auto_dumping/telegram.py",
+		)
+		module = importlib.util.module_from_spec(spec)
+		with patch.dict(sys.modules, {"telebot": None, "telebot.types": None}):
+			spec.loader.exec_module(module)
+
+		keyboard = module.K()
+		keyboard.row(module.B("left"), module.B("right"))
+
+		self.assertEqual([[button.text for button in row] for row in keyboard.rows], [["left", "right"]])
+
+	def test_status_page_callback_rejects_malformed_payload(self):
+		self.flow.register()
+		handler = next(handler for handler, predicate in self.host.tg.callbacks if predicate(SimpleNamespace(data=f"{CBT_AUTO_DUMPING_STATUS}payload")))
+
+		handler(self._call(f"{CBT_AUTO_DUMPING_STATUS}page:not-a-page", "invalid"))
+
+		self.assertEqual(self.host.tgbot.edits, [])
+		self.assertEqual(self.host.tgbot.answers, [("invalid", "Некорректная страница.", True)])
+
+	def test_status_page_callback_opens_status_screen(self):
+		self.flow.register()
+		handler = next(handler for handler, predicate in self.host.tg.callbacks if predicate(SimpleNamespace(data=f"{CBT_AUTO_DUMPING_STATUS}payload")))
+
+		handler(self._call(f"{CBT_AUTO_DUMPING_STATUS}page:1", "valid"))
+
+		self.assertEqual(len(self.host.tgbot.edits), 1)
+		self.assertEqual(self.host.tgbot.answers, [("valid", None, False)])
+
 	def test_period_screen_has_no_status_controls(self):
 		self.flow.show_period(self._call(self.flow._page_callback(CBT_AUTO_DUMPING_PERIOD_PAGE, 1, None, 0)))
 
@@ -174,6 +208,24 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		handler = next(handler for handler, predicate in self.host.tg.callbacks if predicate(SimpleNamespace(data=f"{CBT_AUTO_DUMPING_PERIOD_PAGE}payload")))
 
 		handler(self._call(self.flow._page_callback(CBT_AUTO_DUMPING_PERIOD_PAGE, 1, None, 0), "valid"))
+
+		self.assertEqual(len(self.host.tgbot.edits), 1)
+		self.assertEqual(self.host.tgbot.answers, [("valid", None, False)])
+
+	def test_legacy_period_page_callback_rejects_malformed_payload(self):
+		self.flow.register()
+		handler = next(handler for handler, predicate in self.host.tg.callbacks if predicate(SimpleNamespace(data=f"{CBT_AUTO_DUMPING_INTERVAL}payload")))
+
+		handler(self._call(f"{CBT_AUTO_DUMPING_INTERVAL}page:not-a-page", "invalid"))
+
+		self.assertEqual(self.host.tgbot.edits, [])
+		self.assertEqual(self.host.tgbot.answers, [("invalid", "Некорректная страница.", True)])
+
+	def test_legacy_period_page_callback_opens_period_screen(self):
+		self.flow.register()
+		handler = next(handler for handler, predicate in self.host.tg.callbacks if predicate(SimpleNamespace(data=f"{CBT_AUTO_DUMPING_INTERVAL}payload")))
+
+		handler(self._call(f"{CBT_AUTO_DUMPING_INTERVAL}page:1", "valid"))
 
 		self.assertEqual(len(self.host.tgbot.edits), 1)
 		self.assertEqual(self.host.tgbot.answers, [("valid", None, False)])

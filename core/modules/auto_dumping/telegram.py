@@ -25,6 +25,10 @@ except ModuleNotFoundError:
 			self.rows.append(list(buttons))
 			return self
 
+		def row(self, *buttons: B) -> "K":
+			self.rows.append(list(buttons))
+			return self
+
 
 from ...config.constants import (
 	CBT_AUTO_DUMPING_BLACKLIST_ADD,
@@ -279,6 +283,11 @@ class TelegramAutoDumpingFlow:
 	def _status_callback(self, call: telebot.types.CallbackQuery) -> None:
 		value = call.data.replace(CBT_AUTO_DUMPING_STATUS, "", 1)
 		if value.startswith("page:"):
+			try:
+				self._parse_legacy_page_callback(call.data, CBT_AUTO_DUMPING_STATUS)
+			except ValueError:
+				self.host.tgbot.answer_callback_query(call.id, "Некорректная страница.", show_alert=True)
+				return
 			self.show_status(call)
 			return
 		self.toggle(call)
@@ -313,6 +322,11 @@ class TelegramAutoDumpingFlow:
 	def set_interval(self, call: telebot.types.CallbackQuery) -> None:
 		value = call.data.replace(CBT_AUTO_DUMPING_INTERVAL, "", 1)
 		if value.startswith("page:"):
+			try:
+				self._parse_legacy_page_callback(call.data, CBT_AUTO_DUMPING_INTERVAL)
+			except ValueError:
+				self.host.tgbot.answer_callback_query(call.id, "Некорректная страница.", show_alert=True)
+				return
 			self.show_period(call)
 			return
 		if value == "custom":
@@ -343,6 +357,13 @@ class TelegramAutoDumpingFlow:
 			self.host.tgbot.answer_callback_query(call.id, "Некорректная страница.", show_alert=True)
 			return
 		self.show_period(call)
+
+	@classmethod
+	def _parse_legacy_page_callback(cls, data: str, prefix: str) -> int:
+		context, _, page = cls._parse_page_callback(data, prefix)
+		if context != "page":
+			raise ValueError("invalid legacy page callback")
+		return page
 
 	def save_interval(self, message: telebot.types.Message) -> None:
 		try:
