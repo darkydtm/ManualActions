@@ -4,7 +4,7 @@ import unittest
 
 from core.config.settings import normalize_settings
 from core.modules.auto_dumping.models import DumpingRule
-from core.modules.auto_dumping.settings import normalize_auto_dumping_settings
+from core.modules.auto_dumping.settings import normalize_auto_dumping_settings, normalize_rule
 
 
 class AutoDumpingSettingsTest(unittest.TestCase):
@@ -59,6 +59,14 @@ class AutoDumpingSettingsTest(unittest.TestCase):
 		}]})
 
 		self.assertEqual(settings["rules"], [])
+
+	def test_generates_ids_for_empty_rule_ids_and_preserves_normal_ids(self):
+		for rule_id in ("", "   "):
+			rule = normalize_rule({"id": rule_id, "subcategory": "game", "keywords": ["gold"]})
+			self.assertRegex(rule["id"], r"^[0-9a-f]{32}$")
+
+		rule = normalize_rule({"id": "rule-1", "subcategory": "game", "keywords": ["gold"]})
+		self.assertEqual(rule["id"], "rule-1")
 
 	def test_normalize_settings_includes_auto_dumping_section(self):
 		settings = normalize_settings({"auto_dumping": {"enabled": True, "interval_minutes": 10}})
