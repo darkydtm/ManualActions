@@ -33,6 +33,21 @@ class BuildPluginTest(unittest.TestCase):
 		self.assertIsInstance(result, module.GeminiReservationResult)
 		self.assertEqual(result.links, (link,))
 
+	def test_generated_source_discovers_registered_modules_without_core_package(self):
+		module = types.ModuleType("manual_actions_generated")
+		dependencies = self.build_dependencies()
+		dependencies[module.__name__] = module
+		with patch.dict(sys.modules, dependencies):
+			exec(build_plugin.build_source(), module.__dict__)
+			missing_core = ModuleNotFoundError("No module named 'core'", name="core")
+			with patch.object(module.importlib, "import_module", side_effect=missing_core):
+				registry = module.ModuleRegistry.discover()
+
+		self.assertEqual(
+			{definition.name for definition in registry.definitions},
+			{"auto_delivery", "auto_dumping", "chat_sync"},
+		)
+
 	def test_moves_imports_to_header(self):
 		tree = ast.parse(build_plugin.build_source())
 		first_body_index = next(

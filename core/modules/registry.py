@@ -24,7 +24,12 @@ class ModuleRegistry:
 
 	@classmethod
 	def discover(cls) -> "ModuleRegistry":
-		package = importlib.import_module("core.modules")
+		try:
+			package = importlib.import_module("core.modules")
+		except ModuleNotFoundError as exc:
+			if exc.name not in {"core", "core.modules"} or not REGISTERED_MODULES:
+				raise
+			return cls(REGISTERED_MODULES)
 		for item in pkgutil.iter_modules(package.__path__):
 			if not item.ispkg or item.name.startswith("_"):
 				continue
