@@ -184,6 +184,16 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 	def test_page_callback_rejects_pages_outside_callback_range(self):
 		with self.assertRaises(ValueError):
 			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, "rule:keywords", MAX_CALLBACK_PAGE + 1)
+		with self.assertRaises(ValueError):
+			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, "rule:keywords", -1)
+		with self.assertRaises(ValueError):
+			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, "rule:keywords", "not-a-page")
+		with self.assertRaises(ValueError):
+			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, "rule:keywords", 1.5)
+
+	def test_page_callback_rejects_payloads_over_telegram_limit(self):
+		with self.assertRaisesRegex(ValueError, "64-byte"):
+			self.flow._page_callback("x" * 65, "context", 0)
 
 	def test_blacklist_page_callback_preserves_uppercase_rule_id(self):
 		rule_id = "ABCDEF0123456789ABCDEF0123456789"
@@ -198,13 +208,16 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (context, 0))
 
-	def test_page_callback_handles_malformed_and_negative_pages(self):
-		self.assertEqual(self.flow._parse_page_callback(f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}rule:sellers:-2", CBT_AUTO_DUMPING_BLACKLIST_PAGE), ("rule:sellers", 0))
-		self.assertEqual(self.flow._parse_page_callback("not-a-callback", CBT_AUTO_DUMPING_BLACKLIST_PAGE), ("", 0))
-		self.assertEqual(
-			self.flow._parse_page_callback(f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}~not-valid!!!:keywords:0", CBT_AUTO_DUMPING_BLACKLIST_PAGE),
-			("~not-valid!!!:keywords", 0),
-		)
+	def test_page_callback_rejects_invalid_page_input(self):
+		for data in (
+			f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}rule:sellers:-2",
+			f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}rule:sellers:not-a-page",
+			f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}rule:sellers:{MAX_CALLBACK_PAGE + 1}",
+			f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}~not-valid!!!:keywords:0",
+			"not-a-callback",
+		):
+			with self.subTest(data=data), self.assertRaises(ValueError):
+				self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE)
 
 	def test_page_slice_clamps_page_to_last_available_page(self):
 		self.assertEqual(self.flow._page_items(list(range(6)), 99), ([5], 2))
