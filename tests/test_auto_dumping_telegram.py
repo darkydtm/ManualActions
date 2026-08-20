@@ -38,6 +38,7 @@ from core.config.constants import (
 	CBT_AUTO_DUMPING_STATUS,
 )
 from core.modules.auto_dumping.telegram import MAX_CALLBACK_PAGE, TelegramAutoDumpingFlow, validate_rule_input
+from core.modules.auto_dumping.settings import normalize_rule
 
 
 class FakeButton:
@@ -182,65 +183,62 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 	def test_empty_page_still_has_one_total_page(self):
 		self.assertEqual(self.flow._page_items([], 0), ([], 1))
 
-	def test_page_callback_keeps_context_and_zero_based_page(self):
-		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, "rule:sellers", 2)
-		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), ("rule:sellers", 2))
+	def test_page_callback_keeps_rule_reference_kind_and_page(self):
+		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, 7, "sellers", 2)
+		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (7, "sellers", 2))
 
-	def test_blacklist_page_callback_compacts_arbitrary_rule_context(self):
-		rule_id = "rule-id-0123456789"
-		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, f"{rule_id}:keywords", 0)
+	def test_blacklist_page_callbacks_fit_for_generated_and_arbitrary_ids(self):
+		generated_id = normalize_rule({"subcategory": "game", "keywords": ["gold"]})["id"]
+		rule_ids = (generated_id, "x" * 20)
+		self.host.settings["auto_dumping"]["rules"] = [{"id": rule_id} for rule_id in rule_ids]
 
-		self.assertLessEqual(len(data.encode("utf-8")), 64)
-		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (f"{rule_id}:keywords", 0))
+		for index, rule_id in enumerate(rule_ids):
+			for page in (0, 123456789, MAX_CALLBACK_PAGE):
+				with self.subTest(rule_id=rule_id, page=page):
+					data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, index, "keywords", page)
 
-	def test_blacklist_page_callback_uses_full_64_byte_budget(self):
-		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, f"{'x' * 19}:keywords", 0)
+					self.assertLessEqual(len(data.encode("utf-8")), 64)
+					self.assertEqual(self.flow._rule_id_from_reference(index), rule_id)
+					self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (index, "keywords", page))
 
-		self.assertLessEqual(len(data.encode("utf-8")), 64)
+	def test_blacklist_page_callback_resolves_reference_from_current_settings(self):
+		rule_ids = ("0123456789abcdef" * 2, "x" * 20)
+		self.host.settings["auto_dumping"]["rules"] = [{"id": rule_id} for rule_id in rule_ids]
+		self.flow.register()
+		handler = next(handler for handler, predicate in self.host.tg.callbacks if predicate(SimpleNamespace(data=f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}payload")))
+		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, 1, "sellers", 99)
 
-	def test_maximum_rule_id_round_trips_compact_pages(self):
-		rule_id = "x" * 19
+		handler(SimpleNamespace(id="valid", data=data))
+		handler(SimpleNamespace(id="invalid", data=self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, 2, "sellers", 0)))
 
-		for page in (0, 10, 123456789, MAX_CALLBACK_PAGE):
-			with self.subTest(page=page):
-				data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, f"{rule_id}:keywords", page)
-
-				self.assertLessEqual(len(data.encode("utf-8")), 64)
-				self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (f"{rule_id}:keywords", page))
+		self.assertEqual(self.host.tgbot.answers[-2:], [
+			("valid", None, False),
+			("invalid", "Некорректная страница.", True),
+		])
 
 	def test_page_callback_rejects_pages_outside_callback_range(self):
 		with self.assertRaises(ValueError):
-			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, "rule:keywords", MAX_CALLBACK_PAGE + 1)
+			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, 0, "keywords", MAX_CALLBACK_PAGE + 1)
 		with self.assertRaises(ValueError):
-			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, "rule:keywords", -1)
+			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, 0, "keywords", -1)
 		with self.assertRaises(ValueError):
-			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, "rule:keywords", "not-a-page")
+			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, 0, "keywords", "not-a-page")
 		with self.assertRaises(ValueError):
-			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, "rule:keywords", 1.5)
+			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, 0, "keywords", 1.5)
 
 	def test_page_callback_rejects_payloads_over_telegram_limit(self):
 		with self.assertRaisesRegex(ValueError, "64-byte"):
-			self.flow._page_callback("x" * 65, "context", 0)
+			self.flow._page_callback("x" * 65, "context", None, 0)
 
-	def test_blacklist_page_callback_preserves_uppercase_rule_id(self):
-		rule_id = "ABCDEF0123456789ABC"
-		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, f"{rule_id}:sellers", 0)
-
-		self.assertLessEqual(len(data.encode("utf-8")), 64)
-		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (f"{rule_id}:sellers", 0))
-
-	def test_blacklist_page_callback_preserves_delimiters_in_rule_context(self):
-		context = "rule:id-123456789:keywords"
-		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, context, 0)
-
-		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (context, 0))
+	def test_page_callback_rejects_unknown_list_kind(self):
+		with self.assertRaises(ValueError):
+			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, 0, "unknown", 0)
+		with self.assertRaises(ValueError):
+			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, -1, "sellers", 0)
 
 	def test_page_callback_rejects_invalid_page_input(self):
 		for data in (
-			f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}rule:sellers:-2",
-			f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}rule:sellers:not-a-page",
-			f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}rule:sellers:{MAX_CALLBACK_PAGE + 1}",
-			f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}~not-valid!!!:keywords:0",
+			f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}not-valid!!!",
 			"not-a-callback",
 		):
 			with self.subTest(data=data), self.assertRaises(ValueError):
