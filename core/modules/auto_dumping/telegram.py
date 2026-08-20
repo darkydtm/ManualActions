@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from binascii import Error as Base64Error
 from html import escape
 from math import ceil
 from typing import Any
@@ -48,6 +49,8 @@ from .settings import INTERVAL_PRESETS, normalize_rule
 
 
 PAGE_SIZE = 5
+PAGE_TOKEN_BYTES = 4
+MAX_CALLBACK_PAGE = (1 << (PAGE_TOKEN_BYTES * 8)) - 1
 
 
 def validate_rule_input(data: dict[str, Any]) -> dict[str, Any]:
@@ -103,29 +106,62 @@ class TelegramAutoDumpingFlow:
 	@staticmethod
 	def _page_callback(prefix: str, context: str, page: int) -> str:
 		try:
-			page = max(int(page), 0)
+			page = min(max(int(page), 0), MAX_CALLBACK_PAGE)
 		except (TypeError, ValueError):
 			page = 0
 		context = str(context)
 		parts = context.rsplit(":", 1)
 		if len(parts) == 2 and parts[-1] in ("sellers", "keywords"):
-			token = urlsafe_b64encode(parts[0].encode("utf-8")).decode().rstrip("=")
-			context = f"~{token}:{parts[-1]}"
-		return f"{prefix}{context}:{page}"
+			kind = 0 if parts[-1] == "sellers" else 1
+			payload = parts[0].encode("utf-8") + bytes((kind,)) + page.to_bytes(PAGE_TOKEN_BYTES, "big")
+			return f"{prefix}~{urlsafe_b64encode(payload).decode().rstrip('=')}"
+		page_token = urlsafe_b64encode(page.to_bytes(PAGE_TOKEN_BYTES, "big")).decode().rstrip("=")
+		return f"{prefix}{context}:{page_token}"
 
 	@staticmethod
 	def _parse_page_callback(data: str, prefix: str) -> tuple[str, int]:
 		if not isinstance(data, str) or not data.startswith(prefix):
 			return "", 0
 		payload = data[len(prefix):]
+		if payload.startswith("~"):
+			compact = TelegramAutoDumpingFlow._decode_compact_page(payload[1:])
+			if compact is not None:
+				return compact
 		context, separator, page = payload.rpartition(":")
 		if not separator:
 			return TelegramAutoDumpingFlow._expand_rule_context(payload), 0
 		try:
-			page = max(int(page), 0)
-		except (TypeError, ValueError):
-			page = 0
+			page_bytes = urlsafe_b64decode(page + "=" * (-len(page) % 4))
+			if len(page_bytes) != PAGE_TOKEN_BYTES:
+				raise ValueError
+			page = int.from_bytes(page_bytes, "big")
+		except (Base64Error, TypeError, ValueError):
+			try:
+				page = max(int(page), 0)
+			except (TypeError, ValueError):
+				page = 0
 		return TelegramAutoDumpingFlow._expand_rule_context(context), page
+
+	@staticmethod
+	def _decode_compact_page(token: str) -> tuple[str, int] | None:
+		if not token or any(char not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" for char in token):
+			return None
+		try:
+			payload = urlsafe_b64decode(token + "=" * (-len(token) % 4))
+		except (Base64Error, TypeError, ValueError):
+			return None
+		if len(payload) <= PAGE_TOKEN_BYTES:
+			return None
+		kind = payload[-PAGE_TOKEN_BYTES - 1]
+		if kind not in (0, 1):
+			return None
+		try:
+			rule_id = payload[:-PAGE_TOKEN_BYTES - 1].decode("utf-8")
+		except UnicodeDecodeError:
+			return None
+		if not rule_id or len(rule_id.encode("utf-8")) > 36:
+			return None
+		return f"{rule_id}:{'sellers' if kind == 0 else 'keywords'}", int.from_bytes(payload[-PAGE_TOKEN_BYTES:], "big")
 
 	@staticmethod
 	def _expand_rule_context(context: str) -> str:
