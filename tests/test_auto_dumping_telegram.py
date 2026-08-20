@@ -160,6 +160,18 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.assertEqual(data, f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}rule:sellers:2")
 		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), ("rule:sellers", 2))
 
+	def test_blacklist_page_callback_compacts_uuid_rule_context(self):
+		rule_id = "0123456789abcdef0123456789abcdef"
+		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, f"{rule_id}:keywords", 0)
+
+		self.assertLessEqual(len(data.encode("utf-8")), 64)
+		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (f"{rule_id}:keywords", 0))
+
+	def test_page_callback_handles_malformed_and_negative_pages(self):
+		self.assertEqual(self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, "rule:sellers", "bad"), f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}rule:sellers:0")
+		self.assertEqual(self.flow._parse_page_callback("not-a-callback", CBT_AUTO_DUMPING_BLACKLIST_PAGE), ("", 0))
+		self.assertEqual(self.flow._parse_page_callback(f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}rule:sellers:-2", CBT_AUTO_DUMPING_BLACKLIST_PAGE), ("rule:sellers", 0))
+
 	def test_page_slice_clamps_page_to_last_available_page(self):
 		self.assertEqual(self.flow._page_items(list(range(6)), 99), ([5], 2))
 
