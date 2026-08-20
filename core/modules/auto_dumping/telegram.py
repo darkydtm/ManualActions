@@ -83,7 +83,7 @@ class TelegramAutoDumpingFlow:
 		self.host.tg.cbq_handler(self.toggle_rule, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULE_TOGGLE))
 		self.host.tg.cbq_handler(self.delete_rule, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULE_DELETE))
 		self.host.tg.cbq_handler(self.add_rule, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULE_ADD))
-		self.host.tg.cbq_handler(self.show_period, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_PERIOD_PAGE))
+		self.host.tg.cbq_handler(self.open_period, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_PERIOD_PAGE))
 		self.host.tg.cbq_handler(self.open_rules, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULES_PAGE))
 		self.host.tg.cbq_handler(self._pending_page_callback, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_BLACKLIST_PAGE))
 		for prefix in (
@@ -336,6 +336,14 @@ class TelegramAutoDumpingFlow:
 		self.host.tgbot.edit_message_text("<b>Период автодемпинга</b>", call.message.chat.id, call.message.id, reply_markup=keyboard)
 		self.host.tgbot.answer_callback_query(call.id)
 
+	def open_period(self, call: telebot.types.CallbackQuery) -> None:
+		try:
+			self._parse_page_callback(call.data, CBT_AUTO_DUMPING_PERIOD_PAGE)
+		except ValueError:
+			self.host.tgbot.answer_callback_query(call.id, "Некорректная страница.", show_alert=True)
+			return
+		self.show_period(call)
+
 	def save_interval(self, message: telebot.types.Message) -> None:
 		try:
 			minutes = int((message.text or "").strip())
@@ -392,7 +400,7 @@ class TelegramAutoDumpingFlow:
 		if not items:
 			keyboard.add(B("Правил пока нет", callback_data=self._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, call.message.chat.id, None, page)))
 		keyboard.add(B("➕ Добавить правило", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}{call.message.chat.id}"))
-		keyboard.add(
+		keyboard.row(
 			B("◀️", callback_data=self._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, call.message.chat.id, None, max(page - 1, 0))),
 			B(f"{page + 1}/{pages}", callback_data=self._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, call.message.chat.id, None, page)),
 			B("▶️", callback_data=self._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, call.message.chat.id, None, min(page + 1, pages - 1))),
