@@ -8,6 +8,7 @@ from ..delivery.providers.gemini import DEFAULT_GEMINI_DELIVERY_SETTINGS, normal
 from ..delivery.providers.gpt_accounts import DEFAULT_GPT_ACCOUNTS_DELIVERY_SETTINGS, normalize_gpt_accounts_delivery_settings
 from ..gist.settings import DEFAULT_GIST_SETTINGS, normalize_gist_settings
 from ..lots.scheduling import DEFAULT_LOT_SCHEDULING_SETTINGS, normalize_lot_scheduling_settings
+from ..modules.auto_dumping.settings import DEFAULT_AUTO_DUMPING_SETTINGS, normalize_auto_dumping_settings
 from ..status.status import STATUS_IDS, normalize_status_id
 
 
@@ -64,6 +65,7 @@ DEFAULT_SETTINGS = {
 	"lot_scheduling": DEFAULT_LOT_SCHEDULING_SETTINGS,
 	"profit": DEFAULT_PROFIT_SETTINGS,
 	"chat_sync": DEFAULT_CHAT_SYNC_SETTINGS,
+	"auto_dumping": DEFAULT_AUTO_DUMPING_SETTINGS,
 }
 
 
@@ -87,6 +89,7 @@ def normalize_settings(data: dict[str, Any] | None) -> dict[str, Any]:
 	settings["lot_scheduling"] = normalize_lot_scheduling_settings(data.get("lot_scheduling"))
 	settings["profit"] = normalize_profit_settings(data.get("profit"))
 	settings["chat_sync"] = normalize_chat_sync_settings(data.get("chat_sync"))
+	settings["auto_dumping"] = normalize_auto_dumping_settings(data.get("auto_dumping"))
 	return settings
 
 
