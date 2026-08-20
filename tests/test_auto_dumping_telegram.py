@@ -246,6 +246,45 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.flow.delete_rule(SimpleNamespace(id="delete", data=detail_callbacks[1], message=call.message))
 		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["id"], "second-rule")
 
+	def test_show_rule_uses_index_when_rule_ids_are_duplicate(self):
+		self.host.settings["auto_dumping"]["rules"] = [
+			{"id": "duplicate", "enabled": False, "subcategory": "first", "keywords": ["one"]},
+			{"id": "duplicate", "enabled": True, "subcategory": "second", "keywords": ["two"]},
+		]
+		call = SimpleNamespace(
+			id="show",
+			data="ma_auto_dumping_rule:1",
+			message=SimpleNamespace(chat=SimpleNamespace(id=1), id=2),
+		)
+
+		self.flow.show_rule(call)
+
+		self.assertIn("Подкатегория: second", self.host.tgbot.edits[-1][0])
+
+	def test_toggle_rule_uses_index_when_rule_ids_are_duplicate(self):
+		self.host.settings["auto_dumping"]["rules"] = [
+			{"id": "duplicate", "enabled": False},
+			{"id": "duplicate", "enabled": False},
+		]
+
+		self.flow.toggle_rule(SimpleNamespace(id="toggle", data="ma_auto_dumping_rule_toggle:1", message=SimpleNamespace(chat=SimpleNamespace(id=1), id=2)))
+
+		self.assertEqual([rule["enabled"] for rule in self.host.settings["auto_dumping"]["rules"]], [False, True])
+
+	def test_delete_rule_uses_index_when_rule_ids_are_duplicate(self):
+		self.host.settings["auto_dumping"]["rules"] = [
+			{"id": "duplicate", "subcategory": "first", "keywords": ["one"]},
+			{"id": "duplicate", "subcategory": "second", "keywords": ["two"]},
+			{"id": "other", "subcategory": "third", "keywords": ["three"]},
+		]
+
+		self.flow.delete_rule(SimpleNamespace(id="delete", data="ma_auto_dumping_rule_delete:1", message=SimpleNamespace(chat=SimpleNamespace(id=1), id=2)))
+
+		self.assertEqual(
+			[(rule["id"], rule["subcategory"]) for rule in self.host.settings["auto_dumping"]["rules"]],
+			[("duplicate", "first"), ("other", "third")],
+		)
+
 	def test_page_callback_rejects_pages_outside_callback_range(self):
 		with self.assertRaises(ValueError):
 			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, 0, "keywords", MAX_CALLBACK_PAGE + 1)

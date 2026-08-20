@@ -183,11 +183,16 @@ class TelegramAutoDumpingFlow:
 		return rule_index, "sellers" if kind == 0 else "keywords", TelegramAutoDumpingFlow._validate_callback_page(int.from_bytes(payload[-PAGE_TOKEN_BYTES:], "big"))
 
 	def _rule_id_from_reference(self, rule_index: int) -> str:
-		index = self._validate_rule_reference(rule_index)
 		rules = self.host.settings["auto_dumping"]["rules"]
-		if not 0 <= index < len(rules):
-			raise ValueError("rule reference not found")
+		index = self._rule_index_in_settings(self.host.settings, rule_index)
 		return rules[index]["id"]
+
+	@classmethod
+	def _rule_index_in_settings(cls, settings: dict[str, Any], rule_index: int) -> int:
+		index = cls._validate_rule_reference(rule_index)
+		if not 0 <= index < len(settings["auto_dumping"]["rules"]):
+			raise ValueError("rule reference not found")
+		return index
 
 	@classmethod
 	def _rule_callback(cls, prefix: str, rule_index: int) -> str:
@@ -328,11 +333,11 @@ class TelegramAutoDumpingFlow:
 	def show_rule(self, call: telebot.types.CallbackQuery) -> None:
 		try:
 			rule_index = self._rule_index_from_callback(call.data, CBT_AUTO_DUMPING_RULE)
-			rule_id = self._rule_id_from_reference(rule_index)
+			rule_index = self._rule_index_in_settings(self.host.settings, rule_index)
 		except ValueError:
 			self.host.tgbot.answer_callback_query(call.id, "Правило не найдено.", show_alert=True)
 			return
-		rule = self._find_rule(rule_id)
+		rule = self.host.settings["auto_dumping"]["rules"][rule_index]
 		keyboard = K(row_width=1)
 		keyboard.add(B("⏹ Выключить" if rule["enabled"] else "▶️ Включить", callback_data=self._rule_callback(CBT_AUTO_DUMPING_RULE_TOGGLE, rule_index)))
 		keyboard.add(B("🗑 Удалить", callback_data=self._rule_callback(CBT_AUTO_DUMPING_RULE_DELETE, rule_index)))
@@ -343,20 +348,26 @@ class TelegramAutoDumpingFlow:
 
 	def toggle_rule(self, call: telebot.types.CallbackQuery) -> None:
 		try:
-			rule_id = self._rule_id_from_reference(self._rule_index_from_callback(call.data, CBT_AUTO_DUMPING_RULE_TOGGLE))
+			rule_index = self._rule_index_in_settings(
+				self.host.settings,
+				self._rule_index_from_callback(call.data, CBT_AUTO_DUMPING_RULE_TOGGLE),
+			)
 		except ValueError:
 			self.host.tgbot.answer_callback_query(call.id, "Правило не найдено.", show_alert=True)
 			return
-		update_host_settings(self.host, lambda settings: self._mutate_rule(settings, rule_id, lambda rule: rule.__setitem__("enabled", not rule["enabled"])))
+		update_host_settings(self.host, lambda settings: self._mutate_rule(settings, rule_index, lambda rule: rule.__setitem__("enabled", not rule["enabled"])))
 		self._refresh(call)
 
 	def delete_rule(self, call: telebot.types.CallbackQuery) -> None:
 		try:
-			rule_id = self._rule_id_from_reference(self._rule_index_from_callback(call.data, CBT_AUTO_DUMPING_RULE_DELETE))
+			rule_index = self._rule_index_in_settings(
+				self.host.settings,
+				self._rule_index_from_callback(call.data, CBT_AUTO_DUMPING_RULE_DELETE),
+			)
 		except ValueError:
 			self.host.tgbot.answer_callback_query(call.id, "Правило не найдено.", show_alert=True)
 			return
-		update_host_settings(self.host, lambda settings: settings["auto_dumping"].__setitem__("rules", [rule for rule in settings["auto_dumping"]["rules"] if rule["id"] != rule_id]))
+		update_host_settings(self.host, lambda settings: self._delete_rule(settings, rule_index))
 		self.open_rules(call)
 
 	def add_rule(self, call: telebot.types.CallbackQuery) -> None:
@@ -387,13 +398,15 @@ class TelegramAutoDumpingFlow:
 		self.host.tgbot.answer_callback_query(call.id)
 		self.show_main(call.message.chat.id, call.message.id, True)
 
-	def _find_rule(self, rule_id: str) -> dict[str, Any] | None:
-		return next((rule for rule in self.host.settings["auto_dumping"]["rules"] if rule["id"] == rule_id), None)
+	@staticmethod
+	def _mutate_rule(settings: dict[str, Any], rule_index: int, mutation: Any) -> None:
+		index = TelegramAutoDumpingFlow._rule_index_in_settings(settings, rule_index)
+		mutation(settings["auto_dumping"]["rules"][index])
 
 	@staticmethod
-	def _mutate_rule(settings: dict[str, Any], rule_id: str, mutation: Any) -> None:
-		rule = next(rule for rule in settings["auto_dumping"]["rules"] if rule["id"] == rule_id)
-		mutation(rule)
+	def _delete_rule(settings: dict[str, Any], rule_index: int) -> None:
+		index = TelegramAutoDumpingFlow._rule_index_in_settings(settings, rule_index)
+		del settings["auto_dumping"]["rules"][index]
 
 	def _send_or_edit(self, text: str, chat_id: int, message_id: int | None, keyboard: K, edit: bool) -> None:
 		if edit and message_id is not None:
