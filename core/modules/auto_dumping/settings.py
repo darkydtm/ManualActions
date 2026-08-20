@@ -12,6 +12,7 @@ DEFAULT_AUTO_DUMPING_SETTINGS = {
 }
 
 INTERVAL_PRESETS = (1, 3, 5, 10, 30)
+MAX_RULE_ID_BYTES = 36
 
 
 def normalize_auto_dumping_settings(data: Any) -> dict[str, Any]:
@@ -39,6 +40,9 @@ def normalize_auto_dumping_settings(data: Any) -> dict[str, Any]:
 def normalize_rule(data: Any) -> dict[str, Any] | None:
 	if not isinstance(data, dict):
 		return None
+	rule_id = str(data.get("id") or uuid4().hex).strip()
+	if len(rule_id.encode("utf-8")) > MAX_RULE_ID_BYTES:
+		return None
 	subcategory = data.get("subcategory")
 	keywords = normalize_words(data.get("keywords"))
 	if not isinstance(subcategory, str) or not subcategory.strip() or not keywords:
@@ -54,7 +58,7 @@ def normalize_rule(data: Any) -> dict[str, Any] | None:
 	if dumping_value is None:
 		return None
 	return {
-		"id": str(data.get("id") or uuid4().hex).strip(),
+		"id": rule_id,
 		"enabled": data.get("enabled") is not False,
 		"subcategory": subcategory.strip(),
 		"keywords": keywords,
