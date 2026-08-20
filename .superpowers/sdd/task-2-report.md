@@ -90,3 +90,20 @@ Task 2 is complete. The implementation is limited to callback constants, callbac
 
 - `python -m unittest tests.test_auto_dumping_telegram` - 14 tests passed.
 - `python -m unittest discover -s tests` - 519 tests passed.
+
+## Remaining Review Finding Fix
+
+- Root cause: the existing compact rule-context callback still serialized the page as an unbounded decimal suffix, so valid 36-byte rule IDs exceeded Telegram's 64-byte callback limit as page values grew.
+- Replaced the page suffix with an unpadded base64url encoding of a bounded four-byte unsigned page number. Rule ID UTF-8 bytes, list kind, and page are encoded together, so decoding is exact without dependencies or runtime state.
+- `MAX_CALLBACK_PAGE` is `4,294,967,295`; negative and malformed generated pages become zero, and larger generated pages clamp to the maximum. Parsing accepts the compact token and retains defensive decimal parsing for malformed or legacy payloads.
+- Added a regression test for the maximum 36-byte rule ID at pages `0`, `10`, `123456789`, and `MAX_CALLBACK_PAGE`, asserting callback UTF-8 length `<= 64` and exact context/page round trips.
+
+## Remaining Review Finding Verification
+
+- Focused test: `python -m unittest tests.test_auto_dumping_telegram` - 15 tests passed.
+- Full suite: `python -m unittest discover -s tests` - 520 tests passed.
+- Full-suite output included expected simulated service and Telegram error logs; the command completed with `OK` and zero failures.
+
+## Remaining Review Fix Commit
+
+- Pending commit: compact auto-dumping callback page encoding.

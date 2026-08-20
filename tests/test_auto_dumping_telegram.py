@@ -37,7 +37,7 @@ from core.config.constants import (
 	CBT_AUTO_DUMPING_RULES_PAGE,
 	CBT_AUTO_DUMPING_STATUS,
 )
-from core.modules.auto_dumping.telegram import TelegramAutoDumpingFlow, validate_rule_input
+from core.modules.auto_dumping.telegram import MAX_CALLBACK_PAGE, TelegramAutoDumpingFlow, validate_rule_input
 
 
 class FakeButton:
@@ -169,7 +169,17 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 	def test_blacklist_page_callback_uses_full_64_byte_budget(self):
 		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, f"{'x' * 36}:keywords", 0)
 
-		self.assertEqual(len(data.encode("utf-8")), 64)
+		self.assertLessEqual(len(data.encode("utf-8")), 64)
+
+	def test_maximum_rule_id_round_trips_compact_pages(self):
+		rule_id = "x" * 36
+
+		for page in (0, 10, 123456789, MAX_CALLBACK_PAGE):
+			with self.subTest(page=page):
+				data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, f"{rule_id}:keywords", page)
+
+				self.assertLessEqual(len(data.encode("utf-8")), 64)
+				self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (f"{rule_id}:keywords", page))
 
 	def test_blacklist_page_callback_preserves_uppercase_rule_id(self):
 		rule_id = "ABCDEF0123456789ABCDEF0123456789"
