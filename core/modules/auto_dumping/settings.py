@@ -40,7 +40,7 @@ def normalize_auto_dumping_settings(data: Any) -> dict[str, Any]:
 def normalize_rule(data: Any) -> dict[str, Any] | None:
 	if not isinstance(data, dict):
 		return None
-	rule_id = str(data.get("id") or uuid4().hex).strip()
+	rule_id = str(data.get("id") or "").strip() or uuid4().hex
 	if len(rule_id.encode("utf-8")) > MAX_RULE_ID_BYTES:
 		return None
 	subcategory = data.get("subcategory")

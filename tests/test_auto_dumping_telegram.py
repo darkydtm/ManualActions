@@ -181,6 +181,10 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 				self.assertLessEqual(len(data.encode("utf-8")), 64)
 				self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (f"{rule_id}:keywords", page))
 
+	def test_page_callback_rejects_pages_outside_callback_range(self):
+		with self.assertRaises(ValueError):
+			self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, "rule:keywords", MAX_CALLBACK_PAGE + 1)
+
 	def test_blacklist_page_callback_preserves_uppercase_rule_id(self):
 		rule_id = "ABCDEF0123456789ABCDEF0123456789"
 		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, f"{rule_id}:sellers", 0)

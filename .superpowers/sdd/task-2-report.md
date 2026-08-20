@@ -107,3 +107,18 @@ Task 2 is complete. The implementation is limited to callback constants, callbac
 ## Remaining Review Fix Commit
 
 - `a683f05` - `fix auto-dumping callback page length`.
+
+## Final Review Fixes
+
+- `_page_callback()` now preserves defensive handling for malformed page values but rejects numeric pages below zero or above `MAX_CALLBACK_PAGE` instead of silently clamping them.
+- `normalize_rule()` strips IDs before fallback generation, so empty and whitespace-only IDs receive a new `uuid4().hex` while normal IDs remain unchanged.
+- Added focused boundary tests for callback page rejection and rule ID normalization.
+
+## Final Review Fix Verification
+
+- `python -m unittest tests.test_auto_dumping_telegram` - 16 tests passed.
+- `python -m unittest discover -s tests` - 522 tests passed with `OK`.
+
+## Final Review Fix Commit
+
+- Included in the commit for the two remaining Task 2 review findings.

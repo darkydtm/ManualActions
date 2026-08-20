@@ -106,9 +106,11 @@ class TelegramAutoDumpingFlow:
 	@staticmethod
 	def _page_callback(prefix: str, context: str, page: int) -> str:
 		try:
-			page = min(max(int(page), 0), MAX_CALLBACK_PAGE)
+			page = int(page)
 		except (TypeError, ValueError):
 			page = 0
+		if not 0 <= page <= MAX_CALLBACK_PAGE:
+			raise ValueError("page is outside the callback range")
 		context = str(context)
 		parts = context.rsplit(":", 1)
 		if len(parts) == 2 and parts[-1] in ("sellers", "keywords"):
