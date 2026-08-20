@@ -21,9 +21,8 @@ except ModuleNotFoundError:
 			self.rows.append(list(buttons))
 			return self
 
+
 from ...config.constants import (
-	CBT_AUTO_DUMPING_EDIT_KEYWORDS,
-	CBT_AUTO_DUMPING_EDIT_SELLERS,
 	CBT_AUTO_DUMPING_INTERVAL,
 	CBT_AUTO_DUMPING_PAGE,
 	CBT_AUTO_DUMPING_RULE,
@@ -34,9 +33,7 @@ from ...config.constants import (
 	CBT_AUTO_DUMPING_RUN,
 	CBT_AUTO_DUMPING_TOGGLE,
 	STATE_AUTO_DUMPING_INTERVAL,
-	STATE_AUTO_DUMPING_KEYWORDS,
 	STATE_AUTO_DUMPING_RULE,
-	STATE_AUTO_DUMPING_SELLERS,
 )
 from ...runtime.settings import update_host_settings
 from .settings import INTERVAL_PRESETS, normalize_rule
@@ -69,12 +66,8 @@ class TelegramAutoDumpingFlow:
 		self.host.tg.cbq_handler(self.toggle_rule, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULE_TOGGLE))
 		self.host.tg.cbq_handler(self.delete_rule, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULE_DELETE))
 		self.host.tg.cbq_handler(self.add_rule, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_RULE_ADD))
-		self.host.tg.cbq_handler(self.edit_sellers, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_EDIT_SELLERS))
-		self.host.tg.cbq_handler(self.edit_keywords, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_EDIT_KEYWORDS))
 		self.host.tg.msg_handler(self.save_interval, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_INTERVAL))
 		self.host.tg.msg_handler(self.save_rule, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_RULE))
-		self.host.tg.msg_handler(self.save_sellers, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_SELLERS))
-		self.host.tg.msg_handler(self.save_keywords, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_KEYWORDS))
 
 	def show_main(self, chat_id: int, message_id: int | None = None, edit: bool = False) -> None:
 		settings = self.host.settings["auto_dumping"]
@@ -92,8 +85,6 @@ class TelegramAutoDumpingFlow:
 		keyboard.add(B("⏱ Период", callback_data=f"{CBT_AUTO_DUMPING_INTERVAL}page:{chat_id}"))
 		keyboard.add(B("📋 Правила", callback_data=f"{CBT_AUTO_DUMPING_RULES}{chat_id}"))
 		keyboard.add(B("▶️ Запустить цикл", callback_data=f"{CBT_AUTO_DUMPING_RUN}{chat_id}"))
-		keyboard.add(B("🚫 Общий чёрный список продавцов", callback_data=f"{CBT_AUTO_DUMPING_EDIT_SELLERS}{chat_id}"))
-		keyboard.add(B("🚫 Общий чёрный список слов", callback_data=f"{CBT_AUTO_DUMPING_EDIT_KEYWORDS}{chat_id}"))
 		self._send_or_edit(text, chat_id, message_id, keyboard, edit)
 
 	def open_page(self, call: telebot.types.CallbackQuery) -> None:
@@ -209,30 +200,6 @@ class TelegramAutoDumpingFlow:
 		update_host_settings(self.host, lambda settings: settings["auto_dumping"]["rules"].append(rule))
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
 		self.host.tgbot.send_message(message.chat.id, "Правило сохранено.")
-
-	def edit_sellers(self, call: telebot.types.CallbackQuery) -> None:
-		self._ask_list(call, STATE_AUTO_DUMPING_SELLERS, "продавцов", CBT_AUTO_DUMPING_EDIT_SELLERS)
-
-	def edit_keywords(self, call: telebot.types.CallbackQuery) -> None:
-		self._ask_list(call, STATE_AUTO_DUMPING_KEYWORDS, "слов", CBT_AUTO_DUMPING_EDIT_KEYWORDS)
-
-	def save_sellers(self, message: telebot.types.Message) -> None:
-		self._save_list(message, "global_sellers_blacklist", STATE_AUTO_DUMPING_SELLERS)
-
-	def save_keywords(self, message: telebot.types.Message) -> None:
-		self._save_list(message, "global_keywords_blacklist", STATE_AUTO_DUMPING_KEYWORDS)
-
-	def _ask_list(self, call: telebot.types.CallbackQuery, state: str, label: str, prefix: str) -> None:
-		message = self.host.tgbot.send_message(call.message.chat.id, f"Введите список {label} через запятую или '-' для очистки.")
-		self.host.tg.set_state(call.message.chat.id, message.id, call.from_user.id, state, {})
-		self.host.tgbot.answer_callback_query(call.id)
-
-	def _save_list(self, message: telebot.types.Message, key: str, state: str) -> None:
-		value = (message.text or "").strip()
-		items = [] if value == "-" else list(dict.fromkeys(item.strip() for item in value.split(",") if item.strip()))
-		update_host_settings(self.host, lambda settings: settings["auto_dumping"].__setitem__(key, items))
-		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
-		self.host.tgbot.send_message(message.chat.id, "Чёрный список сохранён.")
 
 	def _sync_scheduler(self) -> None:
 		if self.host.settings["auto_dumping"]["enabled"]:

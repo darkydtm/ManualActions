@@ -99,8 +99,6 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 			settings={"auto_dumping": {
 				"enabled": True,
 				"interval_minutes": 5,
-				"global_sellers_blacklist": [],
-				"global_keywords_blacklist": [],
 				"rules": [],
 			}},
 			save_settings=Mock(),
@@ -114,7 +112,18 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		text, keyboard = self.host.tgbot.messages[0][1:]
 		callbacks = [button.callback_data for row in keyboard.rows for button in row]
 		self.assertIn(f"{CBT_AUTO_DUMPING_INTERVAL}1", callbacks)
+		self.assertFalse(any("чёрный список" in button.text for row in keyboard.rows for button in row))
 		self.assertIn("Автодемпинг", text)
+
+	def test_register_does_not_expose_global_blacklist_handlers(self):
+		self.flow.register()
+
+		callback_handlers = [handler.__name__ for handler, _ in self.host.tg.callbacks]
+		message_handlers = [handler.__name__ for handler, _ in self.host.tg.messages]
+		self.assertNotIn("edit_sellers", callback_handlers)
+		self.assertNotIn("edit_keywords", callback_handlers)
+		self.assertNotIn("save_sellers", message_handlers)
+		self.assertNotIn("save_keywords", message_handlers)
 
 	def test_interval_callback_accepts_positive_custom_value(self):
 		call = SimpleNamespace(
