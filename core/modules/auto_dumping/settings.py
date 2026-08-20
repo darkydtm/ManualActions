@@ -8,8 +8,6 @@ from uuid import uuid4
 DEFAULT_AUTO_DUMPING_SETTINGS = {
 	"enabled": False,
 	"interval_minutes": 5,
-	"global_sellers_blacklist": [],
-	"global_keywords_blacklist": [],
 	"rules": [],
 }
 
@@ -25,8 +23,6 @@ def normalize_auto_dumping_settings(data: Any) -> dict[str, Any]:
 	interval = data.get("interval_minutes")
 	if isinstance(interval, int) and not isinstance(interval, bool) and interval > 0:
 		settings["interval_minutes"] = interval
-	settings["global_sellers_blacklist"] = normalize_words(data.get("global_sellers_blacklist"))
-	settings["global_keywords_blacklist"] = normalize_words(data.get("global_keywords_blacklist"))
 	seen: set[tuple[str, tuple[str, ...]]] = set()
 	for item in data.get("rules", []):
 		rule = normalize_rule(item)
