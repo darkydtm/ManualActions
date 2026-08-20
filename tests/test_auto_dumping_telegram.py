@@ -50,9 +50,15 @@ class FakeButton:
 
 class FakeKeyboard:
 	def __init__(self, row_width=1):
+		self.row_width = row_width
 		self.rows = []
 
 	def add(self, *buttons):
+		for index in range(0, len(buttons), self.row_width):
+			self.rows.append(list(buttons[index:index + self.row_width]))
+		return self
+
+	def row(self, *buttons):
 		self.rows.append(list(buttons))
 		return self
 
@@ -146,13 +152,31 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.assertTrue(self.host.settings["auto_dumping"]["enabled"])
 
 	def test_period_screen_has_no_status_controls(self):
-		self.flow.show_period(self._call(CBT_AUTO_DUMPING_PERIOD_PAGE + "1"))
+		self.flow.show_period(self._call(self.flow._page_callback(CBT_AUTO_DUMPING_PERIOD_PAGE, 1, None, 0)))
 
 		labels = [button.text for row in self.host.tgbot.edits[-1][3].rows for button in row]
 
 		self.assertIn("Своё значение", labels)
 		self.assertNotIn("Включено", labels)
 		self.assertNotIn("Выключено", labels)
+
+	def test_period_page_callback_rejects_malformed_payload(self):
+		self.flow.register()
+		handler = next(handler for handler, predicate in self.host.tg.callbacks if predicate(SimpleNamespace(data=f"{CBT_AUTO_DUMPING_PERIOD_PAGE}payload")))
+
+		handler(self._call(f"{CBT_AUTO_DUMPING_PERIOD_PAGE}not-a-page", "invalid"))
+
+		self.assertEqual(self.host.tgbot.edits, [])
+		self.assertEqual(self.host.tgbot.answers, [("invalid", "Некорректная страница.", True)])
+
+	def test_period_page_callback_opens_period_screen(self):
+		self.flow.register()
+		handler = next(handler for handler, predicate in self.host.tg.callbacks if predicate(SimpleNamespace(data=f"{CBT_AUTO_DUMPING_PERIOD_PAGE}payload")))
+
+		handler(self._call(self.flow._page_callback(CBT_AUTO_DUMPING_PERIOD_PAGE, 1, None, 0), "valid"))
+
+		self.assertEqual(len(self.host.tgbot.edits), 1)
+		self.assertEqual(self.host.tgbot.answers, [("valid", None, False)])
 
 	def test_rules_screen_has_five_rules_and_four_navigation_buttons(self):
 		self.host.settings["auto_dumping"]["rules"] = [
@@ -236,7 +260,7 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		for prefix in page_prefixes:
 			handlers = [handler for handler, predicate in self.host.tg.callbacks if predicate(SimpleNamespace(data=f"{prefix}payload"))]
 			expected = {
-				CBT_AUTO_DUMPING_PERIOD_PAGE: ["show_period"],
+				CBT_AUTO_DUMPING_PERIOD_PAGE: ["open_period"],
 				CBT_AUTO_DUMPING_RULES_PAGE: ["open_rules"],
 				CBT_AUTO_DUMPING_BLACKLIST_PAGE: ["_pending_page_callback"],
 			}[prefix]
