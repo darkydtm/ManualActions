@@ -55,6 +55,7 @@ class RuleCandidate:
 	competitor_price: float
 	calculated_price: float
 	final_price: float
+	reason: str = ""
 
 
 @dataclass(frozen=True)
