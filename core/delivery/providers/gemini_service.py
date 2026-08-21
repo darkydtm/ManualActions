@@ -82,7 +82,7 @@ class GeminiDeliveryService(AutoDeliveryService):
 			config = normalize_gemini_delivery_settings(
 				self.settings_getter().get("gemini_delivery")
 			)
-			if not config["enabled"]:
+			if config["mode"] == "off":
 				return DeliveryOutcome(OUTCOME_IGNORED)
 			if config["delay_seconds"] <= 0:
 				return self.handle_new_order_locked(event)
@@ -103,7 +103,7 @@ class GeminiDeliveryService(AutoDeliveryService):
 	def handle_new_order_locked(self, event: object) -> DeliveryOutcome:
 		settings = self.settings_getter()
 		config = normalize_gemini_delivery_settings(settings.get("gemini_delivery"))
-		if not config["enabled"]:
+		if config["mode"] == "off":
 			return DeliveryOutcome(OUTCOME_IGNORED)
 
 		event_order = getattr(event, "order", None)
@@ -157,10 +157,12 @@ class GeminiDeliveryService(AutoDeliveryService):
 			)
 			settings = self.settings_getter()
 			config = normalize_gemini_delivery_settings(settings.get("gemini_delivery"))
-			if not config["enabled"]:
+			if config["mode"] == "off":
 				return DeliveryOutcome(OUTCOME_IGNORED, request.order_id, "Gemini delivery is disabled.")
 			status = order.get("status")
 			if status == STATUS_AWAITING_CONFIRMATION:
+				if config["mode"] == "auto":
+					return self.confirm_order(request.order_id)
 				self.notify_confirmation(request.order_id)
 				return DeliveryOutcome(OUTCOME_AWAITING_CONFIRMATION, request.order_id)
 			if status == STATUS_COMPLETED:
@@ -312,6 +314,8 @@ class GeminiDeliveryService(AutoDeliveryService):
 
 	def request_confirmation(self, order_id: str) -> DeliveryOutcome:
 		self.storage.mark_awaiting_confirmation(order_id)
+		if normalize_gemini_delivery_settings(self.settings_getter().get("gemini_delivery"))["mode"] == "auto":
+			return self.confirm_order(order_id)
 		self.notify_confirmation(order_id)
 		return DeliveryOutcome(OUTCOME_AWAITING_CONFIRMATION, order_id)
 

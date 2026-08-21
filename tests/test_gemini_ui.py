@@ -44,6 +44,7 @@ from core.config.constants import (
 	CBT_GEMINI_PROVIDER,
 	CBT_GEMINI_RETRY,
 	CBT_GEMINI_SET_PROVIDER,
+	CBT_GEMINI_SET_MODE,
 	CBT_GEMINI_SET_SHORTAGE,
 	CBT_GEMINI_SHORT_IO,
 	CBT_GEMINI_STOCK,
@@ -350,11 +351,22 @@ class GeminiDeliveryUITest(unittest.TestCase):
 
 		self.assertIn("{number}", self.bot.messages[0][1])
 
-	def test_toggle_enabled_saves_setting(self):
-		self.ui.toggle_enabled(self.call("ma_gemini_toggle:0"))
+	def test_sets_mode_and_saves_setting(self):
+		self.ui.set_mode(self.call(f"{CBT_GEMINI_SET_MODE}auto:0"))
 
-		self.assertTrue(self.host.settings["gemini_delivery"]["enabled"])
+		self.assertEqual(self.host.settings["gemini_delivery"]["mode"], "auto")
 		self.assertEqual(self.saved, ["save"])
+
+	def test_management_page_lists_gemini_modes(self):
+		self.ui.show_category(1, 2, "control", "0", True)
+
+		buttons = self.bot.edits[-1][3]
+		texts = [button.text for row in buttons.rows for button in row]
+		callbacks = self.callbacks(buttons)
+		self.assertIn("Автоматически", " ".join(texts))
+		self.assertIn("Подтверждение", " ".join(texts))
+		self.assertIn("Выключено", " ".join(texts))
+		self.assertIn(f"{CBT_GEMINI_SET_MODE}auto:0", callbacks)
 
 	def test_saves_gemini_delay(self):
 		self.ui.ask_delay(self.call(f"{CBT_GEMINI_EDIT_DELAY}0"))

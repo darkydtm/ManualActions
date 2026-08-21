@@ -39,7 +39,7 @@ class GeminiDeliveryServiceTest(unittest.TestCase):
 		self.storage = GeminiDeliveryStorage(Path(self.temp_dir.name) / "delivery.json")
 		self.settings = {
 			"gemini_delivery": {
-				"enabled": True,
+				"mode": "confirm",
 				"shortage_mode": "partial",
 				"message_template": "Delivery: {link}",
 			},
@@ -132,7 +132,7 @@ class GeminiDeliveryServiceTest(unittest.TestCase):
 		self.assertEqual(outcome.status, OUTCOME_AWAITING_CONFIRMATION)
 
 	def test_disabled_delivery_does_nothing(self):
-		self.settings["gemini_delivery"]["enabled"] = False
+		self.settings["gemini_delivery"]["mode"] = "off"
 		self.storage.add_links((LINK_ONE,))
 
 		outcome = self.service.handle_new_order(self.event())
@@ -175,11 +175,34 @@ class GeminiDeliveryServiceTest(unittest.TestCase):
 		self.storage.add_links((LINK_ONE,))
 
 		self.service.handle_new_order(self.event())
-		self.settings["gemini_delivery"]["enabled"] = False
+		self.settings["gemini_delivery"]["mode"] = "off"
 		callbacks[0]()
 
 		self.assertEqual(self.storage.stock_count(), 1)
 		self.cardinal.send_message.assert_not_called()
+
+	def test_automatically_sends_prepared_delivery(self):
+		self.settings["gemini_delivery"]["mode"] = "auto"
+		self.storage.add_links((LINK_ONE,))
+
+		outcome = self.service.handle_new_order(self.event())
+
+		self.assertEqual(outcome.status, OUTCOME_COMPLETED)
+		self.cardinal.send_message.assert_called_once_with(
+			chat_id=77,
+			message_text="Delivery: raw-url",
+		)
+		self.confirmation_notifier.assert_not_called()
+
+	def test_retries_pending_confirmation_automatically_after_mode_change(self):
+		self.storage.add_links((LINK_ONE,))
+		self.service.handle_new_order(self.event())
+		self.settings["gemini_delivery"]["mode"] = "auto"
+
+		outcome = self.service.retry_order("ORDER-1")
+
+		self.assertEqual(outcome.status, OUTCOME_COMPLETED)
+		self.cardinal.send_message.assert_called_once()
 
 	def test_creates_secret_gist_and_waits_for_confirmation(self):
 		self.storage.add_links((LINK_ONE, LINK_TWO))

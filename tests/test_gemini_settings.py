@@ -17,6 +17,12 @@ VALID_TWO = "https://serviceactivation.google.com/subscription/new/value#fragmen
 
 
 class GeminiSettingsTest(unittest.TestCase):
+	def test_normalizes_gemini_modes_and_migrates_enabled_flag(self):
+		self.assertEqual(normalize_gemini_delivery_settings({"mode": "auto"})["mode"], "auto")
+		self.assertEqual(normalize_gemini_delivery_settings({"enabled": True})["mode"], "confirm")
+		self.assertEqual(normalize_gemini_delivery_settings({"enabled": False})["mode"], "off")
+		self.assertEqual(normalize_gemini_delivery_settings({"mode": "invalid", "enabled": True})["mode"], "confirm")
+
 	def test_normalizes_quantity_and_delay(self):
 		settings = normalize_gemini_delivery_settings({"quantity": 3, "delay_seconds": 15})
 		self.assertEqual(settings["quantity"], 3)
@@ -25,7 +31,7 @@ class GeminiSettingsTest(unittest.TestCase):
 	def test_uses_defaults_for_missing_settings(self):
 		settings = normalize_gemini_delivery_settings({})
 
-		self.assertFalse(settings["enabled"])
+		self.assertEqual(settings["mode"], "off")
 		self.assertEqual(settings["shortage_mode"], "partial")
 		self.assertEqual(settings["message_template"], DEFAULT_GEMINI_MESSAGE_TEMPLATE)
 		self.assertEqual(settings["link_provider"], "github")
@@ -33,25 +39,25 @@ class GeminiSettingsTest(unittest.TestCase):
 
 	def test_keeps_valid_settings(self):
 		settings = normalize_gemini_delivery_settings({
-			"enabled": True,
+			"mode": "auto",
 			"shortage_mode": "all_or_nothing",
 			"message_template": "Delivery: {link}",
 		})
 
-		self.assertTrue(settings["enabled"])
+		self.assertEqual(settings["mode"], "auto")
 		self.assertEqual(settings["shortage_mode"], "all_or_nothing")
 		self.assertEqual(settings["message_template"], "Delivery: {link}")
 
 	def test_rejects_invalid_settings(self):
 		settings = normalize_gemini_delivery_settings({
-			"enabled": "yes",
+			"mode": "invalid",
 			"shortage_mode": "invalid",
 			"message_template": "Missing placeholder",
 			"link_provider": "invalid",
 			"short_io": {"api_key": 123, "domain": False},
 		})
 
-		self.assertFalse(settings["enabled"])
+		self.assertEqual(settings["mode"], "off")
 		self.assertEqual(settings["shortage_mode"], "partial")
 		self.assertEqual(settings["message_template"], DEFAULT_GEMINI_MESSAGE_TEMPLATE)
 		self.assertEqual(settings["link_provider"], "github")
@@ -91,12 +97,12 @@ class GeminiSettingsTest(unittest.TestCase):
 	def test_adds_gemini_settings_to_plugin_settings(self):
 		settings = normalize_settings({
 			"gemini_delivery": {
-				"enabled": True,
+				"mode": "confirm",
 				"message_template": "Link: {link}",
 			},
 		})
 
-		self.assertTrue(settings["gemini_delivery"]["enabled"])
+		self.assertEqual(settings["gemini_delivery"]["mode"], "confirm")
 		self.assertEqual(settings["gemini_delivery"]["message_template"], "Link: {link}")
 
 	def test_accepts_supported_activation_urls(self):

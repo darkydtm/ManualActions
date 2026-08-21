@@ -29,11 +29,11 @@ from ...config.constants import (
 	CBT_GEMINI_PROVIDER,
 	CBT_GEMINI_RETRY,
 	CBT_GEMINI_SET_PROVIDER,
+	CBT_GEMINI_SET_MODE,
 	CBT_GEMINI_SET_SHORTAGE,
 	CBT_GEMINI_SHORT_IO,
 	CBT_GEMINI_SHORTAGE,
 	CBT_GEMINI_STOCK,
-	CBT_GEMINI_TOGGLE,
 	CBT_GEMINI_WAITING,
 	CBT_GIST_PAGE,
 	STATE_GEMINI_ADD,
@@ -50,6 +50,7 @@ from ..models import OUTCOME_AWAITING_CONFIRMATION, OUTCOME_IGNORED
 from .gemini_service import OUTCOME_COMPLETED, OUTCOME_SEND_FAILED, OUTCOME_WAITING_STOCK
 from .gemini import (
 	GEMINI_LINK_PROVIDERS,
+	GEMINI_MODES,
 	GEMINI_SHORTAGE_MODES,
 	parse_gemini_link_batch,
 )
@@ -66,6 +67,12 @@ PAGE_SIZE = 8
 SHORTAGE_MODE_LABELS = {
 	"partial": "Выдать остаток",
 	"all_or_nothing": "Не выдавать",
+}
+
+MODE_LABELS = {
+	"auto": "Автоматически",
+	"confirm": "Подтверждение",
+	"off": "Выключено",
 }
 
 LINK_PROVIDER_LABELS = {
@@ -123,7 +130,7 @@ class TelegramGeminiDeliveryUI:
 		callbacks = (
 			(self.open_page, CBT_GEMINI_PAGE),
 			(self.open_category, CBT_GEMINI_CATEGORY),
-			(self.toggle_enabled, CBT_GEMINI_TOGGLE),
+			(self.set_mode, CBT_GEMINI_SET_MODE),
 			(self.ask_stock, CBT_GEMINI_ADD),
 			(self.open_stock_page, CBT_GEMINI_STOCK),
 			(self.show_stock_link, CBT_GEMINI_LINK),
@@ -165,7 +172,7 @@ class TelegramGeminiDeliveryUI:
 		edit: bool = False,
 	) -> None:
 		config = self.host.settings["gemini_delivery"]
-		enabled = "включена" if config["enabled"] else "выключена"
+		mode = config["mode"]
 		provider = config["link_provider"]
 		provider_label = LINK_PROVIDER_LABELS[provider]
 		if provider == "short_io":
@@ -179,7 +186,7 @@ class TelegramGeminiDeliveryUI:
 		template = self.preview(config["message_template"])
 		text = (
 			"<b>Gemini автовыдача</b>\n\n"
-			f"Автовыдача: <b>{enabled}</b>\n"
+			f"Режим: <b>{MODE_LABELS[mode]}</b>\n"
 			f"В стоке: <b>{self.host.gemini_storage.stock_count()}</b>\n"
 			f"Сервис ссылок: <b>{provider_label}</b>\n"
 			f"Нехватка: <b>{SHORTAGE_MODE_LABELS[config['shortage_mode']]}</b>\n"
@@ -205,7 +212,12 @@ class TelegramGeminiDeliveryUI:
 		keyboard = K(row_width=1)
 		labels = {"control": "Управление", "stock": "Сток", "settings": "Настройки", "orders": "Заказы"}
 		if category == "control":
-			keyboard.add(B("🟢 Включено" if config["enabled"] else "🔴 Выключено", callback_data=f"{CBT_GEMINI_TOGGLE}{offset}"))
+			for mode in GEMINI_MODES:
+				marker = "✅ " if config["mode"] == mode else ""
+				keyboard.add(B(
+					f"{marker}{MODE_LABELS[mode]}",
+					callback_data=f"{CBT_GEMINI_SET_MODE}{mode}:{offset}",
+				))
 		elif category == "stock":
 			keyboard.add(B("➕ Добавить ссылки", callback_data=f"{CBT_GEMINI_ADD}{offset}"))
 			keyboard.add(B("📦 Открыть сток", callback_data=f"{CBT_GEMINI_STOCK}0:{offset}"))
@@ -226,15 +238,14 @@ class TelegramGeminiDeliveryUI:
 		keyboard.add(B("◀️ К Gemini", callback_data=f"{CBT_GEMINI_PAGE}{offset}"))
 		self.send_or_edit(f"<b>Gemini - {labels[category]}</b>", chat_id, message_id, keyboard, edit)
 
-	def toggle_enabled(self, call: telebot.types.CallbackQuery) -> None:
-		offset = self.get_offset(call.data)
-		config = self.host.settings["gemini_delivery"]
-		update_host_settings(self.host, lambda settings: settings["gemini_delivery"].__setitem__("enabled", not config["enabled"]))
+	def set_mode(self, call: telebot.types.CallbackQuery) -> None:
+		mode, offset = self.parse_value_callback(call.data, CBT_GEMINI_SET_MODE)
+		if mode not in GEMINI_MODES:
+			self.host.tgbot.answer_callback_query(call.id)
+			return
+		update_host_settings(self.host, lambda settings: settings["gemini_delivery"].__setitem__("mode", mode))
 		self.show_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
-		self.host.tgbot.answer_callback_query(
-			call.id,
-			"Автовыдача включена." if config["enabled"] else "Автовыдача выключена.",
-		)
+		self.host.tgbot.answer_callback_query(call.id, MODE_LABELS[mode])
 
 	def open_link_provider_page(self, call: telebot.types.CallbackQuery) -> None:
 		offset = self.get_offset(call.data)
