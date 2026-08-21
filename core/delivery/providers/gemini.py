@@ -9,13 +9,14 @@ GEMINI_LINK_PREFIXES = (
 	"https://one.google.com/activate-plan/subscription/new/",
 	"https://serviceactivation.google.com/subscription/new/",
 )
+GEMINI_MODES = ("auto", "confirm", "off")
 GEMINI_SHORTAGE_MODES = ("partial", "all_or_nothing")
 GEMINI_LINK_PROVIDERS = ("github", "short_io")
 
 DEFAULT_GEMINI_MESSAGE_TEMPLATE = "Спасибо за покупку!\nВаша ссылка: {link}"
 
 DEFAULT_GEMINI_DELIVERY_SETTINGS = {
-	"enabled": False,
+	"mode": "off",
 	"shortage_mode": "partial",
 	"quantity": 1,
 	"delay_seconds": 0,
@@ -40,9 +41,13 @@ def normalize_gemini_delivery_settings(data: Any) -> dict[str, Any]:
 	if not isinstance(data, dict):
 		return settings
 
-	enabled = data.get("enabled")
-	if isinstance(enabled, bool):
-		settings["enabled"] = enabled
+	mode = data.get("mode")
+	if mode in GEMINI_MODES:
+		settings["mode"] = mode
+	else:
+		enabled = data.get("enabled")
+		if isinstance(enabled, bool):
+			settings["mode"] = "confirm" if enabled else "off"
 
 	shortage_mode = data.get("shortage_mode")
 	if shortage_mode in GEMINI_SHORTAGE_MODES:

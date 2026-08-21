@@ -109,7 +109,7 @@ CBT_GIST_SKIP_SEND = "ma_gist_skip_send:"
 
 CBT_GEMINI_PAGE = "ma_gemini:"
 CBT_GEMINI_CATEGORY = "ma_gemini_category:"
-CBT_GEMINI_TOGGLE = "ma_gemini_toggle:"
+CBT_GEMINI_SET_MODE = "ma_gemini_set_mode:"
 CBT_GEMINI_ADD = "ma_gemini_add:"
 CBT_GEMINI_STOCK = "ma_gemini_stock:"
 CBT_GEMINI_LINK = "ma_gemini_link:"

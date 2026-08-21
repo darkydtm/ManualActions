@@ -37,10 +37,14 @@ class AutoDeliveryService:
 	def config(self) -> dict[str, Any]:
 		return self.config_normalizer(self.settings_getter().get(self.settings_key))
 
+	@staticmethod
+	def is_enabled(config: dict[str, Any]) -> bool:
+		return config["mode"] != "off" if "mode" in config else config["enabled"]
+
 	def handle_new_order(self, event: object) -> DeliveryOutcome:
 		with self.lock:
 			config = self.config()
-			if not config["enabled"]:
+			if not self.is_enabled(config):
 				return DeliveryOutcome(OUTCOME_IGNORED)
 			if config["delay_seconds"] <= 0:
 				return self.handle_new_order_locked(event)
@@ -57,7 +61,7 @@ class AutoDeliveryService:
 
 	def handle_new_order_locked(self, event: object) -> DeliveryOutcome:
 		config = self.config()
-		if not config["enabled"]:
+		if not self.is_enabled(config):
 			return DeliveryOutcome(OUTCOME_IGNORED)
 		event_order = getattr(event, "order", None)
 		if not event_order:
