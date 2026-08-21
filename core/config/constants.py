@@ -4,7 +4,7 @@ import os
 
 
 NAME = "Manual Actions"
-VERSION = "1.6.6"
+VERSION = "1.6.7"
 DESCRIPTION = (
 	"Ручное управление заказами прямо из Telegram + встроенный Chat Sync.\n\n"
 	"Chat Sync зеркалит FunPay чаты в темы Telegram-форума и работает на одном боте - самом Cardinal.\n\n"
