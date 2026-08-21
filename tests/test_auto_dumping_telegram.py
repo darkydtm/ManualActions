@@ -5,6 +5,7 @@ import types
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 
 
 telebot_module = types.ModuleType("telebot")
@@ -147,6 +148,13 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		}
 		rule.update(changes)
 		return rule
+
+	def _replace_blacklist_item_token(self, callback, token_callback):
+		prefix, payload = callback.split("~", 1)
+		token_payload = urlsafe_b64decode(token_callback.split("~", 1)[1] + "=" * (-len(token_callback.split("~", 1)[1]) % 4))
+		payload_bytes = bytearray(urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+		payload_bytes[-4:] = token_payload[-4:]
+		return f"{prefix}~{urlsafe_b64encode(payload_bytes).decode().rstrip('=')}"
 
 	def test_main_screen_has_only_top_level_sections(self):
 		self.flow.show_main(1)
@@ -312,11 +320,11 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 		state = self.host.tg.get_state(1, 7)
 		self.assertEqual(state["state"], STATE_AUTO_DUMPING_KEYWORDS)
-		self.assertEqual(state["data"], {"rule_id": "rule", "rule_index": 0, "kind": "keywords", "page": 2})
+		self.assertEqual(state["data"], {"rule_id": "rule", "rule_index": 0, "kind": "keywords", "page": 2, "message_id": 2})
 
 	def test_save_rule_blacklist_deduplicates_case_insensitively(self):
 		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule", sellers_blacklist=["Existing"], keywords_blacklist=["Keep"])]
-		message = self._message("Seller, seller, Other", {"rule_id": "rule", "rule_index": 0, "kind": "sellers", "page": 0})
+		message = self._message("Seller, seller, Other", {"rule_id": "rule", "rule_index": 0, "kind": "sellers", "page": 0, "message_id": 2})
 
 		confirmation = self.flow.save_rule_blacklist(message)
 
@@ -324,18 +332,61 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.assertEqual(self.flow._find_rule("rule")["sellers_blacklist"], ["Seller", "Other"])
 		self.assertEqual(self.flow._find_rule("rule")["keywords_blacklist"], ["Keep"])
 		self.assertNotIn(7, self.host.tg.states)
+		self.assertEqual(self.host.tgbot.edits[-1][2], 2)
 
-	def test_save_rule_blacklist_accepts_rule_id_without_index(self):
-		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule")]
-		message = self._message("Seller", {"rule_id": "rule", "kind": "sellers"})
+	def test_save_rule_blacklist_rejects_missing_rule_context_before_mutation(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule", sellers_blacklist=["Existing"])]
+		message = self._message("Seller", {"rule_id": "rule", "kind": "sellers", "message_id": 2})
 
-		self.flow.save_rule_blacklist(message)
+		self.assertIsNone(self.flow.save_rule_blacklist(message))
 
-		self.assertEqual(self.flow._find_rule("rule")["sellers_blacklist"], ["Seller"])
+		self.assertEqual(self.flow._find_rule("rule")["sellers_blacklist"], ["Existing"])
+		self.assertEqual(self.host.tgbot.edits, [])
+
+	def test_save_rule_blacklist_rejects_missing_message_id_before_mutation(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule", sellers_blacklist=["Existing"])]
+		message = self._message("Seller", {"rule_id": "rule", "rule_index": 0, "kind": "sellers", "page": 0})
+
+		self.assertIsNone(self.flow.save_rule_blacklist(message))
+
+		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["sellers_blacklist"], ["Existing"])
+		self.assertEqual(self.host.tgbot.edits, [])
+
+	def test_save_rule_blacklist_rejects_invalid_message_id_before_mutation(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule", sellers_blacklist=["Existing"])]
+		message = self._message("Seller", {"rule_id": "rule", "rule_index": 0, "kind": "sellers", "page": 0, "message_id": "2"})
+
+		self.assertIsNone(self.flow.save_rule_blacklist(message))
+
+		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["sellers_blacklist"], ["Existing"])
+
+	def test_blacklist_delete_rejects_cross_rule_token_substitution(self):
+		self.host.settings["auto_dumping"]["rules"] = [
+			self._rule("first", sellers_blacklist=["same"]),
+			self._rule("second", sellers_blacklist=["same"]),
+		]
+		first_callback = self.flow._blacklist_item_callback(CBT_AUTO_DUMPING_BLACKLIST_DELETE, 0, "sellers", 0, 0, "same")
+		second_callback = self.flow._blacklist_item_callback(CBT_AUTO_DUMPING_BLACKLIST_DELETE, 1, "sellers", 0, 0, "same")
+
+		self.flow._delete_blacklist(self._call(self._replace_blacklist_item_token(second_callback, first_callback)))
+
+		self.assertEqual([rule["sellers_blacklist"] for rule in self.host.settings["auto_dumping"]["rules"]], [["same"], ["same"]])
+		self.assertEqual(self.host.tgbot.answers[-1][1], "Элемент не найден.")
+
+	def test_blacklist_delete_rejects_cross_kind_token_substitution(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule", sellers_blacklist=["same"], keywords_blacklist=["same"])]
+		sellers_callback = self.flow._blacklist_item_callback(CBT_AUTO_DUMPING_BLACKLIST_DELETE, 0, "sellers", 0, 0, "same")
+		keywords_callback = self.flow._blacklist_item_callback(CBT_AUTO_DUMPING_BLACKLIST_DELETE, 0, "keywords", 0, 0, "same")
+
+		self.flow._delete_blacklist(self._call(self._replace_blacklist_item_token(keywords_callback, sellers_callback)))
+
+		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["sellers_blacklist"], ["same"])
+		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["keywords_blacklist"], ["same"])
+		self.assertEqual(self.host.tgbot.answers[-1][1], "Элемент не найден.")
 
 	def test_blacklist_delete_removes_only_selected_item(self):
 		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule", sellers_blacklist=["one", "two"], keywords_blacklist=["keep"])]
-		callback = self.flow._blacklist_item_callback(CBT_AUTO_DUMPING_BLACKLIST_DELETE, 0, "sellers", 0, 1)
+		callback = self.flow._blacklist_item_callback(CBT_AUTO_DUMPING_BLACKLIST_DELETE, 0, "sellers", 0, 1, "two")
 
 		self.flow._delete_blacklist(self._call(callback))
 
