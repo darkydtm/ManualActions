@@ -35,6 +35,9 @@ from core.config.constants import (
 	CBT_AUTO_DUMPING_BLACKLIST_PAGE,
 	CBT_AUTO_DUMPING_INTERVAL,
 	CBT_AUTO_DUMPING_PERIOD_PAGE,
+	CBT_AUTO_DUMPING_RULE,
+	CBT_AUTO_DUMPING_RULE_DELETE,
+	CBT_AUTO_DUMPING_RULE_TOGGLE,
 	CBT_AUTO_DUMPING_RULES_PAGE,
 	CBT_AUTO_DUMPING_STATUS,
 	STATE_AUTO_DUMPING_KEYWORDS,
@@ -138,7 +141,7 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 			if all(key in state_data for key in ("rule_id", "rule_index", "kind", "page")):
 				rule = self.host.settings["auto_dumping"]["rules"][state_data["rule_index"]]
 				state_data["rule_token"] = self.flow._blacklist_state_payloads.put((
-					state_data["rule_index"], state_data["rule_id"], rule, state_data["kind"], state_data["page"], state_data.get("rules_page", 0),
+					CBT_AUTO_DUMPING_BLACKLIST_ADD, state_data["rule_index"], state_data["rule_id"], rule, state_data["kind"], state_data["page"], state_data.get("rules_page", 0),
 				))
 		return SimpleNamespace(chat=SimpleNamespace(id=1), from_user=SimpleNamespace(id=7), text=text)
 
@@ -420,6 +423,36 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["keywords_blacklist"], ["same"])
 		self.assertEqual(self.host.tgbot.answers[-1][1], "Элемент не найден.")
 
+	def test_rule_callback_rejects_action_prefix_substitution(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule", enabled=False)]
+		open_callback = self.flow._rule_callback_with_page(CBT_AUTO_DUMPING_RULE, 0, 0)
+		toggle_callback = CBT_AUTO_DUMPING_RULE_TOGGLE + open_callback[len(CBT_AUTO_DUMPING_RULE):]
+
+		self.flow.toggle_rule(self._call(toggle_callback, "relabeled-rule"))
+
+		self.assertFalse(self.host.settings["auto_dumping"]["rules"][0]["enabled"])
+		self.assertEqual(self.host.tgbot.answers[-1], ("relabeled-rule", "Правило не найдено.", True))
+
+	def test_rule_callback_rejects_delete_prefix_substitution(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule")]
+		open_callback = self.flow._rule_callback_with_page(CBT_AUTO_DUMPING_RULE, 0, 0)
+		delete_callback = CBT_AUTO_DUMPING_RULE_DELETE + open_callback[len(CBT_AUTO_DUMPING_RULE):]
+
+		self.flow.delete_rule(self._call(delete_callback, "relabeled-delete"))
+
+		self.assertEqual(len(self.host.settings["auto_dumping"]["rules"]), 1)
+		self.assertEqual(self.host.tgbot.answers[-1], ("relabeled-delete", "Правило не найдено.", True))
+
+	def test_blacklist_navigation_rejects_add_prefix_substitution(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule")]
+		page_callback = self.flow._blacklist_navigation_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, 0, "sellers", 0, 0)
+		add_callback = CBT_AUTO_DUMPING_BLACKLIST_ADD + page_callback[len(CBT_AUTO_DUMPING_BLACKLIST_PAGE):]
+
+		self.flow._add_blacklist(self._call(add_callback, "relabeled-add"))
+
+		self.assertNotIn(7, self.host.tg.states)
+		self.assertEqual(self.host.tgbot.answers[-1], ("relabeled-add", "Правило не найдено.", True))
+
 	def test_blacklist_delete_removes_only_selected_item(self):
 		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule", sellers_blacklist=["one", "two"], keywords_blacklist=["keep"])]
 		callback = self.flow._blacklist_item_callback(CBT_AUTO_DUMPING_BLACKLIST_DELETE, 0, "sellers", 0, 1, "two")
@@ -428,6 +461,17 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["sellers_blacklist"], ["one"])
 		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["keywords_blacklist"], ["keep"])
+
+	def test_blacklist_delete_rejects_equal_replacement_rule(self):
+		rule = self._rule("rule", sellers_blacklist=["one"])
+		self.host.settings["auto_dumping"]["rules"] = [rule]
+		callback = self.flow._blacklist_item_callback(CBT_AUTO_DUMPING_BLACKLIST_DELETE, 0, "sellers", 0, 0, "one")
+		self.host.settings["auto_dumping"]["rules"] = [dict(rule)]
+
+		self.flow._delete_blacklist(self._call(callback, "equal-replacement"))
+
+		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["sellers_blacklist"], ["one"])
+		self.assertEqual(self.host.tgbot.answers[-1], ("equal-replacement", "Элемент не найден.", True))
 
 	def test_blacklist_delete_rejects_repeated_token(self):
 		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule", sellers_blacklist=["one", "two"])]

@@ -3,15 +3,23 @@ from __future__ import annotations
 from typing import Any
 
 
+TOKEN_SPACE = 1 << 32
+
+
 class CallbackPayloadCache:
 	def __init__(self, limit: int = 300):
-		self.limit = max(1, limit)
+		self.limit = min(max(1, limit), TOKEN_SPACE)
 		self.counter = 0
 		self.payloads: dict[str, Any] = {}
 
 	def put(self, payload: Any) -> str:
-		self.counter += 1
-		token = format(self.counter, "x")
+		if len(self.payloads) >= TOKEN_SPACE:
+			raise RuntimeError("callback payload cache is full")
+		while True:
+			self.counter = (self.counter + 1) % TOKEN_SPACE
+			token = format(self.counter, "x")
+			if token not in self.payloads:
+				break
 		self.payloads[token] = payload
 		while len(self.payloads) > self.limit:
 			self.payloads.pop(next(iter(self.payloads)))
