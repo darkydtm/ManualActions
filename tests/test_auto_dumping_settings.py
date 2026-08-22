@@ -4,7 +4,7 @@ import unittest
 
 from core.config.settings import normalize_settings
 from core.modules.auto_dumping.models import DumpingRule
-from core.modules.auto_dumping.settings import normalize_auto_dumping_settings
+from core.modules.auto_dumping.settings import normalize_auto_dumping_settings, normalize_rule
 
 
 class AutoDumpingSettingsTest(unittest.TestCase):
@@ -35,10 +35,12 @@ class AutoDumpingSettingsTest(unittest.TestCase):
 			}, {"subcategory": "", "keywords": []}],
 		})
 
-		self.assertEqual(settings["global_sellers_blacklist"], ["Seller"])
-		self.assertEqual(settings["global_keywords_blacklist"], ["beta"])
+		self.assertNotIn("global_sellers_blacklist", settings)
+		self.assertNotIn("global_keywords_blacklist", settings)
 		self.assertEqual(len(settings["rules"]), 1)
-		self.assertEqual(settings["rules"][0]["id"], "rule-1")
+		self.assertEqual(settings["rules"][0]["id"], " rule-1 ")
+		self.assertEqual(settings["rules"][0]["sellers_blacklist"], ["bad"])
+		self.assertEqual(settings["rules"][0]["keywords_blacklist"], ["beta"])
 		self.assertEqual(DumpingRule.from_dict(settings["rules"][0]).keyword_mode, "all")
 
 	def test_rejects_duplicate_rule_keywords_in_one_subcategory(self):
@@ -50,6 +52,22 @@ class AutoDumpingSettingsTest(unittest.TestCase):
 		})
 
 		self.assertEqual([rule["id"] for rule in settings["rules"]], ["one"])
+
+	def test_preserves_rule_ids_of_any_utf8_length(self):
+		rule_id = "идентификатор-" + "x" * 100
+		settings = normalize_auto_dumping_settings({"rules": [{
+			"id": rule_id, "subcategory": "game", "keywords": ["gold"],
+		}]})
+
+		self.assertEqual(settings["rules"][0]["id"], rule_id)
+
+	def test_generates_ids_for_empty_rule_ids_and_preserves_normal_ids(self):
+		for rule_id in ("", "   "):
+			rule = normalize_rule({"id": rule_id, "subcategory": "game", "keywords": ["gold"]})
+			self.assertRegex(rule["id"], r"^[0-9a-f]{32}$")
+
+		rule = normalize_rule({"id": "rule-1", "subcategory": "game", "keywords": ["gold"]})
+		self.assertEqual(rule["id"], "rule-1")
 
 	def test_normalize_settings_includes_auto_dumping_section(self):
 		settings = normalize_settings({"auto_dumping": {"enabled": True, "interval_minutes": 10}})

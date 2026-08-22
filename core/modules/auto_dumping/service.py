@@ -45,8 +45,6 @@ class AutoDumpingService:
 		config = AutoDumpingConfig(
 			settings.get("enabled") is True,
 			int(settings.get("interval_minutes", 5)),
-			tuple(settings.get("global_sellers_blacklist", [])),
-			tuple(settings.get("global_keywords_blacklist", [])),
 			tuple(DumpingRule.from_dict(rule) for rule in settings.get("rules", [])),
 		)
 		result = {"status": "ok", "updated": 0, "skipped": 0, "errors": 0, "conflicts": 0}
@@ -86,8 +84,8 @@ class AutoDumpingService:
 				if is_blacklisted(
 					competitor.username,
 					competitor.title,
-					config.global_sellers_blacklist + rule.sellers_blacklist,
-					config.global_keywords_blacklist + rule.keywords_blacklist,
+					rule.sellers_blacklist,
+					rule.keywords_blacklist,
 				):
 					continue
 				matched = match_keywords(competitor.title, rule.keywords, rule.keyword_mode)
