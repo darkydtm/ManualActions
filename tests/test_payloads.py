@@ -30,6 +30,21 @@ class PayloadsTest(unittest.TestCase):
 		self.assertEqual(cache.pop(token), ("template", "chat"))
 		self.assertIsNone(cache.pop(token))
 
+	def test_callback_payload_cache_wraps_four_byte_counter_without_live_collisions(self):
+		cache = CallbackPayloadCache(limit=3)
+		live = cache.put("live")
+		cache.counter = (1 << 32) - 1
+		zero = cache.put("zero")
+		cache.counter = 0
+		two = cache.put("two")
+
+		self.assertEqual(live, "1")
+		self.assertEqual(zero, "0")
+		self.assertEqual(two, "2")
+		self.assertEqual(cache.get(live), "live")
+		self.assertEqual(cache.get(zero), "zero")
+		self.assertEqual(cache.get(two), "two")
+
 
 if __name__ == "__main__":
 	unittest.main()
