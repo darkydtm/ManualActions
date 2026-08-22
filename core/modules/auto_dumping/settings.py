@@ -8,8 +8,6 @@ from uuid import uuid4
 DEFAULT_AUTO_DUMPING_SETTINGS = {
 	"enabled": False,
 	"interval_minutes": 5,
-	"global_sellers_blacklist": [],
-	"global_keywords_blacklist": [],
 	"rules": [],
 }
 
@@ -25,8 +23,6 @@ def normalize_auto_dumping_settings(data: Any) -> dict[str, Any]:
 	interval = data.get("interval_minutes")
 	if isinstance(interval, int) and not isinstance(interval, bool) and interval > 0:
 		settings["interval_minutes"] = interval
-	settings["global_sellers_blacklist"] = normalize_words(data.get("global_sellers_blacklist"))
-	settings["global_keywords_blacklist"] = normalize_words(data.get("global_keywords_blacklist"))
 	seen: set[tuple[str, tuple[str, ...]]] = set()
 	for item in data.get("rules", []):
 		rule = normalize_rule(item)
@@ -43,6 +39,9 @@ def normalize_auto_dumping_settings(data: Any) -> dict[str, Any]:
 def normalize_rule(data: Any) -> dict[str, Any] | None:
 	if not isinstance(data, dict):
 		return None
+	rule_id = str(data.get("id") or "")
+	if not rule_id.strip():
+		rule_id = uuid4().hex
 	subcategory = data.get("subcategory")
 	keywords = normalize_words(data.get("keywords"))
 	if not isinstance(subcategory, str) or not subcategory.strip() or not keywords:
@@ -58,7 +57,7 @@ def normalize_rule(data: Any) -> dict[str, Any] | None:
 	if dumping_value is None:
 		return None
 	return {
-		"id": str(data.get("id") or uuid4().hex).strip(),
+		"id": rule_id,
 		"enabled": data.get("enabled") is not False,
 		"subcategory": subcategory.strip(),
 		"keywords": keywords,

@@ -3,12 +3,20 @@ from __future__ import annotations
 from types import SimpleNamespace
 import unittest
 
-from core.modules.auto_dumping.models import Lot
+from core.modules.auto_dumping.models import AutoDumpingConfig, DumpingRule, Lot
 from core.modules.auto_dumping.service import AutoDumpingService
 
 
 def raw_lot(lot_id, title, price, username, subcategory="game", owner=False):
 	return Lot(lot_id, title, price, subcategory, username, raw=SimpleNamespace(owner=owner))
+
+
+def service_config(settings):
+	return AutoDumpingConfig(
+		settings["enabled"],
+		settings["interval_minutes"],
+		tuple(DumpingRule.from_dict(rule) for rule in settings["rules"]),
+	)
 
 
 class Gateway:
@@ -51,8 +59,6 @@ class AutoDumpingServiceTest(unittest.TestCase):
 		return {
 			"enabled": True,
 			"interval_minutes": 5,
-			"global_sellers_blacklist": [],
-			"global_keywords_blacklist": [],
 			"rules": [{
 				"id": "rule-1", "enabled": True, "subcategory": "game", "keywords": ["gold"],
 				"keyword_mode": "any", "competitor_min_price": 0, "price_mode": "fixed",
@@ -90,6 +96,15 @@ class AutoDumpingServiceTest(unittest.TestCase):
 
 		self.assertEqual(gateway.updated, [])
 		self.assertEqual(result["skipped"], 1)
+
+	def test_skips_competitor_blocked_by_rule_local_blacklist(self):
+		own = raw_lot("own", "My gold", 100, "me", owner=True)
+		catalog = [own, raw_lot("blocked", "Gold", 50, "blocked-seller")]
+		config = self.config()
+		config["rules"][0]["sellers_blacklist"] = ["blocked-seller"]
+		service = AutoDumpingService(lambda: config, Gateway([own], catalog), Storage())
+
+		self.assertIsNone(service.decide(own, catalog, service_config(config)))
 
 
 if __name__ == "__main__":
