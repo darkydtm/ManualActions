@@ -695,7 +695,8 @@ class TelegramAutoDumpingFlow:
 			self.host.tgbot.send_message(message.chat.id, "Правило не найдено.")
 			return None
 		field = f"{data['kind']}_blacklist"
-		values = normalize_words((message.text or "").split(","))
+		text = (message.text or "").strip()
+		values = [] if text == "-" else normalize_words(text.split(","))
 		update_host_settings(self.host, lambda settings: self._blacklist_rule(settings, rule_index).__setitem__(field, values))
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
 		confirmation = "Черный список сохранен."
@@ -716,9 +717,14 @@ class TelegramAutoDumpingFlow:
 			field = f"{kind}_blacklist"
 			items = rule.get(field, [])
 			cached = self._blacklist_payloads.pop(token)
-			if item_index >= len(items) or cached[:5] != (rule_index, kind, page, item_index, items[item_index]):
+			if (
+				not isinstance(cached, tuple)
+				or len(cached) != 6
+				or item_index >= len(items)
+				or cached[:5] != (rule_index, kind, page, item_index, items[item_index])
+			):
 				raise ValueError
-			rules_page = cached[5]
+			rules_page = self._validate_callback_page(cached[5])
 		except ValueError:
 			self.host.tgbot.answer_callback_query(call.id, "Элемент не найден.", show_alert=True)
 			return
