@@ -308,8 +308,10 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		items_back = self.host.tgbot.edits[-1][3].rows[-1][-1].callback_data
 		self.flow._blacklist_page_callback(self._call(items_back))
 		category_back = self.host.tgbot.edits[-1][3].rows[-1][0].callback_data
+		self.flow.show_rule(self._call(category_back))
+		rules_back = self.host.tgbot.edits[-1][3].rows[-1][0].callback_data
 
-		self.assertEqual(self.flow._rule_callback_parts(category_back, "ma_auto_dumping_rule:"), (5, page))
+		self.assertEqual(self.flow._parse_page_callback(rules_back, CBT_AUTO_DUMPING_RULES_PAGE), ("1", None, page))
 
 	def test_blacklist_screen_has_local_list_buttons(self):
 		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule")]
