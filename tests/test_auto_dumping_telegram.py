@@ -135,6 +135,11 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 	def _message(self, text, state_data=None):
 		if state_data is not None:
 			self.host.tg.states[7] = (state_data.pop("state", "unused"), state_data)
+			if all(key in state_data for key in ("rule_id", "rule_index", "kind", "page")):
+				rule = self.host.settings["auto_dumping"]["rules"][state_data["rule_index"]]
+				state_data["rule_token"] = self.flow._blacklist_state_payloads.put((
+					state_data["rule_index"], state_data["rule_id"], rule, state_data["kind"], state_data["page"], state_data.get("rules_page", 0),
+				))
 		return SimpleNamespace(chat=SimpleNamespace(id=1), from_user=SimpleNamespace(id=7), text=text)
 
 	def _rule(self, rule_id, **changes):
@@ -336,13 +341,13 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 	def test_blacklist_add_stores_rule_reference_kind_and_page(self):
 		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule")]
-		call = self._call(self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_ADD, 0, "keywords", 2))
+		call = self._call(self.flow._blacklist_navigation_callback(CBT_AUTO_DUMPING_BLACKLIST_ADD, 0, "keywords", 2, 0))
 
 		self.flow._add_blacklist(call)
 
 		state = self.host.tg.get_state(1, 7)
 		self.assertEqual(state["state"], STATE_AUTO_DUMPING_KEYWORDS)
-		self.assertEqual(state["data"], {"rule_id": "rule", "rule_index": 0, "kind": "keywords", "page": 2, "message_id": 2})
+		self.assertEqual(state["data"], {"rule_id": "rule", "rule_index": 0, "rule_token": "1", "kind": "keywords", "page": 2, "message_id": 2})
 
 	def test_save_rule_blacklist_deduplicates_case_insensitively(self):
 		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule", sellers_blacklist=["Existing"], keywords_blacklist=["Keep"])]
@@ -351,7 +356,7 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		confirmation = self.flow.save_rule_blacklist(message)
 
 		self.assertEqual(confirmation, "Черный список сохранен.")
-		self.assertEqual(self.flow._find_rule("rule")["sellers_blacklist"], ["Seller", "Other"])
+		self.assertEqual(self.flow._find_rule("rule")["sellers_blacklist"], ["Existing", "Seller", "Other"])
 		self.assertEqual(self.flow._find_rule("rule")["keywords_blacklist"], ["Keep"])
 		self.assertNotIn(7, self.host.tg.states)
 		self.assertEqual(self.host.tgbot.edits[-1][2], 2)
@@ -447,6 +452,84 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["sellers_blacklist"], ["one"])
 		self.assertEqual(self.host.tgbot.answers[-1], ("unknown", "Элемент не найден.", True))
 
+	def test_rule_callback_rejects_target_after_preceding_rule_removal(self):
+		self.host.settings["auto_dumping"]["rules"] = [
+			self._rule("first"),
+			self._rule("target", enabled=False),
+			self._rule("third", enabled=False),
+		]
+		self.flow.open_rules(self._call(self.flow._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, 1, None, 0)))
+		callback = self.host.tgbot.edits[-1][3].rows[1][0].callback_data
+		self.host.settings["auto_dumping"]["rules"].pop(0)
+
+		self.flow.toggle_rule(self._call(callback, "stale-rule"))
+
+		self.assertEqual([rule["enabled"] for rule in self.host.settings["auto_dumping"]["rules"]], [False, False])
+		self.assertEqual(self.host.tgbot.answers[-1], ("stale-rule", "Правило не найдено.", True))
+
+	def test_rule_callback_rejects_reordered_duplicate_id_target(self):
+		self.host.settings["auto_dumping"]["rules"] = [
+			self._rule("duplicate", subcategory="first", enabled=False),
+			self._rule("duplicate", subcategory="target", enabled=False),
+		]
+		self.flow.show_rules(self._call(self.flow._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, 1, None, 0)))
+		callback = self.host.tgbot.edits[-1][3].rows[1][0].callback_data
+		self.host.settings["auto_dumping"]["rules"].reverse()
+
+		self.flow.toggle_rule(self._call(callback, "stale-duplicate"))
+
+		self.assertEqual([rule["enabled"] for rule in self.host.settings["auto_dumping"]["rules"]], [False, False])
+		self.assertEqual(self.host.tgbot.answers[-1], ("stale-duplicate", "Правило не найдено.", True))
+
+	def test_blacklist_category_callback_rejects_target_after_preceding_rule_removal(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("first"), self._rule("target")]
+		self.flow.show_rule(self._call(self.flow._rule_callback_with_page("ma_auto_dumping_rule:", 1, 0)))
+		callback = self.host.tgbot.edits[-1][3].rows[1][0].callback_data
+		self.host.settings["auto_dumping"]["rules"].pop(0)
+
+		self.flow._blacklist_page_callback(self._call(callback, "stale-blacklist"))
+
+		self.assertEqual(len(self.host.tgbot.edits), 1)
+		self.assertEqual(self.host.tgbot.answers[-1], ("stale-blacklist", "Некорректная страница.", True))
+
+	def test_blacklist_add_callback_rejects_target_after_preceding_rule_reordering(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("first"), self._rule("target")]
+		self.flow.show_blacklist_items(self._call("items"), 1, "sellers", 0)
+		callback = self.host.tgbot.edits[-1][3].rows[-2][0].callback_data
+		self.host.settings["auto_dumping"]["rules"] = [self.host.settings["auto_dumping"]["rules"][1], self.host.settings["auto_dumping"]["rules"][0]]
+
+		self.flow._add_blacklist(self._call(callback, "stale-add"))
+
+		self.assertNotIn(7, self.host.tg.states)
+		self.assertEqual(self.host.tgbot.answers[-1], ("stale-add", "Правило не найдено.", True))
+
+	def test_blacklist_save_rejects_reordered_duplicate_id_target(self):
+		self.host.settings["auto_dumping"]["rules"] = [
+			self._rule("duplicate", subcategory="first", sellers_blacklist=["first"]),
+			self._rule("duplicate", subcategory="target", sellers_blacklist=["target"]),
+		]
+		message = self._message("new", {"rule_id": "duplicate", "rule_index": 1, "kind": "sellers", "page": 0, "message_id": 2})
+		self.host.settings["auto_dumping"]["rules"].reverse()
+
+		self.assertIsNone(self.flow.save_rule_blacklist(message))
+
+		self.assertEqual([rule["sellers_blacklist"] for rule in self.host.settings["auto_dumping"]["rules"]], [["target"], ["first"]])
+
+	def test_blacklist_delete_callback_rejects_target_after_preceding_rule_removal(self):
+		self.host.settings["auto_dumping"]["rules"] = [
+			self._rule("first", sellers_blacklist=["same"]),
+			self._rule("target", sellers_blacklist=["same"]),
+			self._rule("third", sellers_blacklist=["same"]),
+		]
+		self.flow.show_blacklist_items(self._call("items"), 1, "sellers", 0)
+		callback = self.host.tgbot.edits[-1][3].rows[0][0].callback_data
+		self.host.settings["auto_dumping"]["rules"].pop(0)
+
+		self.flow._delete_blacklist(self._call(callback, "stale-delete"))
+
+		self.assertEqual([rule["sellers_blacklist"] for rule in self.host.settings["auto_dumping"]["rules"]], [["same"], ["same"]])
+		self.assertEqual(self.host.tgbot.answers[-1], ("stale-delete", "Элемент не найден.", True))
+
 	def test_main_screen_uses_section_callbacks(self):
 		self.flow.show_main(1)
 
@@ -532,18 +615,18 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		for index, rule_id in enumerate(rule_ids):
 			for page in (0, 123456789, MAX_CALLBACK_PAGE):
 				with self.subTest(rule_id=rule_id, page=page):
-					data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, index, "keywords", page)
+					data = self.flow._blacklist_navigation_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, index, "keywords", page, 0)
 
 					self.assertLessEqual(len(data.encode("utf-8")), 64)
 					self.assertEqual(self.flow._rule_id_from_reference(index), rule_id)
-					self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (index, "keywords", page))
+					self.assertEqual(self.flow._parse_blacklist_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE)[:4], (index, "keywords", page, 0))
 
 	def test_blacklist_page_callback_resolves_reference_from_current_settings(self):
 		rule_ids = ("0123456789abcdef" * 2, "x" * 20)
 		self.host.settings["auto_dumping"]["rules"] = [{"id": rule_id} for rule_id in rule_ids]
 		self.flow.register()
 		handler = next(handler for handler, predicate in self.host.tg.callbacks if predicate(SimpleNamespace(data=f"{CBT_AUTO_DUMPING_BLACKLIST_PAGE}payload")))
-		data = self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, 1, "sellers", 99)
+		data = self.flow._blacklist_navigation_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, 1, "sellers", 99, 0)
 
 		handler(SimpleNamespace(id="valid", data=data))
 		handler(SimpleNamespace(id="invalid", data=self.flow._page_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, 2, "sellers", 0)))
@@ -566,22 +649,12 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 		self.flow.open_rules(call)
 		list_callbacks = [button.callback_data for row in self.host.tgbot.edits[0][3].rows for button in row]
-		self.assertEqual(
-			[self.flow._parse_page_callback(callback, "ma_auto_dumping_rule:") for callback in list_callbacks[:2]],
-			[("0", None, 0), ("1", None, 0)],
-		)
+		self.assertEqual(len(list_callbacks[:2]), 2)
 		self.assertTrue(all(len(callback.encode("utf-8")) <= 64 for callback in list_callbacks))
 
-		self.flow.show_rule(SimpleNamespace(
-			id="show",
-			data="ma_auto_dumping_rule:0",
-			message=call.message,
-		))
+		self.flow.show_rule(SimpleNamespace(id="show", data=list_callbacks[0], message=call.message))
 		detail_callbacks = [button.callback_data for row in self.host.tgbot.edits[1][3].rows for button in row]
-		self.assertEqual(
-			[self.flow._parse_page_callback(detail_callbacks[index], prefix)[0::2] for index, prefix in ((0, "ma_auto_dumping_rule_toggle:"), (2, "ma_auto_dumping_rule_delete:"))],
-			[("0", 0), ("0", 0)],
-		)
+		self.assertEqual(len(detail_callbacks), 4)
 		self.assertTrue(all(len(callback.encode("utf-8")) <= 64 for callback in detail_callbacks))
 
 		self.flow.toggle_rule(SimpleNamespace(id="toggle", data=detail_callbacks[0], message=call.message))
@@ -594,11 +667,8 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 			{"id": "duplicate", "enabled": False, "subcategory": "first", "keywords": ["one"]},
 			{"id": "duplicate", "enabled": True, "subcategory": "second", "keywords": ["two"]},
 		]
-		call = SimpleNamespace(
-			id="show",
-			data="ma_auto_dumping_rule:1",
-			message=SimpleNamespace(chat=SimpleNamespace(id=1), id=2),
-		)
+		self.flow.show_rules(self._call(self.flow._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, 1, None, 0)))
+		call = self._call(self.host.tgbot.edits[-1][3].rows[1][0].callback_data, "show")
 
 		self.flow.show_rule(call)
 
@@ -606,11 +676,14 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 	def test_toggle_rule_uses_index_when_rule_ids_are_duplicate(self):
 		self.host.settings["auto_dumping"]["rules"] = [
-			{"id": "duplicate", "enabled": False},
-			{"id": "duplicate", "enabled": False},
+			self._rule("duplicate", enabled=False),
+			self._rule("duplicate", enabled=False),
 		]
 
-		self.flow.toggle_rule(SimpleNamespace(id="toggle", data="ma_auto_dumping_rule_toggle:1", message=SimpleNamespace(chat=SimpleNamespace(id=1), id=2)))
+		self.flow.show_rules(self._call(self.flow._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, 1, None, 0)))
+		self.flow.show_rule(self._call(self.host.tgbot.edits[-1][3].rows[1][0].callback_data))
+		callback = self.host.tgbot.edits[-1][3].rows[0][0].callback_data
+		self.flow.toggle_rule(self._call(callback, "toggle"))
 
 		self.assertEqual([rule["enabled"] for rule in self.host.settings["auto_dumping"]["rules"]], [False, True])
 
@@ -621,7 +694,10 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 			{"id": "other", "subcategory": "third", "keywords": ["three"]},
 		]
 
-		self.flow.delete_rule(SimpleNamespace(id="delete", data="ma_auto_dumping_rule_delete:1", message=SimpleNamespace(chat=SimpleNamespace(id=1), id=2)))
+		self.flow.show_rules(self._call(self.flow._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, 1, None, 0)))
+		self.flow.show_rule(self._call(self.host.tgbot.edits[-1][3].rows[1][0].callback_data))
+		callback = self.host.tgbot.edits[-1][3].rows[2][0].callback_data
+		self.flow.delete_rule(self._call(callback, "delete"))
 
 		self.assertEqual(
 			[(rule["id"], rule["subcategory"]) for rule in self.host.settings["auto_dumping"]["rules"]],
