@@ -291,6 +291,26 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 			callbacks,
 		)
 
+	def test_rule_blacklist_navigation_keeps_originating_rules_page(self):
+		self.host.settings["auto_dumping"]["rules"] = [
+			self._rule(str(index)) for index in range(6)
+		]
+		page = 1
+		self.flow.open_rules(self._call(self.flow._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, 1, None, page)))
+		rule_callback = self.host.tgbot.edits[-1][3].rows[0][0].callback_data
+
+		self.flow.show_rule(self._call(rule_callback))
+		blacklist_callback = self.host.tgbot.edits[-1][3].rows[1][0].callback_data
+		self.flow._blacklist_page_callback(self._call(blacklist_callback))
+		category_keyboard = self.host.tgbot.edits[-1][3]
+
+		self.flow._blacklist_page_callback(self._call(category_keyboard.rows[0][0].callback_data))
+		items_back = self.host.tgbot.edits[-1][3].rows[-1][-1].callback_data
+		self.flow._blacklist_page_callback(self._call(items_back))
+		category_back = self.host.tgbot.edits[-1][3].rows[-1][0].callback_data
+
+		self.assertEqual(self.flow._rule_callback_parts(category_back, "ma_auto_dumping_rule:"), (5, page))
+
 	def test_blacklist_screen_has_local_list_buttons(self):
 		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule")]
 		self.flow.show_blacklist(self._call("blacklist-page"), 0, 0)
