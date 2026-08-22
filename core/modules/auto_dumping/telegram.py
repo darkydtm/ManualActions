@@ -76,6 +76,9 @@ class TelegramAutoDumpingFlow:
 		self.host = host
 		self.service = service
 		self.scheduler = scheduler
+		self._rule_payloads = CallbackPayloadCache()
+		self._blacklist_navigation_payloads = CallbackPayloadCache()
+		self._blacklist_state_payloads = CallbackPayloadCache()
 		self._blacklist_payloads = CallbackPayloadCache()
 
 	def register(self) -> None:
@@ -199,7 +202,10 @@ class TelegramAutoDumpingFlow:
 		rule_index = TelegramAutoDumpingFlow._validate_rule_reference(rule_index)
 		page = TelegramAutoDumpingFlow._validate_callback_page(page)
 		rules_page = TelegramAutoDumpingFlow._validate_callback_page(rules_page)
-		token = self._blacklist_payloads.put((rule_index, kind, page, item_index, item, rules_page))
+		self._rule_index_in_settings(self.host.settings, rule_index)
+		rule = self.host.settings["auto_dumping"]["rules"][rule_index]
+		rule_id = rule["id"]
+		token = self._blacklist_payloads.put((rule_index, rule_id, rule, kind, page, item_index, item, rules_page))
 		payload = (
 			rule_index.to_bytes(PAGE_TOKEN_BYTES, "big")
 			+ bytes((0 if kind == "sellers" else 1,))
@@ -236,27 +242,23 @@ class TelegramAutoDumpingFlow:
 			format(int.from_bytes(payload[-PAGE_TOKEN_BYTES:], "big"), "x"),
 		)
 
-	@staticmethod
-	def _blacklist_navigation_callback(prefix: str, rule_index: int, kind: str | None, page: int, rules_page: int) -> str:
+	def _blacklist_navigation_callback(self, prefix: str, rule_index: int, kind: str | None, page: int, rules_page: int) -> str:
 		if kind not in (None, "sellers", "keywords"):
 			raise ValueError("invalid callback list kind")
 		rule_index = TelegramAutoDumpingFlow._validate_rule_reference(rule_index)
 		page = TelegramAutoDumpingFlow._validate_callback_page(page)
 		rules_page = TelegramAutoDumpingFlow._validate_callback_page(rules_page)
-		kind_value = {None: 2, "sellers": 0, "keywords": 1}[kind]
-		payload = (
-			rule_index.to_bytes(PAGE_TOKEN_BYTES, "big")
-			+ bytes((kind_value,))
-			+ page.to_bytes(PAGE_TOKEN_BYTES, "big")
-			+ rules_page.to_bytes(PAGE_TOKEN_BYTES, "big")
-		)
+		self._rule_index_in_settings(self.host.settings, rule_index)
+		rule = self.host.settings["auto_dumping"]["rules"][rule_index]
+		rule_id = rule["id"]
+		token = self._blacklist_navigation_payloads.put((rule_index, rule_id, rule, kind, page, rules_page))
+		payload = rule_index.to_bytes(PAGE_TOKEN_BYTES, "big") + int(token, 16).to_bytes(PAGE_TOKEN_BYTES, "big")
 		callback = f"{prefix}~{urlsafe_b64encode(payload).decode().rstrip('=')}"
 		if len(callback.encode("utf-8")) > 64:
 			raise ValueError("callback data exceeds Telegram's 64-byte limit")
 		return callback
 
-	@classmethod
-	def _parse_blacklist_page_callback(cls, data: str, prefix: str) -> tuple[int, str | None, int, int]:
+	def _parse_blacklist_page_callback(self, data: str, prefix: str) -> tuple[int, str | None, int, int, str]:
 		if not isinstance(data, str) or not data.startswith(prefix) or not data[len(prefix):].startswith("~"):
 			raise ValueError("invalid blacklist page callback")
 		token = data[len(prefix) + 1:]
@@ -266,17 +268,26 @@ class TelegramAutoDumpingFlow:
 			raise ValueError("invalid blacklist page callback") from None
 		if (
 			any(char not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" for char in token)
-			or len(payload) != PAGE_TOKEN_BYTES * 3 + 1
-			or payload[PAGE_TOKEN_BYTES] not in (0, 1, 2)
+			or len(payload) != PAGE_TOKEN_BYTES * 2
 			or urlsafe_b64encode(payload).decode().rstrip("=") != token
 		):
 			raise ValueError("invalid blacklist page callback")
-		return (
-			cls._validate_rule_reference(int.from_bytes(payload[:PAGE_TOKEN_BYTES], "big")),
-			("sellers", "keywords", None)[payload[PAGE_TOKEN_BYTES]],
-			cls._validate_callback_page(int.from_bytes(payload[PAGE_TOKEN_BYTES + 1:PAGE_TOKEN_BYTES * 2 + 1], "big")),
-			cls._validate_callback_page(int.from_bytes(payload[-PAGE_TOKEN_BYTES:], "big")),
-		)
+		index = self._validate_rule_reference(int.from_bytes(payload[:PAGE_TOKEN_BYTES], "big"))
+		cached = self._blacklist_navigation_payloads.pop(format(int.from_bytes(payload[-PAGE_TOKEN_BYTES:], "big"), "x"))
+		if not isinstance(cached, tuple) or len(cached) != 6 or cached[0] != index:
+			raise ValueError("invalid blacklist page callback")
+		try:
+			current_rule = self.host.settings["auto_dumping"]["rules"][index]
+			if current_rule is not cached[2] or current_rule.get("id") != cached[1]:
+				raise ValueError
+			kind = cached[3]
+			page = self._validate_callback_page(cached[4])
+			rules_page = self._validate_callback_page(cached[5])
+		except (IndexError, TypeError, ValueError):
+			raise ValueError("invalid blacklist page callback") from None
+		if kind not in (None, "sellers", "keywords"):
+			raise ValueError("invalid blacklist page callback")
+		return index, kind, page, rules_page, cached[1]
 
 	def _rule_id_from_reference(self, rule_index: int) -> str:
 		rules = self.host.settings["auto_dumping"]["rules"]
@@ -284,35 +295,51 @@ class TelegramAutoDumpingFlow:
 		return rules[index]["id"]
 
 	@classmethod
-	def _rule_index_in_settings(cls, settings: dict[str, Any], rule_index: int) -> int:
+	def _rule_index_in_settings(cls, settings: dict[str, Any], rule_index: int, rule_id: str | None = None) -> int:
 		index = cls._validate_rule_reference(rule_index)
 		if not 0 <= index < len(settings["auto_dumping"]["rules"]):
 			raise ValueError("rule reference not found")
+		if rule_id is not None and settings["auto_dumping"]["rules"][index].get("id") != rule_id:
+			raise ValueError("rule reference not found")
 		return index
 
-	@classmethod
-	def _rule_callback(cls, prefix: str, rule_index: int) -> str:
-		return f"{prefix}{cls._validate_rule_reference(rule_index)}"
+	def _rule_callback_with_page(self, prefix: str, rule_index: int, page: int) -> str:
+		rule_index = self._validate_rule_reference(rule_index)
+		page = self._validate_callback_page(page)
+		rule_id = self._rule_id_from_reference(rule_index)
+		rule = self.host.settings["auto_dumping"]["rules"][rule_index]
+		token = self._rule_payloads.put((rule_index, rule_id, rule, page))
+		payload = rule_index.to_bytes(PAGE_TOKEN_BYTES, "big") + int(token, 16).to_bytes(PAGE_TOKEN_BYTES, "big")
+		callback = f"{prefix}~{urlsafe_b64encode(payload).decode().rstrip('=')}"
+		if len(callback.encode("utf-8")) > 64:
+			raise ValueError("callback data exceeds Telegram's 64-byte limit")
+		return callback
 
-	@classmethod
-	def _rule_callback_with_page(cls, prefix: str, rule_index: int, page: int) -> str:
-		return cls._page_callback(prefix, cls._validate_rule_reference(rule_index), None, page)
-
-	@classmethod
-	def _rule_callback_parts(cls, data: str, prefix: str) -> tuple[int, int]:
-		if not isinstance(data, str) or not data.startswith(prefix):
+	def _rule_callback_parts(self, data: str, prefix: str) -> tuple[int, int, str]:
+		if not isinstance(data, str) or not data.startswith(prefix) or not data[len(prefix):].startswith("~"):
 			raise ValueError("invalid rule callback")
-		payload = data[len(prefix):]
-		if ":" not in payload:
-			return cls._validate_rule_reference(payload), 0
-		context, _, page = cls._parse_page_callback(data, prefix)
-		return cls._validate_rule_reference(context), page
-
-	@classmethod
-	def _rule_index_from_callback(cls, data: str, prefix: str) -> int:
-		if not isinstance(data, str) or not data.startswith(prefix):
+		token = data[len(prefix) + 1:]
+		try:
+			payload = urlsafe_b64decode(token + "=" * (-len(token) % 4))
+		except (Base64Error, TypeError, ValueError):
+			raise ValueError("invalid rule callback") from None
+		if (
+			any(char not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" for char in token)
+			or len(payload) != PAGE_TOKEN_BYTES * 2
+			or urlsafe_b64encode(payload).decode().rstrip("=") != token
+		):
 			raise ValueError("invalid rule callback")
-		return cls._validate_rule_reference(data[len(prefix):])
+		rule_index = self._validate_rule_reference(int.from_bytes(payload[:PAGE_TOKEN_BYTES], "big"))
+		cached = self._rule_payloads.pop(format(int.from_bytes(payload[-PAGE_TOKEN_BYTES:], "big"), "x"))
+		if not isinstance(cached, tuple) or len(cached) != 4 or cached[0] != rule_index:
+			raise ValueError("invalid rule callback")
+		try:
+			current_rule = self.host.settings["auto_dumping"]["rules"][rule_index]
+			if current_rule is not cached[2] or current_rule.get("id") != cached[1]:
+				raise ValueError
+		except (IndexError, TypeError, ValueError):
+			raise ValueError("invalid rule callback") from None
+		return rule_index, self._validate_callback_page(cached[3]), cached[1]
 
 	@staticmethod
 	def _validate_rule_reference(rule_index: Any) -> int:
@@ -349,19 +376,15 @@ class TelegramAutoDumpingFlow:
 
 	def _blacklist_page_callback(self, call: telebot.types.CallbackQuery) -> None:
 		try:
-			try:
-				rule_reference, kind, page, rules_page = self._parse_blacklist_page_callback(call.data, CBT_AUTO_DUMPING_BLACKLIST_PAGE)
-			except ValueError:
-				rule_reference, kind, page = self._parse_page_callback(call.data, CBT_AUTO_DUMPING_BLACKLIST_PAGE)
-				rules_page = page if kind is None else 0
+			rule_reference, kind, page, rules_page, rule_id = self._parse_blacklist_page_callback(call.data, CBT_AUTO_DUMPING_BLACKLIST_PAGE)
 			rule_index = self._rule_index_in_settings(self.host.settings, rule_reference)
 			if not hasattr(call, "message"):
 				self.host.tgbot.answer_callback_query(call.id)
 				return
 			if kind is None:
-				self.show_blacklist(call, rule_index, rules_page)
+				self.show_blacklist(call, rule_reference, rules_page)
 			else:
-				self.show_blacklist_items(call, rule_index, kind, page, rules_page)
+				self.show_blacklist_items(call, rule_reference, kind, page, rules_page)
 		except ValueError:
 			self.host.tgbot.answer_callback_query(call.id, "Некорректная страница.", show_alert=True)
 
@@ -538,8 +561,7 @@ class TelegramAutoDumpingFlow:
 
 	def show_rule(self, call: telebot.types.CallbackQuery) -> None:
 		try:
-			rule_index, page = self._rule_callback_parts(call.data, CBT_AUTO_DUMPING_RULE)
-			rule_index = self._rule_index_in_settings(self.host.settings, rule_index)
+			rule_index, page, rule_id = self._rule_callback_parts(call.data, CBT_AUTO_DUMPING_RULE)
 		except ValueError:
 			self.host.tgbot.answer_callback_query(call.id, "Правило не найдено.", show_alert=True)
 			return
@@ -555,22 +577,20 @@ class TelegramAutoDumpingFlow:
 
 	def toggle_rule(self, call: telebot.types.CallbackQuery) -> None:
 		try:
-			rule_index, page = self._rule_callback_parts(call.data, CBT_AUTO_DUMPING_RULE_TOGGLE)
-			rule_index = self._rule_index_in_settings(self.host.settings, rule_index)
+			rule_index, page, rule_id = self._rule_callback_parts(call.data, CBT_AUTO_DUMPING_RULE_TOGGLE)
 		except ValueError:
 			self.host.tgbot.answer_callback_query(call.id, "Правило не найдено.", show_alert=True)
 			return
-		update_host_settings(self.host, lambda settings: self._mutate_rule(settings, rule_index, lambda rule: rule.__setitem__("enabled", not rule["enabled"])))
+		update_host_settings(self.host, lambda settings: self._mutate_rule(settings, rule_index, rule_id, lambda rule: rule.__setitem__("enabled", not rule["enabled"])))
 		self.show_rule(SimpleNamespace(id=call.id, data=self._rule_callback_with_page(CBT_AUTO_DUMPING_RULE, rule_index, page), message=call.message))
 
 	def delete_rule(self, call: telebot.types.CallbackQuery) -> None:
 		try:
-			rule_index, page = self._rule_callback_parts(call.data, CBT_AUTO_DUMPING_RULE_DELETE)
-			rule_index = self._rule_index_in_settings(self.host.settings, rule_index)
+			rule_index, page, rule_id = self._rule_callback_parts(call.data, CBT_AUTO_DUMPING_RULE_DELETE)
 		except ValueError:
 			self.host.tgbot.answer_callback_query(call.id, "Правило не найдено.", show_alert=True)
 			return
-		update_host_settings(self.host, lambda settings: self._delete_rule(settings, rule_index))
+		update_host_settings(self.host, lambda settings: self._delete_rule(settings, rule_index, rule_id))
 		self.show_rules(call, page)
 
 	def add_rule(self, call: telebot.types.CallbackQuery) -> None:
@@ -651,12 +671,7 @@ class TelegramAutoDumpingFlow:
 
 	def _add_blacklist(self, call: telebot.types.CallbackQuery) -> None:
 		try:
-			try:
-				rule_index, kind, page, rules_page = self._parse_blacklist_page_callback(call.data, CBT_AUTO_DUMPING_BLACKLIST_ADD)
-			except ValueError:
-				rule_index, kind, page = self._parse_page_callback(call.data, CBT_AUTO_DUMPING_BLACKLIST_ADD)
-				rules_page = 0
-			rule_id = self._rule_id_from_reference(rule_index)
+			rule_index, kind, page, rules_page, rule_id = self._parse_blacklist_page_callback(call.data, CBT_AUTO_DUMPING_BLACKLIST_ADD)
 			if kind not in ("sellers", "keywords"):
 				raise ValueError
 		except ValueError:
@@ -664,9 +679,12 @@ class TelegramAutoDumpingFlow:
 			return
 		state = STATE_AUTO_DUMPING_SELLERS if kind == "sellers" else STATE_AUTO_DUMPING_KEYWORDS
 		message = self.host.tgbot.send_message(call.message.chat.id, "Введите значения через запятую.")
+		rule = self.host.settings["auto_dumping"]["rules"][rule_index]
+		state_token = self._blacklist_state_payloads.put((rule_index, rule_id, rule, kind, page, rules_page))
 		self.host.tg.set_state(call.message.chat.id, message.id, call.from_user.id, state, {
 			"rule_id": rule_id,
 			"rule_index": rule_index,
+			"rule_token": state_token,
 			"kind": kind,
 			"page": page,
 			"message_id": call.message.id,
@@ -689,14 +707,25 @@ class TelegramAutoDumpingFlow:
 			rules_page = self._validate_callback_page(data.get("rules_page", 0))
 			rule_index = self._rule_index_in_settings(self.host.settings, data["rule_index"])
 			rule = self._blacklist_rule(self.host.settings, rule_index)
-			if rule.get("id") != data["rule_id"]:
+			cached = self._blacklist_state_payloads.pop(data["rule_token"])
+			if (
+				not isinstance(cached, tuple)
+				or len(cached) != 6
+				or cached[:2] != (rule_index, data["rule_id"])
+				or cached[2] is not rule
+				or cached[3:] != (data["kind"], data["page"], data.get("rules_page", 0))
+			):
 				raise ValueError
 		except (KeyError, TypeError, ValueError):
 			self.host.tgbot.send_message(message.chat.id, "Правило не найдено.")
 			return None
 		field = f"{data['kind']}_blacklist"
 		text = (message.text or "").strip()
-		values = [] if text == "-" else normalize_words(text.split(","))
+		current = self._blacklist_rule(self.host.settings, rule_index)
+		if text == "-":
+			values = []
+		else:
+			values = normalize_words([*current.get(field, []), *normalize_words(text.split(","))])
 		update_host_settings(self.host, lambda settings: self._blacklist_rule(settings, rule_index).__setitem__(field, values))
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
 		confirmation = "Черный список сохранен."
@@ -719,12 +748,13 @@ class TelegramAutoDumpingFlow:
 			cached = self._blacklist_payloads.pop(token)
 			if (
 				not isinstance(cached, tuple)
-				or len(cached) != 6
+				or len(cached) != 8
 				or item_index >= len(items)
-				or cached[:5] != (rule_index, kind, page, item_index, items[item_index])
+				or cached[:6] != (rule_index, rule.get("id"), rule, kind, page, item_index)
+				or cached[6] != items[item_index]
 			):
 				raise ValueError
-			rules_page = self._validate_callback_page(cached[5])
+			rules_page = self._validate_callback_page(cached[7])
 		except ValueError:
 			self.host.tgbot.answer_callback_query(call.id, "Элемент не найден.", show_alert=True)
 			return
@@ -742,13 +772,13 @@ class TelegramAutoDumpingFlow:
 		self.show_main(call.message.chat.id, call.message.id, True)
 
 	@staticmethod
-	def _mutate_rule(settings: dict[str, Any], rule_index: int, mutation: Any) -> None:
-		index = TelegramAutoDumpingFlow._rule_index_in_settings(settings, rule_index)
+	def _mutate_rule(settings: dict[str, Any], rule_index: int, rule_id: str, mutation: Any) -> None:
+		index = TelegramAutoDumpingFlow._rule_index_in_settings(settings, rule_index, rule_id)
 		mutation(settings["auto_dumping"]["rules"][index])
 
 	@staticmethod
-	def _delete_rule(settings: dict[str, Any], rule_index: int) -> None:
-		index = TelegramAutoDumpingFlow._rule_index_in_settings(settings, rule_index)
+	def _delete_rule(settings: dict[str, Any], rule_index: int, rule_id: str) -> None:
+		index = TelegramAutoDumpingFlow._rule_index_in_settings(settings, rule_index, rule_id)
 		del settings["auto_dumping"]["rules"][index]
 
 	def _send_or_edit(self, text: str, chat_id: int, message_id: int | None, keyboard: K, edit: bool) -> None:
