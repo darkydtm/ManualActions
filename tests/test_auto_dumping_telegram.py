@@ -356,6 +356,15 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.assertNotIn(7, self.host.tg.states)
 		self.assertEqual(self.host.tgbot.edits[-1][2], 2)
 
+	def test_save_rule_blacklist_dash_clears_selected_list(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule", sellers_blacklist=["Existing"], keywords_blacklist=["Keep"])]
+		message = self._message(" - ", {"rule_id": "rule", "rule_index": 0, "kind": "sellers", "page": 0, "message_id": 2})
+
+		self.flow.save_rule_blacklist(message)
+
+		self.assertEqual(self.flow._find_rule("rule")["sellers_blacklist"], [])
+		self.assertEqual(self.flow._find_rule("rule")["keywords_blacklist"], ["Keep"])
+
 	def test_save_rule_blacklist_rejects_missing_rule_context_before_mutation(self):
 		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule", sellers_blacklist=["Existing"])]
 		message = self._message("Seller", {"rule_id": "rule", "kind": "sellers", "message_id": 2})
@@ -414,6 +423,29 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["sellers_blacklist"], ["one"])
 		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["keywords_blacklist"], ["keep"])
+
+	def test_blacklist_delete_rejects_repeated_token(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule", sellers_blacklist=["one", "two"])]
+		callback = self.flow._blacklist_item_callback(CBT_AUTO_DUMPING_BLACKLIST_DELETE, 0, "sellers", 0, 0, "one")
+
+		self.flow._delete_blacklist(self._call(callback, "first"))
+		self.flow._delete_blacklist(self._call(callback, "repeated"))
+
+		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["sellers_blacklist"], ["two"])
+		self.assertEqual(self.host.tgbot.answers[-1], ("repeated", "Элемент не найден.", True))
+
+	def test_blacklist_delete_rejects_unknown_token(self):
+		self.host.settings["auto_dumping"]["rules"] = [self._rule("rule", sellers_blacklist=["one"])]
+		callback = self.flow._blacklist_item_callback(CBT_AUTO_DUMPING_BLACKLIST_DELETE, 0, "sellers", 0, 0, "one")
+		prefix, payload = callback.split("~", 1)
+		payload_bytes = bytearray(urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+		payload_bytes[-4:] = (0xDEADBEEF).to_bytes(4, "big")
+		unknown_callback = f"{prefix}~{urlsafe_b64encode(payload_bytes).decode().rstrip('=')}"
+
+		self.flow._delete_blacklist(self._call(unknown_callback, "unknown"))
+
+		self.assertEqual(self.host.settings["auto_dumping"]["rules"][0]["sellers_blacklist"], ["one"])
+		self.assertEqual(self.host.tgbot.answers[-1], ("unknown", "Элемент не найден.", True))
 
 	def test_main_screen_uses_section_callbacks(self):
 		self.flow.show_main(1)
