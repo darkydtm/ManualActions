@@ -399,10 +399,10 @@ class TelegramAutoDumpingFlow:
 			f"Последний цикл: <code>{escape(str(last or 'не было'))}</code>"
 		)
 		keyboard = K(row_width=1)
-		keyboard.add(B("Статус", callback_data=f"{CBT_AUTO_DUMPING_STATUS}page:{chat_id}"))
-		keyboard.add(B("Период", callback_data=self._page_callback(CBT_AUTO_DUMPING_PERIOD_PAGE, chat_id, None, 0)))
-		keyboard.add(B("Правила", callback_data=self._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, chat_id, None, 0)))
-		keyboard.add(B("Запустить цикл", callback_data=f"{CBT_AUTO_DUMPING_RUN}{chat_id}"))
+		keyboard.add(B("⚙️ Состояние", callback_data=f"{CBT_AUTO_DUMPING_STATUS}page"))
+		keyboard.add(B("⏱ Период", callback_data=self._page_callback(CBT_AUTO_DUMPING_PERIOD_PAGE, chat_id, None, 0)))
+		keyboard.add(B("📋 Правила", callback_data=self._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, chat_id, None, 0)))
+		keyboard.add(B("▶️ Запустить цикл", callback_data=f"{CBT_AUTO_DUMPING_RUN}{chat_id}"))
 		self._send_or_edit(text, chat_id, message_id, keyboard, edit)
 
 	def open_page(self, call: telebot.types.CallbackQuery) -> None:
@@ -411,12 +411,13 @@ class TelegramAutoDumpingFlow:
 
 	def _status_callback(self, call: telebot.types.CallbackQuery) -> None:
 		value = call.data.replace(CBT_AUTO_DUMPING_STATUS, "", 1)
-		if value.startswith("page:"):
-			try:
-				self._parse_legacy_page_callback(call.data, CBT_AUTO_DUMPING_STATUS)
-			except ValueError:
-				self.host.tgbot.answer_callback_query(call.id, "Некорректная страница.", show_alert=True)
-				return
+		if value == "page" or value.startswith("page:"):
+			if value.startswith("page:"):
+				try:
+					int(value[5:])
+				except ValueError:
+					self.host.tgbot.answer_callback_query(call.id, "Некорректная страница.", show_alert=True)
+					return
 			self.show_status(call)
 			return
 		self.toggle(call)
@@ -431,7 +432,7 @@ class TelegramAutoDumpingFlow:
 		)
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT_AUTO_DUMPING_PAGE}{call.message.chat.id}"))
 		self.host.tgbot.edit_message_text(
-			f"<b>Статус автодемпинга</b>\n\nСостояние: <b>{state}</b>",
+			f"<b>Состояние автодемпинга</b>\n\nСостояние: <b>{state}</b>",
 			call.message.chat.id,
 			call.message.id,
 			reply_markup=keyboard,
@@ -594,22 +595,111 @@ class TelegramAutoDumpingFlow:
 		self.show_rules(call, page)
 
 	def add_rule(self, call: telebot.types.CallbackQuery) -> None:
-		message = self.host.tgbot.send_message(call.message.chat.id, "Введите правило JSON: subcategory, keywords, keyword_mode, price_mode, dumping_value, competitor_min_price, own_min_price.")
-		self.host.tg.set_state(call.message.chat.id, message.id, call.from_user.id, STATE_AUTO_DUMPING_RULE, {})
+		value = call.data.replace(CBT_AUTO_DUMPING_RULE_ADD, "", 1)
+		if value != str(call.message.chat.id):
+			self._rule_step_callback(call)
+			return
+		message = self.host.tgbot.send_message(call.message.chat.id, "Введите подкатегорию.")
+		self.host.tg.set_state(call.message.chat.id, message.id, call.from_user.id, STATE_AUTO_DUMPING_RULE, {"step": "subcategory", "rule": {}})
 		self.host.tgbot.answer_callback_query(call.id)
 
 	def save_rule(self, message: telebot.types.Message) -> None:
-		import json
-		try:
-			data = json.loads(message.text or "")
-			rule = validate_rule_input(data)
-		except (ValueError, TypeError, json.JSONDecodeError) as exc:
-			self.host.tgbot.reply_to(message, str(exc) or "Некорректное правило.")
+		state = self.host.tg.get_state(message.chat.id, message.from_user.id) or {}
+		data = state.get("data", {})
+		rule = data.get("rule", {})
+		step = data.get("step")
+		text = (message.text or "").strip()
+		prompts = {
+			"subcategory": "Введите ключевые слова через запятую.",
+			"keywords": "Выберите режим ключевых слов кнопкой: любое или все.",
+			"dumping_value": "Введите значение демпинга.",
+			"competitor_min_price": "Введите минимальную цену конкурента.",
+			"own_min_price": "Введите минимальную собственную цену.",
+		}
+		if step == "subcategory":
+			if not text:
+				self.host.tgbot.reply_to(message, "Подкатегория не может быть пустой.")
+				return
+			rule["subcategory"], data["step"] = text, "keywords"
+			keyboard = K(row_width=1)
+			keyboard.add(B("❌ Отмена", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}cancel"))
+			self.host.tgbot.send_message(message.chat.id, "Введите ключевые слова через запятую.", reply_markup=keyboard)
 			return
-		rule["id"] = rule.get("id") or uuid4().hex
-		update_host_settings(self.host, lambda settings: settings["auto_dumping"]["rules"].append(rule))
-		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
-		self.host.tgbot.send_message(message.chat.id, "Правило сохранено.")
+		elif step == "keywords":
+			keywords = normalize_words(text.split(","))
+			if not keywords:
+				self.host.tgbot.reply_to(message, "Укажите хотя бы одно ключевое слово.")
+				return
+			rule["keywords"], data["step"] = keywords, "keyword_mode"
+		elif step in ("dumping_value", "competitor_min_price", "own_min_price"):
+			try:
+				value = float(text)
+				if value <= 0 if step == "dumping_value" else value < 0:
+					raise ValueError
+			except (TypeError, ValueError):
+				self.host.tgbot.reply_to(message, "Введите положительное число.")
+				return
+			rule[step] = value
+			next_step = {"dumping_value": "competitor_min_price", "competitor_min_price": "own_min_price", "own_min_price": "confirm"}[step]
+			data["step"] = next_step
+		else:
+			return
+		if data["step"] == "confirm":
+			keyboard = K(row_width=2)
+			keyboard.add(B("✅ Сохранить", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}confirm"), B("❌ Отмена", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}cancel"))
+			self.host.tgbot.send_message(message.chat.id, self._rule_summary(rule), reply_markup=keyboard)
+		elif data["step"] != "keyword_mode":
+			self.host.tgbot.send_message(message.chat.id, prompts[data["step"]])
+		if data["step"] == "keywords":
+			keyboard = K(row_width=2)
+			keyboard.add(B("🔎 Любое", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}mode:any"), B("🔎 Все", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}mode:all"))
+			self.host.tgbot.send_message(message.chat.id, "Выберите режим ключевых слов.", reply_markup=keyboard)
+
+	def _rule_step_callback(self, call: telebot.types.CallbackQuery) -> None:
+		value = call.data.replace(CBT_AUTO_DUMPING_RULE_ADD, "", 1)
+		state = self.host.tg.get_state(call.message.chat.id, call.from_user.id) or {}
+		data = state.get("data", {})
+		rule = data.get("rule", {})
+		if value == "cancel":
+			self.host.tg.clear_state(call.message.chat.id, call.from_user.id, True)
+			self.show_rules(call)
+			return
+		if value in ("mode:any", "mode:all"):
+			rule["keyword_mode"] = value.split(":", 1)[1]
+			data["step"] = "price_mode"
+			keyboard = K(row_width=2)
+			keyboard.add(B("💵 Фиксированная сумма", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}price:fixed"), B("📉 Процент", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}price:percent"))
+			self.host.tgbot.send_message(call.message.chat.id, "Выберите способ демпинга.", reply_markup=keyboard)
+		elif value in ("price:fixed", "price:percent"):
+			rule["price_mode"] = value.split(":", 1)[1]
+			data["step"] = "dumping_value"
+			self.host.tgbot.send_message(call.message.chat.id, "Введите значение демпинга.")
+		elif value == "confirm":
+			rule["id"] = uuid4().hex
+			try:
+				rule = validate_rule_input(rule)
+			except ValueError as exc:
+				self.host.tgbot.answer_callback_query(call.id, str(exc), show_alert=True)
+				return
+			update_host_settings(self.host, lambda settings: settings["auto_dumping"]["rules"].append(rule))
+			self.host.tg.clear_state(call.message.chat.id, call.from_user.id, True)
+			self.host.tgbot.send_message(call.message.chat.id, "Правило сохранено.")
+		else:
+			self.host.tgbot.answer_callback_query(call.id, "Некорректный шаг.", show_alert=True)
+			return
+		self.host.tgbot.answer_callback_query(call.id)
+
+	@staticmethod
+	def _rule_summary(rule: dict[str, Any]) -> str:
+		return (
+			"<b>Проверьте правило</b>\n\n"
+			f"Подкатегория: <code>{escape(str(rule.get('subcategory', '')))}</code>\n"
+			f"Ключевые слова: <code>{escape(', '.join(rule.get('keywords', [])))}</code>\n"
+			f"Совпадение: <code>{'все' if rule.get('keyword_mode') == 'all' else 'любое'}</code>\n"
+			f"Демпинг: <code>{rule.get('dumping_value')} {'%' if rule.get('price_mode') == 'percent' else '₽'}</code>\n"
+			f"Минимум конкурента: <code>{rule.get('competitor_min_price')}</code>\n"
+			f"Минимум своего лота: <code>{rule.get('own_min_price')}</code>"
+		)
 
 	def _find_rule(self, rule_id: str) -> dict[str, Any]:
 		for rule in self.host.settings["auto_dumping"]["rules"]:

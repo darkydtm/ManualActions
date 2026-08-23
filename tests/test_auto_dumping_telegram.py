@@ -36,12 +36,14 @@ from core.config.constants import (
 	CBT_AUTO_DUMPING_INTERVAL,
 	CBT_AUTO_DUMPING_PERIOD_PAGE,
 	CBT_AUTO_DUMPING_RULE,
+	CBT_AUTO_DUMPING_RULE_ADD,
 	CBT_AUTO_DUMPING_RULE_DELETE,
 	CBT_AUTO_DUMPING_RULE_TOGGLE,
 	CBT_AUTO_DUMPING_RULES_PAGE,
 	CBT_AUTO_DUMPING_STATUS,
 	STATE_AUTO_DUMPING_KEYWORDS,
 	STATE_AUTO_DUMPING_SELLERS,
+	STATE_AUTO_DUMPING_RULE,
 )
 from core.modules.auto_dumping.telegram import MAX_CALLBACK_PAGE, TelegramAutoDumpingFlow, validate_rule_input
 from core.modules.auto_dumping.settings import normalize_rule
@@ -84,6 +86,9 @@ class FakeBot:
 
 	def answer_callback_query(self, call_id, text=None, show_alert=False):
 		self.answers.append((call_id, text, show_alert))
+
+	def reply_to(self, message, text, **kwargs):
+		return self.send_message(message.chat.id, text, **kwargs)
 
 
 class FakeTelegram:
@@ -169,12 +174,47 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 		labels = [button.text for row in self.host.tgbot.messages[0][2].rows for button in row]
 
-		self.assertIn("Статус", labels)
-		self.assertIn("Период", labels)
-		self.assertIn("Правила", labels)
-		self.assertIn("Запустить цикл", labels)
+		self.assertIn("⚙️ Состояние", labels)
+		self.assertIn("⏱ Период", labels)
+		self.assertIn("📋 Правила", labels)
+		self.assertIn("▶️ Запустить цикл", labels)
 		self.assertNotIn("Общий чёрный список продавцов", labels)
 		self.assertEqual(len(labels), 4)
+
+	def test_add_rule_uses_step_by_step_input(self):
+		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "1"))
+
+		self.assertNotIn("JSON", self.host.tgbot.messages[-1][1])
+		self.assertEqual(self.host.tg.get_state(1, 7)["data"]["step"], "subcategory")
+
+		self.flow.save_rule(self._message("game"))
+		self.flow.save_rule(self._message("gold, sword"))
+		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "mode:all"))
+		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "price:percent"))
+		self.flow.save_rule(self._message("10"))
+		self.flow.save_rule(self._message("20"))
+		self.flow.save_rule(self._message("30"))
+		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "confirm"))
+
+		rule = self.host.settings["auto_dumping"]["rules"][0]
+		self.assertEqual(rule["subcategory"], "game")
+		self.assertEqual(rule["keywords"], ["gold", "sword"])
+		self.assertEqual(rule["keyword_mode"], "all")
+		self.assertEqual(rule["price_mode"], "percent")
+		self.assertEqual(rule["dumping_value"], 10.0)
+		self.assertEqual(rule["competitor_min_price"], 20.0)
+		self.assertEqual(rule["own_min_price"], 30.0)
+
+	def test_status_button_works_for_negative_chat_ids(self):
+		self.flow.show_main(-1001234567890)
+		button = self.host.tgbot.messages[-1][2].rows[0][0]
+
+		self.flow.register()
+		handler = next(handler for handler, predicate in self.host.tg.callbacks if predicate(SimpleNamespace(data=button.callback_data)))
+		handler(self._call(button.callback_data, "status"))
+
+		self.assertEqual(len(self.host.tgbot.edits), 1)
+		self.assertIn("Состояние автодемпинга", self.host.tgbot.edits[-1][0])
 
 	def test_status_buttons_set_explicit_state_idempotently(self):
 		call = self._call(CBT_AUTO_DUMPING_STATUS + "page:1")
