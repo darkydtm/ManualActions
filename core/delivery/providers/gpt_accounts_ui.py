@@ -54,6 +54,7 @@ class TelegramGptAccountsDeliveryUI:
 
 	def register(self) -> None:
 		self.host.tg.msg_handler(self.save_stock, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_GPT_ACCOUNTS_ADD))
+		self.host.tg.file_handler(STATE_GPT_ACCOUNTS_ADD, self.save_stock)
 		self.host.tg.msg_handler(self.save_template, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_GPT_ACCOUNTS_TEMPLATE))
 		self.host.tg.msg_handler(self.save_delay, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_GPT_ACCOUNTS_DELAY))
 		for handler, prefix in (
