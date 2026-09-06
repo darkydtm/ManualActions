@@ -59,6 +59,7 @@ from .gemini_storage import (
 	STATUS_PREPARATION_FAILED,
 	STATUS_SEND_FAILED,
 	STATUS_WAITING_STOCK,
+	StorageUnavailableError,
 )
 
 
@@ -79,6 +80,23 @@ LINK_PROVIDER_LABELS = {
 	"github": "GitHub",
 	"short_io": "Short.io",
 }
+
+MAX_INVALID_LINES_SHOWN = 20
+
+
+def decode_stock_file(content: bytes) -> str:
+	try:
+		return content.decode("utf-8-sig")
+	except (UnicodeDecodeError, ValueError):
+		return content.decode("cp1251")
+
+
+def format_line_numbers(numbers: tuple[int, ...]) -> str:
+	shown = list(numbers[:MAX_INVALID_LINES_SHOWN])
+	text = ", ".join(map(str, shown))
+	if len(numbers) > len(shown):
+		text += f" и ещё {len(numbers) - len(shown)}"
+	return text
 
 
 class GeminiDeliveryUIHost(Protocol):
@@ -376,15 +394,19 @@ class TelegramGeminiDeliveryUI:
 		text = self.stock_text_from_message(message)
 		if text is None:
 			return
-		result = parse_gemini_link_batch(
-			text,
-			self.host.gemini_storage.existing_active_links(),
-		)
-		added = self.host.gemini_storage.add_links(result.links)
+		try:
+			result = parse_gemini_link_batch(
+				text,
+				self.host.gemini_storage.existing_active_links(),
+			)
+			added = self.host.gemini_storage.add_links(result.links)
+		except StorageUnavailableError:
+			self.host.tgbot.reply_to(message, "Хранилище недоступно, попробуйте позже.")
+			return
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
 		lines = [f"Добавлено: {added}"]
 		if result.invalid_lines:
-			lines.append(f"Неверные строки: {', '.join(map(str, result.invalid_lines))}")
+			lines.append(f"Неверные строки: {format_line_numbers(result.invalid_lines)}")
 		if result.duplicate_count:
 			lines.append(f"Дубликаты: {result.duplicate_count}")
 		keyboard = K(row_width=1)
@@ -491,22 +513,24 @@ class TelegramGeminiDeliveryUI:
 		self.show_stock_link(call, payload)
 
 	def stock_text_from_message(self, message: telebot.types.Message) -> str | None:
-		text = message.text or ""
-		if text.strip():
-			return text
-
 		document = getattr(message, "document", None)
-		if not document:
+		if document is not None:
+			return self.stock_text_from_document(message, document)
+		text = message.text or getattr(message, "caption", None) or ""
+		if not text.strip():
 			self.host.tgbot.reply_to(message, "Отправьте Gemini-ссылки или файл .txt.")
 			return None
-		filename = str(getattr(document, "file_name", ""))
+		return text
+
+	def stock_text_from_document(self, message: telebot.types.Message, document: Any) -> str | None:
+		filename = str(getattr(document, "file_name", "") or "")
 		if not filename.lower().endswith(".txt"):
 			self.host.tgbot.reply_to(message, "Поддерживаются только файлы .txt.")
 			return None
 		try:
 			file_info = self.host.tgbot.get_file(document.file_id)
 			content = self.host.tgbot.download_file(file_info.file_path)
-			text = content.decode("utf-8")
+			text = decode_stock_file(content)
 		except Exception:
 			self.host.tgbot.reply_to(message, "Не удалось прочитать файл .txt.")
 			return None

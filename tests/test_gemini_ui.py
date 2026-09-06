@@ -449,6 +449,45 @@ class GeminiDeliveryUITest(unittest.TestCase):
 		self.assertEqual(self.storage.stock_links(), ())
 		self.assertIn(".txt", self.bot.replies[0][1])
 
+	def test_imports_links_with_bom(self):
+		self.bot.file_content = b"\xef\xbb\xbf" + f"{LINK_ONE}\n{LINK_TWO}".encode()
+
+		self.ui.save_stock(self.message(document=SimpleNamespace(file_name="links.txt", file_id="file")))
+
+		self.assertEqual(self.storage.stock_links(), (LINK_ONE, LINK_TWO))
+
+	def test_imports_links_with_windows_encoding(self):
+		self.bot.file_content = "комментарий\n".encode("cp1251") + LINK_ONE.encode()
+
+		self.ui.save_stock(self.message(document=SimpleNamespace(file_name="links.txt", file_id="file")))
+
+		self.assertEqual(self.storage.stock_links(), (LINK_ONE,))
+		self.assertIn("Неверные строки: 1", self.bot.replies[0][1])
+
+	def test_truncates_invalid_lines_for_large_file(self):
+		self.bot.file_content = "\n".join(f"bad-line-{index}" for index in range(1000)).encode()
+
+		self.ui.save_stock(self.message(document=SimpleNamespace(file_name="links.txt", file_id="file")))
+
+		text = self.bot.replies[0][1]
+		self.assertIn("Добавлено: 0", text)
+		self.assertIn("и ещё", text)
+		self.assertLessEqual(len(text), 4096)
+		self.assertEqual(len(self.tg.cleared), 1)
+
+	def test_reads_document_before_caption(self):
+		self.bot.file_content = LINK_ONE.encode()
+
+		self.ui.save_stock(SimpleNamespace(
+			text="",
+			caption="caption-text",
+			document=SimpleNamespace(file_name="links.txt", file_id="file"),
+			chat=SimpleNamespace(id=1),
+			from_user=SimpleNamespace(id=3),
+		))
+
+		self.assertEqual(self.storage.stock_links(), (LINK_ONE,))
+
 	def test_stock_page_uses_compact_link_payloads(self):
 		self.storage.add_links((LINK_ONE, LINK_TWO))
 
