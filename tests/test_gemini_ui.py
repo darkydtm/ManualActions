@@ -48,6 +48,8 @@ from core.config.constants import (
 	CBT_GEMINI_SET_SHORTAGE,
 	CBT_GEMINI_SHORT_IO,
 	CBT_GEMINI_STOCK,
+	STATE_GEMINI_ADD,
+	STATE_GPT_ACCOUNTS_ADD,
 )
 from core.delivery.providers import gemini_ui as gemini_ui_module
 from core.delivery.models import OUTCOME_AWAITING_CONFIRMATION, OUTCOME_IGNORED
@@ -121,11 +123,15 @@ class FakeTelegram:
 	def __init__(self):
 		self.state = {}
 		self.handlers = []
+		self.file_handlers = []
 		self.callbacks = []
 		self.cleared = []
 
 	def msg_handler(self, handler, **kwargs):
 		self.handlers.append((handler, kwargs))
+
+	def file_handler(self, state_id, handler):
+		self.file_handlers.append((state_id, handler))
 
 	def cbq_handler(self, handler, predicate):
 		self.callbacks.append((handler, predicate))
@@ -210,9 +216,28 @@ class GeminiDeliveryUITest(unittest.TestCase):
 		self.ui.register()
 
 		self.assertEqual(len(self.tg.handlers), 5)
-		self.assertEqual(self.tg.handlers[0][1]["content_types"], ["text", "document"])
+		self.assertEqual(self.tg.handlers[0][1]["content_types"], ["text"])
+		self.assertEqual(self.tg.file_handlers, [(STATE_GEMINI_ADD, self.ui.save_stock)])
 		self.assertGreaterEqual(len(self.tg.callbacks), 10)
 		self.service.set_confirmation_notifier.assert_called_once_with(self.ui.send_confirmation)
+
+	def test_gpt_registers_file_handler(self):
+		gpt_accounts_ui_module.B = FakeButton
+		gpt_accounts_ui_module.K = FakeKeyboard
+		gpt_storage = GptAccountsDeliveryStorage(Path(self.temp_dir.name) / "accounts.json")
+		gpt_host = SimpleNamespace(
+			tg=self.tg,
+			tgbot=self.bot,
+			settings=self.host.settings,
+			save_settings=lambda: self.saved.append("save"),
+			gpt_accounts_storage=gpt_storage,
+			gpt_accounts_service=Mock(),
+		)
+		ui = TelegramGptAccountsDeliveryUI(gpt_host)
+
+		ui.register()
+
+		self.assertEqual(self.tg.file_handlers, [(STATE_GPT_ACCOUNTS_ADD, ui.save_stock)])
 
 	def test_sends_confirmation_to_chat_sync_topic_with_duplicate_warning(self):
 		self.prepare_confirmation((2,))
