@@ -14,7 +14,6 @@ from urllib.request import Request, urlopen
 
 RELEASES_API_URL = "https://api.github.com/repos/darkydtm/ManualActions/releases?per_page=10"
 RATE_LIMIT_API_URL = "https://api.github.com/rate_limit"
-GITHUB_PAT = "***REDACTED***"
 PLUGIN_ASSET_NAME = "manual_actions.py"
 PLUGIN_ASSET_PREFIX = "manual_actions"
 TARGET_PLUGIN_NAME = "manual_actions.py"
@@ -178,14 +177,11 @@ class ManualActionsUpdater:
 
 
 def github_headers(accept: str) -> dict[str, str]:
-	headers = {
+	return {
 		"Accept": accept,
 		"User-Agent": UPDATER_USER_AGENT,
 		"X-GitHub-Api-Version": "2022-11-28",
 	}
-	if GITHUB_PAT:
-		headers["Authorization"] = f"Bearer {GITHUB_PAT}"
-	return headers
 
 
 def fetch_updater_status(request_func: Callable[..., Any] = urlopen, timeout: int = 15) -> dict[str, Any]:
