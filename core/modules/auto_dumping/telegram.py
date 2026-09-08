@@ -99,10 +99,15 @@ class TelegramAutoDumpingFlow:
 		self.host.tg.cbq_handler(self._blacklist_page_callback, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_BLACKLIST_PAGE))
 		self.host.tg.cbq_handler(self._add_blacklist, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_BLACKLIST_ADD))
 		self.host.tg.cbq_handler(self._delete_blacklist, lambda c: (c.data or "").startswith(CBT_AUTO_DUMPING_BLACKLIST_DELETE))
-		self.host.tg.msg_handler(self.save_interval, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_INTERVAL))
-		self.host.tg.msg_handler(self.save_rule, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_RULE))
-		self.host.tg.msg_handler(self.save_rule_blacklist, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_SELLERS))
-		self.host.tg.msg_handler(self.save_rule_blacklist, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_KEYWORDS))
+		self.host.tg.msg_handler(self.save_interval, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_INTERVAL), content_types=["text", "photo"])
+		self.host.tg.msg_handler(self.save_rule, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_RULE), content_types=["text", "photo"])
+		self.host.tg.msg_handler(self.save_rule_blacklist, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_SELLERS), content_types=["text", "photo"])
+		self.host.tg.msg_handler(self.save_rule_blacklist, func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_AUTO_DUMPING_KEYWORDS), content_types=["text", "photo"])
+		file_handler = getattr(self.host.tg, "file_handler", None)
+		if callable(file_handler):
+			file_handler(STATE_AUTO_DUMPING_RULE, self.save_rule)
+			file_handler(STATE_AUTO_DUMPING_SELLERS, self.save_rule_blacklist)
+			file_handler(STATE_AUTO_DUMPING_KEYWORDS, self.save_rule_blacklist)
 
 	@staticmethod
 	def _page_items(items: list[Any], page: int) -> tuple[list[Any], int]:
@@ -459,8 +464,18 @@ class TelegramAutoDumpingFlow:
 				return
 			self.show_period(call)
 			return
+		if value == "cancel":
+			self.host.tg.clear_state(call.message.chat.id, call.from_user.id, True)
+			self.show_period(call)
+			return
 		if value == "custom":
-			message = self.host.tgbot.send_message(call.message.chat.id, "Введите период в минутах.")
+			keyboard = K(row_width=1)
+			keyboard.add(B("❌ Отмена", callback_data=f"{CBT_AUTO_DUMPING_INTERVAL}cancel"))
+			message = self.host.tgbot.send_message(
+				call.message.chat.id,
+				"Введите период в минутах - целое число от 1.\nНапример: <code>5</code>",
+				reply_markup=keyboard,
+			)
 			self.host.tg.set_state(call.message.chat.id, message.id, call.from_user.id, STATE_AUTO_DUMPING_INTERVAL, {})
 			self.host.tgbot.answer_callback_query(call.id)
 			return
@@ -496,13 +511,14 @@ class TelegramAutoDumpingFlow:
 		return page
 
 	def save_interval(self, message: telebot.types.Message) -> None:
+		text = (getattr(message, "text", None) or getattr(message, "caption", None) or "").strip()
 		try:
-			minutes = int((message.text or "").strip())
+			minutes = int(text)
 		except ValueError:
-			self.host.tgbot.reply_to(message, "Введите положительное целое число минут.")
+			self.host.tgbot.reply_to(message, "Введите целое число минут от 1. Например: 5")
 			return
 		if minutes < 1:
-			self.host.tgbot.reply_to(message, "Период должен быть положительным.")
+			self.host.tgbot.reply_to(message, "Период должен быть от 1 минуты. Например: 5")
 			return
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
 		update_host_settings(self.host, lambda settings: settings["auto_dumping"].__setitem__("interval_minutes", minutes))
@@ -599,61 +615,166 @@ class TelegramAutoDumpingFlow:
 		if value != str(call.message.chat.id):
 			self._rule_step_callback(call)
 			return
-		message = self.host.tgbot.send_message(call.message.chat.id, "Введите подкатегорию.")
-		self.host.tg.set_state(call.message.chat.id, message.id, call.from_user.id, STATE_AUTO_DUMPING_RULE, {"step": "subcategory", "rule": {}})
+		data: dict[str, Any] = {"step": "subcategory", "rule": {}}
+		self._ask_rule(
+			call.message.chat.id,
+			call.from_user.id,
+			data,
+			"<b>Новое правило - шаг 1/7</b>\n\nВведите подкатегорию FunPay - точное название раздела.\nНапример: <code>Золото</code>",
+			self._rule_cancel_keyboard(),
+		)
 		self.host.tgbot.answer_callback_query(call.id)
+
+	@staticmethod
+	def _rule_cancel_keyboard() -> K:
+		keyboard = K(row_width=1)
+		keyboard.add(B("❌ Отмена", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}cancel"))
+		return keyboard
+
+	@staticmethod
+	def _keyword_mode_keyboard() -> K:
+		keyboard = K(row_width=2)
+		keyboard.add(B("🔎 Любое слово", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}mode:any"), B("🔎 Все слова", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}mode:all"))
+		keyboard.add(B("❌ Отмена", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}cancel"))
+		return keyboard
+
+	@staticmethod
+	def _price_mode_keyboard() -> K:
+		keyboard = K(row_width=2)
+		keyboard.add(B("💵 Сумма в рублях", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}price:fixed"), B("📉 Процент", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}price:percent"))
+		keyboard.add(B("❌ Отмена", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}cancel"))
+		return keyboard
+
+	@staticmethod
+	def _confirm_keyboard() -> K:
+		keyboard = K(row_width=2)
+		keyboard.add(B("✅ Сохранить", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}confirm"), B("❌ Отмена", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}cancel"))
+		return keyboard
+
+	def _ask_rule(self, chat_id: int, user_id: int, data: dict[str, Any], text: str, keyboard: K | None = None) -> None:
+		sent = self.host.tgbot.send_message(chat_id, text, reply_markup=keyboard)
+		data["prompt_id"] = getattr(sent, "id", data.get("prompt_id"))
+		self.host.tg.set_state(chat_id, data["prompt_id"], user_id, STATE_AUTO_DUMPING_RULE, data)
+
+	def _input_text(self, message: telebot.types.Message) -> str | None:
+		document = getattr(message, "document", None)
+		text = getattr(message, "text", None) or getattr(message, "caption", None) or ""
+		if document is not None and not text.strip():
+			filename = str(getattr(document, "file_name", "") or "")
+			if not filename.lower().endswith(".txt"):
+				self.host.tgbot.reply_to(message, "Пришлите текст сообщением или файл .txt.")
+				return None
+			try:
+				file_info = self.host.tgbot.get_file(document.file_id)
+				content = self.host.tgbot.download_file(file_info.file_path)
+				text = content.decode("utf-8-sig")
+			except Exception:
+				self.host.tgbot.reply_to(message, "Не удалось прочитать файл. Пришлите текст сообщением.")
+				return None
+		return text.strip()
+
+	@staticmethod
+	def _parse_amount(text: str) -> float | None:
+		try:
+			return float(text.replace(",", ".").replace(" ", ""))
+		except (TypeError, ValueError):
+			return None
 
 	def save_rule(self, message: telebot.types.Message) -> None:
 		state = self.host.tg.get_state(message.chat.id, message.from_user.id) or {}
 		data = state.get("data", {})
-		rule = data.get("rule", {})
+		if not isinstance(data, dict):
+			return
+		rule = data.get("rule")
+		if not isinstance(rule, dict):
+			return
 		step = data.get("step")
-		text = (message.text or "").strip()
-		prompts = {
-			"subcategory": "Введите ключевые слова через запятую.",
-			"keywords": "Выберите режим ключевых слов кнопкой: любое или все.",
-			"dumping_value": "Введите значение демпинга.",
-			"competitor_min_price": "Введите минимальную цену конкурента.",
-			"own_min_price": "Введите минимальную собственную цену.",
-		}
+		text = self._input_text(message)
+		if text is None:
+			return
+		chat_id, user_id = message.chat.id, message.from_user.id
 		if step == "subcategory":
-			if not text:
-				self.host.tgbot.reply_to(message, "Подкатегория не может быть пустой.")
+			first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
+			if not first_line:
+				self.host.tgbot.reply_to(message, "Подкатегория не может быть пустой. Например: Золото")
 				return
-			rule["subcategory"], data["step"] = text, "keywords"
-			keyboard = K(row_width=1)
-			keyboard.add(B("❌ Отмена", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}cancel"))
-			self.host.tgbot.send_message(message.chat.id, "Введите ключевые слова через запятую.", reply_markup=keyboard)
+			rule["subcategory"] = first_line
+			data["step"] = "keywords"
+			self._ask_rule(
+				chat_id,
+				user_id,
+				data,
+				"<b>Шаг 2/7</b>\n\nВведите ключевые слова через запятую, с новой строки или файлом .txt.\nНапример: <code>gemini, pro, 18 месяцев</code>",
+				self._rule_cancel_keyboard(),
+			)
 			return
 		elif step == "keywords":
-			keywords = normalize_words(text.split(","))
+			keywords = normalize_words(text.replace("\n", ",").split(","))
 			if not keywords:
-				self.host.tgbot.reply_to(message, "Укажите хотя бы одно ключевое слово.")
+				self.host.tgbot.reply_to(message, "Нужно хотя бы одно ключевое слово. Например: gemini, pro")
 				return
-			rule["keywords"], data["step"] = keywords, "keyword_mode"
+			rule["keywords"] = keywords
+			data["step"] = "keyword_mode"
+			self._ask_rule(
+				chat_id,
+				user_id,
+				data,
+				"<b>Шаг 3/7</b>\n\nКогда срабатывать правилу - при любом совпадении или только когда в названии есть все слова?",
+				self._keyword_mode_keyboard(),
+			)
+			return
 		elif step in ("dumping_value", "competitor_min_price", "own_min_price"):
-			try:
-				value = float(text)
-				if value <= 0 if step == "dumping_value" else value < 0:
-					raise ValueError
-			except (TypeError, ValueError):
-				self.host.tgbot.reply_to(message, "Введите положительное число.")
+			value = self._parse_amount(text)
+			positive = step == "dumping_value"
+			if value is None or (value <= 0 if positive else value < 0):
+				if positive:
+					example = "Например: 10 (процентов)" if rule.get("price_mode") == "percent" else "Например: 5 (рублей)"
+					self.host.tgbot.reply_to(message, f"Введите положительное число. {example}")
+				else:
+					self.host.tgbot.reply_to(message, "Введите 0 или больше. Например: 100")
 				return
 			rule[step] = value
 			next_step = {"dumping_value": "competitor_min_price", "competitor_min_price": "own_min_price", "own_min_price": "confirm"}[step]
 			data["step"] = next_step
-		else:
+			if next_step == "confirm":
+				self._ask_rule(chat_id, user_id, data, self._rule_summary(rule), self._confirm_keyboard())
+			elif next_step == "competitor_min_price":
+				self._ask_rule(
+					chat_id,
+					user_id,
+					data,
+					"<b>Шаг 6/7</b>\n\nНиже какой цены конкурента не опускаться? 0 - без ограничения.\nНапример: <code>100</code>",
+					self._rule_cancel_keyboard(),
+				)
+			else:
+				self._ask_rule(
+					chat_id,
+					user_id,
+					data,
+					"<b>Шаг 7/7</b>\n\nНиже какой своей цены не опускаться? 0 - без ограничения.\nНапример: <code>50</code>",
+					self._rule_cancel_keyboard(),
+				)
 			return
-		if data["step"] == "confirm":
-			keyboard = K(row_width=2)
-			keyboard.add(B("✅ Сохранить", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}confirm"), B("❌ Отмена", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}cancel"))
-			self.host.tgbot.send_message(message.chat.id, self._rule_summary(rule), reply_markup=keyboard)
-		elif data["step"] != "keyword_mode":
-			self.host.tgbot.send_message(message.chat.id, prompts[data["step"]])
-		if data["step"] == "keywords":
-			keyboard = K(row_width=2)
-			keyboard.add(B("🔎 Любое", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}mode:any"), B("🔎 Все", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}mode:all"))
-			self.host.tgbot.send_message(message.chat.id, "Выберите режим ключевых слов.", reply_markup=keyboard)
+		elif step == "keyword_mode":
+			self._ask_rule(
+				chat_id,
+				user_id,
+				data,
+				"<b>Шаг 3/7</b>\n\nВыберите кнопкой: любое слово или все слова?",
+				self._keyword_mode_keyboard(),
+			)
+			return
+		elif step == "price_mode":
+			self._ask_rule(
+				chat_id,
+				user_id,
+				data,
+				"<b>Шаг 4/7</b>\n\nКак снижать цену: фиксированной суммой или процентом?",
+				self._price_mode_keyboard(),
+			)
+			return
+		self.host.tgbot.reply_to(message, "Создание правила прервано: неизвестный шаг. Начните заново.")
+		self.host.tg.clear_state(chat_id, user_id, True)
 
 	def _rule_step_callback(self, call: telebot.types.CallbackQuery) -> None:
 		value = call.data.replace(CBT_AUTO_DUMPING_RULE_ADD, "", 1)
@@ -665,15 +786,33 @@ class TelegramAutoDumpingFlow:
 			self.show_rules(call)
 			return
 		if value in ("mode:any", "mode:all"):
+			if not isinstance(data, dict) or not isinstance(rule, dict):
+				self.host.tgbot.answer_callback_query(call.id, "Создание правила истекло. Начните заново.", show_alert=True)
+				return
 			rule["keyword_mode"] = value.split(":", 1)[1]
 			data["step"] = "price_mode"
-			keyboard = K(row_width=2)
-			keyboard.add(B("💵 Фиксированная сумма", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}price:fixed"), B("📉 Процент", callback_data=f"{CBT_AUTO_DUMPING_RULE_ADD}price:percent"))
-			self.host.tgbot.send_message(call.message.chat.id, "Выберите способ демпинга.", reply_markup=keyboard)
+			self._ask_rule(
+				call.message.chat.id,
+				call.from_user.id,
+				data,
+				"<b>Шаг 4/7</b>\n\nКак снижать цену: фиксированной суммой в рублях или процентом?",
+				self._price_mode_keyboard(),
+			)
 		elif value in ("price:fixed", "price:percent"):
+			if not isinstance(data, dict) or not isinstance(rule, dict):
+				self.host.tgbot.answer_callback_query(call.id, "Создание правила истекло. Начните заново.", show_alert=True)
+				return
 			rule["price_mode"] = value.split(":", 1)[1]
 			data["step"] = "dumping_value"
-			self.host.tgbot.send_message(call.message.chat.id, "Введите значение демпинга.")
+			example = "Например: <code>10</code>" if rule["price_mode"] == "percent" else "Например: <code>5</code>"
+			unit = "процентов" if rule["price_mode"] == "percent" else "рублей"
+			self._ask_rule(
+				call.message.chat.id,
+				call.from_user.id,
+				data,
+				f"<b>Шаг 5/7</b>\n\nНа сколько {unit} опускаться ниже конкурента?\n{example}",
+				self._rule_cancel_keyboard(),
+			)
 		elif value == "confirm":
 			rule["id"] = uuid4().hex
 			try:
@@ -683,7 +822,7 @@ class TelegramAutoDumpingFlow:
 				return
 			update_host_settings(self.host, lambda settings: settings["auto_dumping"]["rules"].append(rule))
 			self.host.tg.clear_state(call.message.chat.id, call.from_user.id, True)
-			self.host.tgbot.send_message(call.message.chat.id, "Правило сохранено.")
+			self.host.tgbot.send_message(call.message.chat.id, f"Правило сохранено: {rule['subcategory']}: {', '.join(rule['keywords'])}")
 		else:
 			self.host.tgbot.answer_callback_query(call.id, "Некорректный шаг.", show_alert=True)
 			return
@@ -760,6 +899,22 @@ class TelegramAutoDumpingFlow:
 		self.host.tgbot.answer_callback_query(call.id)
 
 	def _add_blacklist(self, call: telebot.types.CallbackQuery) -> None:
+		if call.data == f"{CBT_AUTO_DUMPING_BLACKLIST_ADD}cancel":
+			state = self.host.tg.get_state(call.message.chat.id, call.from_user.id) or {}
+			data = state.get("data", {})
+			self.host.tg.clear_state(call.message.chat.id, call.from_user.id, True)
+			try:
+				rule_index = self._rule_index_in_settings(self.host.settings, data["rule_index"])
+				kind = data["kind"]
+				page = self._validate_callback_page(data["page"])
+				rules_page = self._validate_callback_page(data.get("rules_page", 0))
+				if kind not in ("sellers", "keywords"):
+					raise ValueError
+			except (KeyError, TypeError, ValueError):
+				self.host.tgbot.answer_callback_query(call.id, "Отменено.")
+				return
+			self.show_blacklist_items(call, rule_index, kind, page, rules_page)
+			return
 		try:
 			rule_index, kind, page, rules_page, rule_id = self._parse_blacklist_page_callback(call.data, CBT_AUTO_DUMPING_BLACKLIST_ADD)
 			if kind not in ("sellers", "keywords"):
@@ -768,7 +923,14 @@ class TelegramAutoDumpingFlow:
 			self.host.tgbot.answer_callback_query(call.id, "Правило не найдено.", show_alert=True)
 			return
 		state = STATE_AUTO_DUMPING_SELLERS if kind == "sellers" else STATE_AUTO_DUMPING_KEYWORDS
-		message = self.host.tgbot.send_message(call.message.chat.id, "Введите значения через запятую.")
+		cancel_keyboard = K(row_width=1)
+		cancel_keyboard.add(B("❌ Отмена", callback_data=f"{CBT_AUTO_DUMPING_BLACKLIST_ADD}cancel"))
+		hint = "продавцов" if kind == "sellers" else "стоп-слов"
+		message = self.host.tgbot.send_message(
+			call.message.chat.id,
+			f"Введите {hint} через запятую, с новой строки или файлом .txt.\nЧтобы очистить список, отправьте <code>-</code>.",
+			reply_markup=cancel_keyboard,
+		)
 		rule = self.host.settings["auto_dumping"]["rules"][rule_index]
 		state_token = self._blacklist_state_payloads.put((CBT_AUTO_DUMPING_BLACKLIST_ADD, rule_index, rule_id, rule, kind, page, rules_page))
 		self.host.tg.set_state(call.message.chat.id, message.id, call.from_user.id, state, {
@@ -810,12 +972,14 @@ class TelegramAutoDumpingFlow:
 			self.host.tgbot.send_message(message.chat.id, "Правило не найдено.")
 			return None
 		field = f"{data['kind']}_blacklist"
-		text = (message.text or "").strip()
+		text = self._input_text(message)
+		if text is None:
+			return
 		current = self._blacklist_rule(self.host.settings, rule_index)
 		if text == "-":
 			values = []
 		else:
-			values = normalize_words([*current.get(field, []), *normalize_words(text.split(","))])
+			values = normalize_words([*current.get(field, []), *normalize_words(text.replace("\n", ",").split(","))])
 		update_host_settings(self.host, lambda settings: self._blacklist_rule(settings, rule_index).__setitem__(field, values))
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
 		confirmation = "Черный список сохранен."
