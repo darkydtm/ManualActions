@@ -523,7 +523,7 @@ class TelegramAutoDumpingFlow:
 		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
 		update_host_settings(self.host, lambda settings: settings["auto_dumping"].__setitem__("interval_minutes", minutes))
 		self.scheduler.stop()
-		self.scheduler.interval_minutes = minutes
+		self.scheduler.set_interval(minutes)
 		if self.host.settings["auto_dumping"]["enabled"]:
 			self.scheduler.start()
 		self.host.tgbot.send_message(message.chat.id, f"Период сохранён: {minutes} мин.")
@@ -534,7 +534,7 @@ class TelegramAutoDumpingFlow:
 			return
 		update_host_settings(self.host, lambda settings: settings["auto_dumping"].__setitem__("interval_minutes", minutes))
 		self.scheduler.stop()
-		self.scheduler.interval_minutes = minutes
+		self.scheduler.set_interval(minutes)
 		if self.host.settings["auto_dumping"]["enabled"]:
 			self.scheduler.start()
 		self._refresh(call)
