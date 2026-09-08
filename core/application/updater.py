@@ -13,6 +13,8 @@ from urllib.request import Request, urlopen
 
 
 RELEASES_API_URL = "https://api.github.com/repos/darkydtm/ManualActions/releases?per_page=10"
+RATE_LIMIT_API_URL = "https://api.github.com/rate_limit"
+GITHUB_PAT = "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"
 PLUGIN_ASSET_NAME = "manual_actions.py"
 PLUGIN_ASSET_PREFIX = "manual_actions"
 TARGET_PLUGIN_NAME = "manual_actions.py"
@@ -175,6 +177,24 @@ class ManualActionsUpdater:
 				break
 
 
+def github_headers(accept: str) -> dict[str, str]:
+	headers = {
+		"Accept": accept,
+		"User-Agent": UPDATER_USER_AGENT,
+		"X-GitHub-Api-Version": "2022-11-28",
+	}
+	if GITHUB_PAT:
+		headers["Authorization"] = f"Bearer {GITHUB_PAT}"
+	return headers
+
+
+def fetch_updater_status(request_func: Callable[..., Any] = urlopen, timeout: int = 15) -> dict[str, Any]:
+	data = read_github_json(RATE_LIMIT_API_URL, request_func, timeout)
+	if not isinstance(data, dict):
+		raise UpdaterError("GitHub вернул некорректный статус.")
+	return data
+
+
 def fetch_latest_release(request_func: Callable[..., Any] = urlopen, timeout: int = 15) -> UpdaterRelease:
 	data = read_github_json(RELEASES_API_URL, request_func, timeout)
 	release_data = first_public_release(data)
@@ -200,10 +220,7 @@ def fetch_latest_release(request_func: Callable[..., Any] = urlopen, timeout: in
 def read_github_json(url: str, request_func: Callable[..., Any], timeout: int) -> Any:
 	request = Request(
 		url,
-		headers={
-			"Accept": "application/vnd.github+json",
-			"User-Agent": UPDATER_USER_AGENT,
-		},
+		headers=github_headers("application/vnd.github+json"),
 	)
 	try:
 		with request_func(request, timeout=timeout) as response:
@@ -274,10 +291,7 @@ def download_release_asset(
 ) -> bytes:
 	request = Request(
 		asset_url,
-		headers={
-			"Accept": "application/octet-stream",
-			"User-Agent": UPDATER_USER_AGENT,
-		},
+		headers=github_headers("application/octet-stream"),
 	)
 	try:
 		with request_func(request, timeout=timeout) as response:
