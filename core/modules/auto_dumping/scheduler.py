@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
 from threading import Event, Lock, Thread, current_thread
 import time
 from typing import Any, Callable
+
+
+logger = logging.getLogger("FPC.manual_actions")
 
 
 class AutoDumpingScheduler:
@@ -14,7 +18,8 @@ class AutoDumpingScheduler:
 		sleep_func: Callable[[float], None] = time.sleep,
 	):
 		self.service = service
-		self.interval_minutes = max(int(interval_minutes), 1)
+		self.interval_minutes = 5
+		self.set_interval(interval_minutes)
 		self.time_func = time_func
 		self.sleep_func = sleep_func
 		self._stop = Event()
@@ -24,6 +29,18 @@ class AutoDumpingScheduler:
 	@property
 	def running(self) -> bool:
 		return bool(self._thread and self._thread.is_alive())
+
+	def set_interval(self, interval_minutes: int) -> None:
+		try:
+			value = int(interval_minutes)
+		except (TypeError, ValueError, OverflowError):
+			logger.warning(
+				"Auto-dumping interval %r is invalid, keeping %s.",
+				interval_minutes,
+				self.interval_minutes,
+			)
+			return
+		self.interval_minutes = max(value, 1)
 
 	def start(self) -> None:
 		if self.running:
@@ -42,7 +59,10 @@ class AutoDumpingScheduler:
 		if not self._cycle_lock.acquire(blocking=False):
 			return False
 		try:
-			self.service.run_cycle()
+			try:
+				self.service.run_cycle()
+			except Exception:
+				logger.exception("Auto-dumping cycle failed.")
 		finally:
 			self._cycle_lock.release()
 		return True
