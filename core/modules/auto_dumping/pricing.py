@@ -10,4 +10,4 @@ def calculate_price(competitor_price: float, rule: DumpingRule) -> float:
 
 
 def final_price(competitor_price: float, rule: DumpingRule) -> float:
-	return max(calculate_price(competitor_price, rule), rule.own_min_price)
+	return round(max(calculate_price(competitor_price, rule), rule.own_min_price), 2)
