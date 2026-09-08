@@ -6,7 +6,7 @@ import time
 from typing import Any
 
 from .conflicts import resolve_candidates
-from .matching import is_blacklisted, match_keywords
+from .matching import is_blacklisted, match_keywords, matches_subcategory
 from .models import AutoDumpingConfig, DumpingRule, Lot, PriceDecision, RuleCandidate
 from .pricing import calculate_price, final_price
 
@@ -41,45 +41,62 @@ class AutoDumpingService:
 			result = {"status": "catalog_error", "updated": 0, "skipped": 0, "errors": 1}
 			self.storage.record_cycle(time.time(), result)
 			return result
-
-		config = AutoDumpingConfig(
-			settings.get("enabled") is True,
-			int(settings.get("interval_minutes", 5)),
-			tuple(DumpingRule.from_dict(rule) for rule in settings.get("rules", [])),
-		)
+		try:
+			config = AutoDumpingConfig(
+				settings.get("enabled") is True,
+				int(settings.get("interval_minutes", 5)),
+				tuple(DumpingRule.from_dict(rule) for rule in settings.get("rules", [])),
+			)
+		except Exception:
+			logger.exception("Auto-dumping settings are invalid.")
+			result = {"status": "config_error", "updated": 0, "skipped": 0, "errors": 1}
+			self.storage.record_cycle(time.time(), result)
+			return result
+		own_ids = {lot.id for lot in own_lots}
 		result = {"status": "ok", "updated": 0, "skipped": 0, "errors": 0, "conflicts": 0}
 		for own_lot in own_lots:
 			try:
-				decision = self.decide(own_lot, catalog, config)
-				if not decision:
-					continue
-				if decision.conflict:
-					result["conflicts"] += 1
-					self.notify_conflict(own_lot, decision, applied=False)
 				if not self.gateway.is_owned(own_lot):
 					result["skipped"] += 1
 					continue
-				if decision.candidate.final_price == own_lot.price:
+				decision = self.decide(own_lot, catalog, config, own_ids)
+				if not decision:
 					continue
-				self.gateway.update_price(own_lot, decision.candidate.final_price)
-				result["updated"] += 1
-				self.notify_conflict(own_lot, decision, applied=True)
+				applied = False
+				target = decision.candidate.final_price
+				if target <= 0:
+					result["skipped"] += 1
+				elif abs(target - own_lot.price) >= 0.005:
+					self.gateway.update_price(own_lot, target)
+					result["updated"] += 1
+					applied = True
+				if decision.conflict:
+					result["conflicts"] += 1
+					self.notify_conflict(own_lot, decision, applied=applied)
 			except Exception:
 				result["errors"] += 1
 				logger.exception("Auto-dumping lot processing failed for %s.", own_lot.id)
 		self.storage.record_cycle(time.time(), result)
 		return result
 
-	def decide(self, own_lot: Lot, catalog: list[Lot], config: AutoDumpingConfig) -> PriceDecision | None:
+	def decide(
+		self,
+		own_lot: Lot,
+		catalog: list[Lot],
+		config: AutoDumpingConfig,
+		own_ids: frozenset[str] | set[str] = frozenset(),
+	) -> PriceDecision | None:
 		candidates = []
 		for rule in config.rules:
-			if not rule.enabled or rule.subcategory.casefold() != own_lot.subcategory.casefold():
+			if not rule.enabled or not matches_subcategory(own_lot, rule.subcategory):
 				continue
 			matched_competitors = []
 			for competitor in catalog:
-				if competitor.id == own_lot.id or not competitor.active or not competitor.available:
+				if competitor.id == own_lot.id or competitor.id in own_ids:
 					continue
-				if competitor.subcategory.casefold() != rule.subcategory.casefold():
+				if not competitor.active or not competitor.available:
+					continue
+				if not matches_subcategory(competitor, rule.subcategory):
 					continue
 				if is_blacklisted(
 					competitor.username,
@@ -111,7 +128,12 @@ class AutoDumpingService:
 	def notify_conflict(self, own_lot: Lot, decision: PriceDecision, applied: bool) -> None:
 		if not decision.conflict or not self.notifier:
 			return
-		fingerprint = ":".join((own_lot.id, ",".join(candidate.rule.id for candidate in [decision.candidate]), decision.candidate.rule.id))
+		fingerprint = "|".join((
+			own_lot.id,
+			decision.candidate.rule.id,
+			f"{decision.candidate.final_price:.2f}",
+			decision.candidate.lot.id,
+		))
 		if self.storage.get_conflict_fingerprint(own_lot.id) == fingerprint and not applied:
 			return
 		self.storage.set_conflict_fingerprint(own_lot.id, fingerprint)
