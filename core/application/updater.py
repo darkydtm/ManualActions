@@ -109,7 +109,7 @@ class ManualActionsUpdater:
 		if mode == MODE_DISABLED and not force:
 			return ReleaseCheckResult(None, False, "disabled")
 
-		release = fetch_latest_release(self.request_func)
+		release = fetch_latest_release(self.request_func, token=self.github_token())
 		config = self.config()
 		config["last_checked_version"] = release.version
 		self.save_settings()
@@ -131,7 +131,7 @@ class ManualActionsUpdater:
 
 	def install_latest(self, expected_version: str | None = None, notify: bool = True) -> Path:
 		with self._check_lock:
-			release = fetch_latest_release(self.request_func)
+			release = fetch_latest_release(self.request_func, token=self.github_token())
 			if expected_version and release.version != expected_version:
 				raise UpdaterError("Найден другой релиз. Откройте обновление заново.")
 			path = self.install_release(release)
@@ -144,7 +144,7 @@ class ManualActionsUpdater:
 		self.save_settings()
 
 	def install_release(self, release: UpdaterRelease) -> Path:
-		source = download_release_asset(release.asset_url, self.request_func)
+		source = download_release_asset(release.asset_url, self.request_func, token=self.github_token())
 		path = install_plugin_update(self.plugin_file_path, source)
 		config = self.config()
 		config["installed_version"] = release.version
@@ -155,6 +155,10 @@ class ManualActionsUpdater:
 
 	def mode(self) -> str:
 		return str(self.config().get("mode", MODE_DISABLED))
+
+	def github_token(self) -> str:
+		token = self.config().get("github_token", "")
+		return token.strip() if isinstance(token, str) else ""
 
 	def config(self) -> dict[str, Any]:
 		return self.settings.setdefault("updater", {})
@@ -176,23 +180,26 @@ class ManualActionsUpdater:
 				break
 
 
-def github_headers(accept: str) -> dict[str, str]:
-	return {
+def github_headers(accept: str, token: str = "") -> dict[str, str]:
+	headers = {
 		"Accept": accept,
 		"User-Agent": UPDATER_USER_AGENT,
 		"X-GitHub-Api-Version": "2022-11-28",
 	}
+	if token.strip():
+		headers["Authorization"] = f"Bearer {token.strip()}"
+	return headers
 
 
-def fetch_updater_status(request_func: Callable[..., Any] = urlopen, timeout: int = 15) -> dict[str, Any]:
-	data = read_github_json(RATE_LIMIT_API_URL, request_func, timeout)
+def fetch_updater_status(request_func: Callable[..., Any] = urlopen, timeout: int = 15, token: str = "") -> dict[str, Any]:
+	data = read_github_json(RATE_LIMIT_API_URL, request_func, timeout, token)
 	if not isinstance(data, dict):
 		raise UpdaterError("GitHub вернул некорректный статус.")
 	return data
 
 
-def fetch_latest_release(request_func: Callable[..., Any] = urlopen, timeout: int = 15) -> UpdaterRelease:
-	data = read_github_json(RELEASES_API_URL, request_func, timeout)
+def fetch_latest_release(request_func: Callable[..., Any] = urlopen, timeout: int = 15, token: str = "") -> UpdaterRelease:
+	data = read_github_json(RELEASES_API_URL, request_func, timeout, token)
 	release_data = first_public_release(data)
 	if not release_data:
 		raise UpdaterError("GitHub не вернул доступные релизы.")
@@ -213,10 +220,10 @@ def fetch_latest_release(request_func: Callable[..., Any] = urlopen, timeout: in
 	)
 
 
-def read_github_json(url: str, request_func: Callable[..., Any], timeout: int) -> Any:
+def read_github_json(url: str, request_func: Callable[..., Any], timeout: int, token: str = "") -> Any:
 	request = Request(
 		url,
-		headers=github_headers("application/vnd.github+json"),
+		headers=github_headers("application/vnd.github+json", token),
 	)
 	try:
 		with request_func(request, timeout=timeout) as response:
@@ -284,10 +291,11 @@ def download_release_asset(
 	asset_url: str,
 	request_func: Callable[..., Any] = urlopen,
 	timeout: int = 30,
+	token: str = "",
 ) -> bytes:
 	request = Request(
 		asset_url,
-		headers=github_headers("application/octet-stream"),
+		headers=github_headers("application/octet-stream", token),
 	)
 	try:
 		with request_func(request, timeout=timeout) as response:

@@ -38,6 +38,7 @@ UPDATER_MODES = ("enabled", "disabled", "ask")
 DEFAULT_UPDATER_SETTINGS = {
 	"mode": "disabled",
 	"check_interval_seconds": 3600,
+	"github_token": "",
 	"skipped_version": "",
 	"installed_version": "",
 	"last_checked_version": "",
@@ -180,6 +181,10 @@ def normalize_updater_settings(data: Any) -> dict[str, Any]:
 	interval = data.get("check_interval_seconds")
 	if isinstance(interval, int) and not isinstance(interval, bool) and interval > 0:
 		settings["check_interval_seconds"] = interval
+
+	token = data.get("github_token")
+	if isinstance(token, str):
+		settings["github_token"] = token.strip()
 
 	for key in ("skipped_version", "installed_version", "last_checked_version", "notified_version"):
 		value = data.get(key)

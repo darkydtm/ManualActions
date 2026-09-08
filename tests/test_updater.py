@@ -11,6 +11,7 @@ from core.application.updater import (
 	UpdaterError,
 	asset_download_url,
 	fetch_latest_release,
+	github_headers,
 	install_plugin_update,
 	is_newer_version,
 	should_offer_release,
@@ -336,6 +337,24 @@ class UpdaterTest(unittest.TestCase):
 		)
 
 		self.assertEqual(updater.poll_interval(), 120)
+
+	def test_github_headers_stay_anonymous_without_token(self):
+		self.assertNotIn("Authorization", github_headers("application/vnd.github+json"))
+
+	def test_github_headers_add_bearer_token(self):
+		headers = github_headers("application/vnd.github+json", "  abc123  ")
+
+		self.assertEqual(headers["Authorization"], "Bearer abc123")
+
+	def test_updater_reads_personal_token_from_settings(self):
+		updater = ManualActionsUpdater(
+			{"updater": {"mode": "ask", "github_token": " tok "}},
+			lambda: None,
+			"manual_actions.py",
+			"1.3.0",
+		)
+
+		self.assertEqual(updater.github_token(), "tok")
 
 	def test_skipped_release_is_not_reported_again(self):
 		settings = {"updater": {"mode": "ask", "installed_version": "", "skipped_version": "1.3.1"}}

@@ -40,11 +40,13 @@ from ..config.constants import (
 	CBT_TEMPLATES_CATEGORY,
 	CBT_UPDATER_CATEGORY,
 	CBT_UPDATER_CUSTOM_INTERVAL,
+	CBT_UPDATER_EDIT_TOKEN,
 	CBT_UPDATER_CHECK,
 	CBT_UPDATER_INTERVAL_PAGE,
 	CBT_UPDATER_INSTALL,
 	CBT_UPDATER_INTERVAL,
 	CBT_UPDATER_MODE_PAGE,
+	CBT_UPDATER_TOKEN_PAGE,
 	CBT_UPDATER_MODE,
 	CBT_UPDATER_PAGE,
 	CBT_UPDATER_SKIP,
@@ -152,6 +154,10 @@ class TelegramSettingsUI:
 			self.save_custom_updater_interval,
 			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_UPDATER_CUSTOM_INTERVAL),
 		)
+		self.host.tg.msg_handler(
+			self.save_updater_token,
+			func=lambda m: self.host.tg.check_state(m.chat.id, m.from_user.id, STATE_UPDATER_TOKEN),
+		)
 		self.host.tg.cbq_handler(
 			self.open_auto_delivery_page,
 			lambda c: (c.data or "").startswith(CBT_AUTO_DELIVERY_PAGE),
@@ -239,6 +245,14 @@ class TelegramSettingsUI:
 		self.host.tg.cbq_handler(
 			self.open_updater_interval_page,
 			lambda c: (c.data or "").startswith(CBT_UPDATER_INTERVAL_PAGE),
+		)
+		self.host.tg.cbq_handler(
+			self.open_updater_token_page,
+			lambda c: (c.data or "").startswith(CBT_UPDATER_TOKEN_PAGE),
+		)
+		self.host.tg.cbq_handler(
+			self.edit_updater_token,
+			lambda c: (c.data or "").startswith(CBT_UPDATER_EDIT_TOKEN),
 		)
 		self.host.tg.cbq_handler(
 			self.set_updater_mode,
@@ -842,6 +856,7 @@ class TelegramSettingsUI:
 		elif category == "settings":
 			keyboard.add(B("Режим обновления", callback_data=f"{CBT_UPDATER_MODE_PAGE}{offset}"))
 			keyboard.add(B("Интервал проверки", callback_data=f"{CBT_UPDATER_INTERVAL_PAGE}{offset}"))
+			keyboard.add(B("GitHub token", callback_data=f"{CBT_UPDATER_TOKEN_PAGE}{offset}"))
 			text = "<b>Автообновление - настройки</b>"
 		else:
 			self.show_updater_page(chat_id, message_id, offset, edit)
@@ -904,6 +919,23 @@ class TelegramSettingsUI:
 		keyboard.add(B("◀️ Назад", callback_data=f"{CBT_UPDATER_PAGE}{offset}"))
 		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
 
+	def open_updater_token_page(self, call: telebot.types.CallbackQuery) -> None:
+		offset = self.get_offset(call.data)
+		self.show_updater_token_page(call.message.chat.id, call.message.id, offset=offset, edit=True)
+		self.host.tgbot.answer_callback_query(call.id)
+
+	def show_updater_token_page(self, chat_id: int, message_id: int | None = None, offset: str = "0", edit: bool = False) -> None:
+		state = "задан" if self.host.settings["updater"].get("github_token") else "не задан"
+		text = (
+			"<b>GitHub token</b>\n\n"
+			f"Token: <b>{state}</b>"
+			"\n\nНужен только для частых проверок. Без токена проверка работает анонимно."
+		)
+		keyboard = K(row_width=1)
+		keyboard.add(B("✏️ Изменить token", callback_data=f"{CBT_UPDATER_EDIT_TOKEN}{offset}"))
+		keyboard.add(B("◀️ Назад", callback_data=f"{CBT_UPDATER_PAGE}{offset}"))
+		self.send_or_edit(text, chat_id, message_id, keyboard, edit)
+
 	def set_updater_mode(self, call: telebot.types.CallbackQuery) -> None:
 		mode, offset = self.parse_two_part_callback(call.data, CBT_UPDATER_MODE)
 		if mode not in UPDATER_MODE_LABELS:
@@ -942,6 +974,22 @@ class TelegramSettingsUI:
 		)
 		self.host.tgbot.answer_callback_query(call.id)
 
+	def edit_updater_token(self, call: telebot.types.CallbackQuery) -> None:
+		offset = self.get_offset(call.data)
+		result = self.host.tgbot.send_message(
+			call.message.chat.id,
+			"Введите GitHub token. Отправьте - чтобы очистить.",
+			reply_markup=tg_bot.static_keyboards.CLEAR_STATE_BTN(),
+		)
+		self.host.tg.set_state(
+			call.message.chat.id,
+			result.id,
+			call.from_user.id,
+			STATE_UPDATER_TOKEN,
+			{"offset": offset},
+		)
+		self.host.tgbot.answer_callback_query(call.id)
+
 	def save_custom_updater_interval(self, message: telebot.types.Message) -> None:
 		state = self.host.tg.get_state(message.chat.id, message.from_user.id) or {}
 		data = state.get("data", {})
@@ -967,6 +1015,21 @@ class TelegramSettingsUI:
 	def save_updater_interval(self, interval: int) -> None:
 		update_host_settings(self.host, lambda settings: settings["updater"].__setitem__("check_interval_seconds", interval))
 		self.host.refresh_updater()
+
+	def save_updater_token(self, message: telebot.types.Message) -> None:
+		state = self.host.tg.get_state(message.chat.id, message.from_user.id) or {}
+		data = state.get("data", {})
+		offset = data.get("offset", "0")
+		self.host.tg.clear_state(message.chat.id, message.from_user.id, True)
+
+		text = (message.text or "").strip()
+		token = "" if text == "-" else text
+		update_host_settings(self.host, lambda settings: settings["updater"].__setitem__("github_token", token))
+
+		keyboard = K(row_width=1)
+		keyboard.add(B("◀️ Назад", callback_data=f"{CBT_UPDATER_TOKEN_PAGE}{offset}"))
+		notice = "GitHub token очищен." if not token else "GitHub token сохранён."
+		self.host.tgbot.reply_to(message, notice, reply_markup=keyboard)
 
 	def install_update(self, call: telebot.types.CallbackQuery) -> None:
 		version = call.data.replace(CBT_UPDATER_INSTALL, "", 1).strip()
