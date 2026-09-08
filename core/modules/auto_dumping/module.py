@@ -30,9 +30,11 @@ def load(host: Any) -> None:
 	service = host.services["auto_dumping_service"]
 	scheduler = host.services["auto_dumping_scheduler"]
 	service.load()
-	scheduler.interval_minutes = host.settings["auto_dumping"]["interval_minutes"]
+	scheduler.set_interval(host.settings["auto_dumping"]["interval_minutes"])
 	if host.settings["auto_dumping"]["enabled"]:
 		scheduler.start()
+	else:
+		scheduler.stop()
 
 
 def register_telegram(host: Any) -> None:
