@@ -54,30 +54,53 @@ class AutoDumpingService:
 			return result
 		own_ids = {lot.id for lot in own_lots}
 		result = {"status": "ok", "updated": 0, "skipped": 0, "errors": 0, "conflicts": 0}
+		alien = sum(1 for lot in catalog if lot.id not in own_ids)
+		logger.info("Auto-dumping cycle: %d own lots, %d catalog lots (%d alien), %d rules.", len(own_lots), len(catalog), alien, len(config.rules))
+		if not own_lots:
+			logger.warning("Auto-dumping found no active own lots.")
+		if not catalog:
+			logger.warning("Auto-dumping catalog is empty, every lot will be skipped.")
 		for own_lot in own_lots:
 			try:
 				if not self.gateway.is_owned(own_lot):
 					result["skipped"] += 1
+					logger.debug("Auto-dumping skipped %s: not owned.", own_lot.id)
 					continue
 				decision = self.decide(own_lot, catalog, config, own_ids)
 				if not decision:
+					result["skipped"] += 1
+					logger.debug("Auto-dumping skipped %s: %s.", own_lot.id, self.describe_miss(own_lot, config))
 					continue
 				applied = False
 				target = decision.candidate.final_price
 				if target <= 0:
 					result["skipped"] += 1
+					logger.debug("Auto-dumping skipped %s: non-positive target price.", own_lot.id)
 				elif abs(target - own_lot.price) >= 0.005:
 					self.gateway.update_price(own_lot, target)
 					result["updated"] += 1
 					applied = True
+					logger.info("Auto-dumping updated lot %s: %.2f -> %.2f (competitor %s %.2f).", own_lot.id, own_lot.price, target, decision.candidate.lot.id, decision.candidate.competitor_price)
+				else:
+					result["skipped"] += 1
+					logger.debug("Auto-dumping skipped %s: price %.2f already at target.", own_lot.id, own_lot.price)
 				if decision.conflict:
 					result["conflicts"] += 1
 					self.notify_conflict(own_lot, decision, applied=applied)
 			except Exception:
 				result["errors"] += 1
 				logger.exception("Auto-dumping lot processing failed for %s.", own_lot.id)
+		logger.info("Auto-dumping cycle finished: %s.", result)
 		self.storage.record_cycle(time.time(), result)
 		return result
+
+	@staticmethod
+	def describe_miss(own_lot: Lot, config: AutoDumpingConfig) -> str:
+		if not any(rule.enabled for rule in config.rules):
+			return "no enabled rules"
+		if not any(rule.enabled and matches_subcategory(own_lot, rule.subcategory) for rule in config.rules):
+			return f"no rule for subcategory {own_lot.subcategory!r}"
+		return "no competitors matched keywords and filters"
 
 	def decide(
 		self,

@@ -106,6 +106,43 @@ class AutoDumpingServiceTest(unittest.TestCase):
 
 		self.assertIsNone(service.decide(own, catalog, service_config(config)))
 
+	def test_run_cycle_counts_skipped_when_no_rule_matches(self):
+		own = raw_lot("own", "My silver", 100, "me", owner=True)
+		own = Lot(own.id, own.title, own.price, "Silver", own.username, raw=own.raw)
+		gateway = Gateway([own], [raw_lot("c", "Gold", 50, "other")])
+		service = AutoDumpingService(lambda: self.config(), gateway, Storage())
+
+		result = service.run_cycle()
+
+		self.assertEqual(gateway.updated, [])
+		self.assertEqual(result["updated"], 0)
+		self.assertEqual(result["skipped"], 1)
+
+	def test_run_cycle_counts_skipped_when_price_already_at_target(self):
+		own = raw_lot("own", "My gold", 45.0, "me", owner=True)
+		gateway = Gateway([own], [raw_lot("c", "Gold", 50, "other")])
+		service = AutoDumpingService(lambda: self.config(), gateway, Storage())
+
+		result = service.run_cycle()
+
+		self.assertEqual(gateway.updated, [])
+		self.assertEqual(result["updated"], 0)
+		self.assertEqual(result["skipped"], 1)
+
+	def test_describe_miss_distinguishes_rule_and_competitor_miss(self):
+		config = service_config(self.config())
+		service = AutoDumpingService(lambda: self.config(), Gateway([], []), Storage())
+
+		silver = raw_lot("s", "Silver", 100, "me", owner=True)
+		silver = Lot(silver.id, silver.title, silver.price, "Silver", silver.username, raw=silver.raw)
+		self.assertIn("subcategory", service.describe_miss(silver, config))
+
+		gold = raw_lot("g", "My gold", 100, "me", owner=True)
+		self.assertIn("competitors", service.describe_miss(gold, config))
+
+		disabled = service_config({"enabled": True, "interval_minutes": 5, "rules": [dict(self.config()["rules"][0], enabled=False)]})
+		self.assertIn("no enabled rules", service.describe_miss(gold, disabled))
+
 
 if __name__ == "__main__":
 	unittest.main()
