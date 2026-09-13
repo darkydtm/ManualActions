@@ -355,6 +355,30 @@ class ToLotSubcategoryIdTest(unittest.TestCase):
 		name_lot = SimpleNamespace(id="3", description="Gold", price=10, subcategory="Gold", username="a")
 		self.assertIsNone(gateway.to_lot(name_lot).subcategory_id)
 
+class UpdatePriceActivityTest(unittest.TestCase):
+	def test_update_price_restores_misparsed_active_flag(self):
+		saved = {}
+
+		class Fields:
+			def __init__(self):
+				self.price = 100.0
+				self.active = False
+
+			def renew_fields(self):
+				return {"price": self.price, "active": "on" if self.active else ""}
+
+		fields = Fields()
+		account = SimpleNamespace(
+			get_lot_fields=lambda lot_id: fields,
+			save_lot=lambda payload: saved.update(payload),
+		)
+		gateway = FunPayCatalogGateway(SimpleNamespace(profile=None, account=account))
+		lot = Lot("1", "Gold", 100, "Gold", "me", subcategory_id=7)
+
+		gateway.update_price(lot, 95.0)
+
+		self.assertEqual(saved, {"price": 95.0, "active": "on"})
+
 
 if __name__ == "__main__":
 	unittest.main()

@@ -58,6 +58,8 @@ class FunPayCatalogGateway:
 		if callable(get_fields) and callable(save):
 			fields = get_fields(lot.id)
 			fields.price = price
+			# Preserve activity, renew_fields() persists a misparsed flag and deactivates the lot.
+			fields.active = bool(getattr(lot, "active", True))
 			renew = getattr(fields, "renew_fields", None)
 			payload = renew() if callable(renew) else fields
 			try:
