@@ -541,8 +541,17 @@ class TelegramAutoDumpingFlow:
 
 	def run_now(self, call: telebot.types.CallbackQuery) -> None:
 		result = self.service.run_cycle()
-		self.host.tgbot.answer_callback_query(call.id, f"Цикл завершён: {result.get('updated', 0)} изменений.")
+		self.host.tgbot.answer_callback_query(call.id, self._cycle_summary(result))
 		self._refresh(call)
+
+	@staticmethod
+	def _cycle_summary(result: dict[str, Any]) -> str:
+		if result.get("status") != "ok":
+			return f"Цикл не выполнен: {result.get('status')}."
+		return (
+			f"Цикл завершён: {result.get('updated', 0)} изменений, "
+			f"{result.get('skipped', 0)} пропущено, {result.get('errors', 0)} ошибок."
+		)
 
 	def open_rules(self, call: telebot.types.CallbackQuery) -> None:
 		page = 0

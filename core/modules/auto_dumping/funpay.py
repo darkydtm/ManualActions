@@ -32,6 +32,7 @@ class FunPayCatalogGateway:
 		fetch = getattr(account, "get_subcategory_public_lots", None)
 		if callable(fetch):
 			return self._public_catalog(fetch)
+		logger.debug("Auto-dumping public catalog API is unavailable, using legacy catalog.")
 		return self._legacy_catalog()
 
 	def is_owned(self, lot: Lot) -> bool:
@@ -115,6 +116,7 @@ class FunPayCatalogGateway:
 				lots.append(lot)
 		if not lots and errors:
 			raise RuntimeError("Cardinal public catalog read failed.")
+		logger.debug("Auto-dumping public catalog: %d lots from %d subcategories (%d errors).", len(lots), len(refs), errors)
 		return lots
 
 	@staticmethod

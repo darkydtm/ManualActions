@@ -845,5 +845,18 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 			validate_rule_input({"subcategory": "game", "keywords": ["gold"], "dumping_value": 0})
 
 
+class AutoDumpingCycleSummaryTest(unittest.TestCase):
+	def test_ok_summary_reports_updated_skipped_errors(self):
+		text = TelegramAutoDumpingFlow._cycle_summary({"status": "ok", "updated": 1, "skipped": 2, "errors": 0})
+
+		self.assertIn("1 изменений", text)
+		self.assertIn("2 пропущено", text)
+		self.assertIn("0 ошибок", text)
+
+	def test_non_ok_summary_reports_status(self):
+		text = TelegramAutoDumpingFlow._cycle_summary({"status": "catalog_error", "updated": 0, "skipped": 0, "errors": 1})
+
+		self.assertIn("catalog_error", text)
+
 if __name__ == "__main__":
 	unittest.main()
