@@ -109,6 +109,9 @@ class FunPayCatalogGateway:
 			try:
 				current.active = True
 				self._save_fields(save, lot, current)
+				recheck = get_fields(lot.id)
+				if getattr(recheck, "active", True) is False:
+					logger.warning("Auto-dumping lot %s is still inactive after restore, FunPay refuses activation (check stock).", lot.id)
 			except Exception:
 				logger.exception("Auto-dumping activity restore failed for %s.", lot.id)
 

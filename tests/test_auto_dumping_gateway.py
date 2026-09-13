@@ -417,7 +417,7 @@ class EnsureAppliedTest(unittest.TestCase):
 				return {"price": self.price, "active": "on" if self.active else ""}
 
 		saved = []
-		reads = [Fields(100.0, True), Fields(95.0, False)]
+		reads = [Fields(100.0, True), Fields(95.0, False), Fields(95.0, True)]
 		gateway = self._gateway(reads, saved)
 		lot = Lot("1", "Gold", 100, "Gold", "me", subcategory_id=7)
 
@@ -427,6 +427,27 @@ class EnsureAppliedTest(unittest.TestCase):
 		self.assertEqual(len(saved), 2)
 		self.assertEqual(saved[-1]["active"], "on")
 		self.assertTrue(any("restoring activity" in message for message in captured.output))
+		self.assertFalse(any("still inactive" in message for message in captured.output))
+
+	def test_refused_restore_warns_about_stock(self):
+		class Fields:
+			def __init__(self, price, active):
+				self.price = price
+				self.active = active
+
+			def renew_fields(self):
+				return {"price": self.price, "active": "on" if self.active else ""}
+
+		saved = []
+		reads = [Fields(100.0, True), Fields(95.0, False), Fields(95.0, False)]
+		gateway = self._gateway(reads, saved)
+		lot = Lot("1", "Gold", 100, "Gold", "me", subcategory_id=7)
+
+		with self.assertLogs(level="WARNING") as captured:
+			gateway.update_price(lot, 95.0)
+
+		self.assertEqual(len(saved), 2)
+		self.assertTrue(any("still inactive" in message for message in captured.output))
 
 	def test_no_restore_when_price_and_activity_stick(self):
 		class Fields:
