@@ -57,7 +57,7 @@ class AutoDumpingService:
 		alien = sum(1 for lot in catalog if lot.id not in own_ids)
 		logger.info("Auto-dumping cycle: %d own lots, %d catalog lots (%d alien), %d rules.", len(own_lots), len(catalog), alien, len(config.rules))
 		if not own_lots:
-			logger.warning("Auto-dumping found no active own lots.")
+			logger.warning("Auto-dumping found no active own lots, create or reactivate them on FunPay.")
 		if not catalog:
 			logger.warning("Auto-dumping catalog is empty, every lot will be skipped.")
 		for own_lot in own_lots:
