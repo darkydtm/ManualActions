@@ -48,11 +48,16 @@ def extract_lot_id(value: str | None) -> str | None:
 	return None
 
 
-def get_profile_lots(cardinal: Cardinal) -> list[Any]:
+def get_profile_lots(cardinal: Cardinal, refresh_empty: bool = False) -> list[Any]:
 	profile = getattr(cardinal, "profile", None)
 	if profile and hasattr(profile, "get_lots"):
-		return list(profile.get_lots() or [])
+		lots = list(profile.get_lots() or [])
+		if lots or not refresh_empty:
+			return lots
+	return _fetch_account_lots(cardinal)
 
+
+def _fetch_account_lots(cardinal: Cardinal) -> list[Any]:
 	account = getattr(cardinal, "account", None)
 	account_id = getattr(account, "id", None)
 	if account and account_id and hasattr(account, "get_user"):

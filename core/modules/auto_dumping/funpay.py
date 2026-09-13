@@ -90,7 +90,7 @@ class FunPayCatalogGateway:
 		raise RuntimeError("Cardinal lot price API is unavailable.")
 
 	def _profile_lots(self) -> list[Any]:
-		return get_profile_lots(self.cardinal)
+		return get_profile_lots(self.cardinal, refresh_empty=True)
 
 	def _public_catalog(self, fetch: Any) -> list[Lot]:
 		refs: dict[int, tuple[Any, Any]] = {}
