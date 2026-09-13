@@ -69,6 +69,13 @@ class Storage:
 	def __init__(self):
 		self.fingerprints = {}
 		self.cycles = []
+		self.applied = {}
+
+	def get_applied(self, lot_id):
+		return self.applied.get(lot_id)
+
+	def set_applied(self, lot_id, target, seen):
+		self.applied[lot_id] = {"target": target, "seen": seen}
 
 	def get_conflict_fingerprint(self, lot_id):
 		return self.fingerprints.get(lot_id, "")
@@ -391,6 +398,53 @@ class OwnLotsDiagnosticsTest(unittest.TestCase):
 
 		self.assertEqual(lots, [])
 		self.assertTrue(any("ignored all 1 profile lots" in message for message in captured.output))
+
+class EnsureAppliedTest(unittest.TestCase):
+	def _gateway(self, reads, saved):
+		account = SimpleNamespace(
+			get_lot_fields=lambda lot_id: reads.pop(0),
+			save_lot=lambda payload: saved.append(payload),
+		)
+		return FunPayCatalogGateway(SimpleNamespace(profile=None, account=account))
+
+	def test_restores_activity_when_save_deactivated_lot(self):
+		class Fields:
+			def __init__(self, price, active):
+				self.price = price
+				self.active = active
+
+			def renew_fields(self):
+				return {"price": self.price, "active": "on" if self.active else ""}
+
+		saved = []
+		reads = [Fields(100.0, True), Fields(95.0, False)]
+		gateway = self._gateway(reads, saved)
+		lot = Lot("1", "Gold", 100, "Gold", "me", subcategory_id=7)
+
+		with self.assertLogs(level="WARNING") as captured:
+			gateway.update_price(lot, 95.0)
+
+		self.assertEqual(len(saved), 2)
+		self.assertEqual(saved[-1]["active"], "on")
+		self.assertTrue(any("restoring activity" in message for message in captured.output))
+
+	def test_no_restore_when_price_and_activity_stick(self):
+		class Fields:
+			def __init__(self, price, active):
+				self.price = price
+				self.active = active
+
+			def renew_fields(self):
+				return {"price": self.price, "active": "on" if self.active else ""}
+
+		saved = []
+		reads = [Fields(100.0, True), Fields(95.0, True)]
+		gateway = self._gateway(reads, saved)
+		lot = Lot("1", "Gold", 100, "Gold", "me", subcategory_id=7)
+
+		gateway.update_price(lot, 95.0)
+
+		self.assertEqual(len(saved), 1)
 
 
 if __name__ == "__main__":

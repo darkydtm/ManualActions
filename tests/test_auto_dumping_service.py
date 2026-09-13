@@ -43,6 +43,13 @@ class Storage:
 	def __init__(self):
 		self.fingerprints = {}
 		self.cycles = []
+		self.applied = {}
+
+	def get_applied(self, lot_id):
+		return self.applied.get(lot_id)
+
+	def set_applied(self, lot_id, target, seen):
+		self.applied[lot_id] = {"target": target, "seen": seen}
 
 	def get_conflict_fingerprint(self, lot_id):
 		return self.fingerprints.get(lot_id, "")
@@ -176,6 +183,44 @@ class AutoDumpingServiceTest(unittest.TestCase):
 		gold = raw_lot("g", "My gold", 100, "me", owner=True)
 
 		self.assertIn("no rule for lot", service.describe_miss(gold, bound_config))
+
+	def test_second_cycle_with_stale_price_does_not_resave(self):
+		own = raw_lot("own", "My gold", 100, "me", owner=True)
+		gateway = Gateway([own], [raw_lot("c", "Gold", 50, "other")])
+		storage = Storage()
+		service = AutoDumpingService(lambda: self.config(), gateway, storage)
+
+		first = service.run_cycle()
+		second = service.run_cycle()
+
+		self.assertEqual(first["updated"], 1)
+		self.assertEqual(second["updated"], 0)
+		self.assertEqual(second["skipped"], 1)
+		self.assertEqual(len(gateway.updated), 1)
+
+	def test_new_target_after_applied_updates_again(self):
+		storage = Storage()
+		storage.set_applied("own", 45.0, 100.0)
+		own = raw_lot("own", "My gold", 100, "me", owner=True)
+		gateway = Gateway([own], [raw_lot("c", "Gold", 60, "other")])
+		service = AutoDumpingService(lambda: self.config(), gateway, storage)
+
+		result = service.run_cycle()
+
+		self.assertEqual(result["updated"], 1)
+		self.assertEqual(gateway.updated, [("own", 55.0)])
+
+	def test_manually_changed_price_updates_despite_applied_cache(self):
+		storage = Storage()
+		storage.set_applied("own", 45.0, 100.0)
+		own = raw_lot("own", "My gold", 80, "me", owner=True)
+		gateway = Gateway([own], [raw_lot("c", "Gold", 50, "other")])
+		service = AutoDumpingService(lambda: self.config(), gateway, storage)
+
+		result = service.run_cycle()
+
+		self.assertEqual(result["updated"], 1)
+		self.assertEqual(gateway.updated, [("own", 45.0)])
 
 
 if __name__ == "__main__":

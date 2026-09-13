@@ -77,10 +77,15 @@ class AutoDumpingService:
 					result["skipped"] += 1
 					logger.debug("Auto-dumping skipped %s: non-positive target price.", own_lot.id)
 				elif abs(target - own_lot.price) >= 0.005:
-					self.gateway.update_price(own_lot, target)
-					result["updated"] += 1
-					applied = True
-					logger.info("Auto-dumping updated lot %s: %.2f -> %.2f net (competitor %s buyer %.2f).", own_lot.id, own_lot.price, target, decision.candidate.lot.id, decision.candidate.competitor_price)
+					if self._already_applied(own_lot, target):
+						result["skipped"] += 1
+						logger.debug("Auto-dumping skipped %s: target %.2f already applied, waiting for profile refresh.", own_lot.id, target)
+					else:
+						self.gateway.update_price(own_lot, target)
+						self.storage.set_applied(own_lot.id, target, own_lot.price)
+						result["updated"] += 1
+						applied = True
+						logger.info("Auto-dumping updated lot %s: %.2f -> %.2f net (competitor %s buyer %.2f).", own_lot.id, own_lot.price, target, decision.candidate.lot.id, decision.candidate.competitor_price)
 				else:
 					result["skipped"] += 1
 					logger.debug("Auto-dumping skipped %s: price %.2f already at target.", own_lot.id, own_lot.price)
@@ -93,6 +98,17 @@ class AutoDumpingService:
 		logger.info("Auto-dumping cycle finished: %s.", result)
 		self.storage.record_cycle(time.time(), result)
 		return result
+
+	def _already_applied(self, own_lot: Lot, target: float) -> bool:
+		entry = self.storage.get_applied(own_lot.id)
+		if not entry:
+			return False
+		try:
+			same_target = abs(float(entry["target"]) - target) < 0.005
+			same_seen = abs(float(entry["seen"]) - own_lot.price) < 0.005
+		except (KeyError, TypeError, ValueError):
+			return False
+		return same_target and same_seen
 
 	@staticmethod
 	def _rule_matches_lot(rule: DumpingRule, own_lot: Lot) -> bool:

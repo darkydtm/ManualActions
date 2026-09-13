@@ -64,12 +64,8 @@ class FunPayCatalogGateway:
 			fields.price = price
 			# Preserve activity, renew_fields() persists a misparsed flag and deactivates the lot.
 			fields.active = bool(getattr(lot, "active", True))
-			renew = getattr(fields, "renew_fields", None)
-			payload = renew() if callable(renew) else fields
-			try:
-				save(payload)
-			except TypeError:
-				save(lot.id, payload)
+			self._save_fields(save, lot, fields)
+			self._ensure_applied(get_fields, save, lot, price)
 			return
 		raw = lot.raw
 		for method_name in ("set_price", "update_price", "edit_price"):
@@ -88,6 +84,33 @@ class FunPayCatalogGateway:
 					method(lot.id, price)
 				return
 		raise RuntimeError("Cardinal lot price API is unavailable.")
+
+	@staticmethod
+	def _save_fields(save: Any, lot: Lot, fields: Any) -> None:
+		renew = getattr(fields, "renew_fields", None)
+		payload = renew() if callable(renew) else fields
+		try:
+			save(payload)
+		except TypeError:
+			save(lot.id, payload)
+
+	def _ensure_applied(self, get_fields: Any, save: Any, lot: Lot, price: float) -> None:
+		# Re-read the lot with a fresh request, the cached profile hides a rejected save.
+		try:
+			current = get_fields(lot.id)
+		except Exception:
+			logger.debug("Auto-dumping apply check failed for %s.", lot.id, exc_info=True)
+			return
+		saved_price = parse_price(getattr(current, "price", None))
+		if abs(saved_price - price) >= 0.01:
+			logger.warning("Auto-dumping price for %s did not stick: want %.2f, FunPay shows %.2f.", lot.id, price, saved_price)
+		if getattr(current, "active", True) is False and bool(getattr(lot, "active", True)):
+			logger.warning("Auto-dumping lot %s went inactive after price update, restoring activity.", lot.id)
+			try:
+				current.active = True
+				self._save_fields(save, lot, current)
+			except Exception:
+				logger.exception("Auto-dumping activity restore failed for %s.", lot.id)
 
 	def _profile_lots(self) -> list[Any]:
 		return get_profile_lots(self.cardinal, refresh_empty=True)

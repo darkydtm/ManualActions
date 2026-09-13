@@ -35,6 +35,19 @@ class AutoDumpingStorage:
 			self.state["last_result"] = deepcopy(result)
 			self.save()
 
+	def get_applied(self, lot_id: str) -> dict[str, float] | None:
+		with self.lock:
+			entry = self.state["applied"].get(str(lot_id))
+			return dict(entry) if isinstance(entry, dict) else None
+
+	def set_applied(self, lot_id: str, target: float, seen: float) -> None:
+		with self.lock:
+			applied = self.state["applied"]
+			applied[str(lot_id)] = {"target": float(target), "seen": float(seen)}
+			while len(applied) > 200:
+				applied.pop(next(iter(applied)))
+			self.save()
+
 	def get_conflict_fingerprint(self, lot_id: str) -> str:
 		with self.lock:
 			return self.state["conflicts"].get(str(lot_id), "")
@@ -48,9 +61,20 @@ class AutoDumpingStorage:
 	def normalize(data: Any) -> dict[str, Any]:
 		if not isinstance(data, dict):
 			data = {}
+		applied: dict[str, dict[str, float]] = {}
+		raw_applied = data.get("applied")
+		if isinstance(raw_applied, dict):
+			for key, entry in raw_applied.items():
+				if not isinstance(entry, dict):
+					continue
+				try:
+					applied[str(key)] = {"target": float(entry["target"]), "seen": float(entry["seen"])}
+				except (KeyError, TypeError, ValueError):
+					continue
 		result = {
 			"last_cycle_at": data.get("last_cycle_at") if isinstance(data.get("last_cycle_at"), (int, float)) else None,
 			"last_result": data.get("last_result") if isinstance(data.get("last_result"), dict) else {},
 			"conflicts": data.get("conflicts") if isinstance(data.get("conflicts"), dict) else {},
+			"applied": applied,
 		}
 		return result
