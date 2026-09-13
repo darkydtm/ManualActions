@@ -19,12 +19,16 @@ class FunPayCatalogGateway:
 		self._own_ids: set[str] = set()
 
 	def own_lots(self) -> list[Lot]:
+		raw_lots = self._profile_lots()
 		lots = []
-		for raw in self._profile_lots():
+		for raw in raw_lots:
 			lot = self.to_lot(raw)
 			if not lot.id or not lot.active:
 				continue
 			lots.append(lot)
+		if raw_lots and not lots:
+			sample = raw_lots[0]
+			logger.warning("Auto-dumping ignored all %d profile lots (first: %s id=%r active=%r).", len(raw_lots), type(sample).__name__, getattr(sample, "id", None), getattr(sample, "active", None))
 		self._own_ids = {lot.id for lot in lots}
 		return lots
 

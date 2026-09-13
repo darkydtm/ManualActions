@@ -379,6 +379,19 @@ class UpdatePriceActivityTest(unittest.TestCase):
 
 		self.assertEqual(saved, {"price": 95.0, "active": "on"})
 
+class OwnLotsDiagnosticsTest(unittest.TestCase):
+	def test_warns_when_all_profile_lots_filtered(self):
+		profile = SimpleNamespace(get_lots=lambda: [
+			SimpleNamespace(id=None, lot_id="", description="No id", price=10, subcategory="Gold", active=True),
+		])
+		gateway = FunPayCatalogGateway(SimpleNamespace(profile=profile, account=None))
+
+		with self.assertLogs(level="WARNING") as captured:
+			lots = gateway.own_lots()
+
+		self.assertEqual(lots, [])
+		self.assertTrue(any("ignored all 1 profile lots" in message for message in captured.output))
+
 
 if __name__ == "__main__":
 	unittest.main()
