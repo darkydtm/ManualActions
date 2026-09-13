@@ -46,6 +46,7 @@ from core.config.constants import (
 	STATE_AUTO_DUMPING_RULE,
 )
 from core.modules.auto_dumping.telegram import MAX_CALLBACK_PAGE, TelegramAutoDumpingFlow, validate_rule_input
+from core.modules.auto_dumping.models import Lot
 from core.modules.auto_dumping.settings import normalize_rule
 
 
@@ -154,6 +155,7 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		rule = {
 			"id": rule_id,
 			"enabled": True,
+			"lot_id": "75213482",
 			"subcategory": 4093,
 			"keywords": ["gold"],
 			"sellers_blacklist": [],
@@ -185,9 +187,9 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "1"))
 
 		self.assertNotIn("JSON", self.host.tgbot.messages[-1][1])
-		self.assertEqual(self.host.tg.get_state(1, 7)["data"]["step"], "subcategory")
+		self.assertEqual(self.host.tg.get_state(1, 7)["data"]["step"], "lot")
 
-		self.flow.save_rule(self._message("https://funpay.com/lots/4093"))
+		self.flow.save_rule(self._message("https://funpay.com/lots/offer?id=75213482"))
 		self.flow.save_rule(self._message("gold, sword"))
 		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "mode:all"))
 		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "price:percent"))
@@ -196,9 +198,11 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.flow.save_rule(self._message("30"))
 		self.assertEqual(self.host.tg.get_state(1, 7)["data"]["step"], "commission_percent")
 		self.flow.save_rule(self._message("9"))
+		self.flow.service.gateway.own_lots.return_value = [Lot("75213482", "Gold", 100, "Gold", "me", subcategory_id=4093)]
 		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "confirm"))
 
 		rule = self.host.settings["auto_dumping"]["rules"][0]
+		self.assertEqual(rule["lot_id"], "75213482")
 		self.assertEqual(rule["subcategory"], 4093)
 		self.assertEqual(rule["keywords"], ["gold", "sword"])
 		self.assertEqual(rule["keyword_mode"], "all")
@@ -222,12 +226,29 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.assertEqual(self.host.tg.get_state(1, 7)["data"]["step"], "commission_percent")
 		self.assertIn("от 0 до 100", self.host.tgbot.messages[-1][1])
 
-	def test_add_rule_rejects_name_subcategory(self):
+	def test_add_rule_rejects_bad_lot_id(self):
 		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "1"))
-		self.flow.save_rule(self._message("Золото"))
+		self.flow.save_rule(self._message("not-a-lot"))
 
-		self.assertEqual(self.host.tg.get_state(1, 7)["data"]["step"], "subcategory")
-		self.assertIn("ID подраздела", self.host.tgbot.messages[-1][1])
+		self.assertEqual(self.host.tg.get_state(1, 7)["data"]["step"], "lot")
+		self.assertIn("ID лота", self.host.tgbot.messages[-1][1])
+		self.assertEqual(self.host.settings["auto_dumping"]["rules"], [])
+
+	def test_add_rule_confirm_rejects_unknown_lot(self):
+		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "1"))
+		self.flow.save_rule(self._message("75213482"))
+		self.flow.save_rule(self._message("gold"))
+		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "mode:any"))
+		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "price:fixed"))
+		self.flow.save_rule(self._message("5"))
+		self.flow.save_rule(self._message("0"))
+		self.flow.save_rule(self._message("0"))
+		self.flow.save_rule(self._message("0"))
+		self.flow.service.gateway.own_lots.return_value = []
+		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "confirm"))
+
+		self.assertEqual(self.host.tg.get_state(1, 7)["data"]["step"], "lot")
+		self.assertIn("не найден", self.host.tgbot.messages[-1][1])
 		self.assertEqual(self.host.settings["auto_dumping"]["rules"], [])
 
 	def test_status_button_works_for_negative_chat_ids(self):

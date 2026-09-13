@@ -24,12 +24,12 @@ def normalize_auto_dumping_settings(data: Any) -> dict[str, Any]:
 	interval = data.get("interval_minutes")
 	if isinstance(interval, int) and not isinstance(interval, bool) and interval > 0:
 		settings["interval_minutes"] = interval
-	seen: set[tuple[int, tuple[str, ...]]] = set()
+	seen: set[tuple[tuple[str, Any], tuple[str, ...]]] = set()
 	for item in data.get("rules", []):
 		rule = normalize_rule(item)
 		if not rule:
 			continue
-		key = (rule["subcategory"], tuple(word.casefold() for word in rule["keywords"]))
+		key = (("lot", rule["lot_id"]) if rule["lot_id"] else ("sub", rule["subcategory"]), tuple(word.casefold() for word in rule["keywords"]))
 		if key in seen:
 			continue
 		seen.add(key)
@@ -43,9 +43,10 @@ def normalize_rule(data: Any) -> dict[str, Any] | None:
 	rule_id = str(data.get("id") or "")
 	if not rule_id.strip():
 		rule_id = uuid4().hex
+	lot_id = parse_lot_id(data.get("lot_id"))
 	subcategory = parse_subcategory_id(data.get("subcategory"))
 	keywords = normalize_words(data.get("keywords"))
-	if subcategory is None or not keywords:
+	if (lot_id is None and subcategory is None) or not keywords:
 		return None
 	keyword_mode = data.get("keyword_mode", "any")
 	if keyword_mode not in ("any", "all"):
@@ -60,7 +61,8 @@ def normalize_rule(data: Any) -> dict[str, Any] | None:
 	return {
 		"id": rule_id,
 		"enabled": data.get("enabled") is not False,
-		"subcategory": subcategory,
+		"lot_id": lot_id or "",
+		"subcategory": subcategory if subcategory is not None else 0,
 		"keywords": keywords,
 		"keyword_mode": keyword_mode,
 		"competitor_min_price": competitor_min_price,
@@ -74,6 +76,7 @@ def normalize_rule(data: Any) -> dict[str, Any] | None:
 
 
 SUBCATEGORY_URL_RE = re.compile(r"/lots/(\d+)")
+LOT_URL_ID_RE = re.compile(r"[?&]id=(\d+)")
 
 
 def parse_subcategory_id(value: Any) -> int | None:
@@ -91,6 +94,23 @@ def parse_subcategory_id(value: Any) -> int | None:
 		match = SUBCATEGORY_URL_RE.search(text)
 		if match:
 			return int(match.group(1))
+	return None
+
+
+def parse_lot_id(value: Any) -> str | None:
+	if isinstance(value, bool):
+		return None
+	if isinstance(value, int):
+		return str(value) if value > 0 else None
+	if isinstance(value, float):
+		return str(int(value)) if value.is_integer() and value > 0 else None
+	if isinstance(value, str):
+		text = value.strip()
+		if re.fullmatch(r"\d+", text):
+			return text if int(text) > 0 else None
+		match = LOT_URL_ID_RE.search(text)
+		if match:
+			return match.group(1)
 	return None
 
 

@@ -153,6 +153,30 @@ class AutoDumpingServiceTest(unittest.TestCase):
 		self.assertEqual(gateway.updated, [("own", 95.0)])
 		self.assertEqual(result["updated"], 1)
 
+	def test_lot_bound_rule_matches_only_its_lot(self):
+		config = self.config()
+		config["rules"][0]["lot_id"] = "own"
+		service = AutoDumpingService(lambda: config, Gateway([], []), Storage())
+		full = service_config(config)
+
+		own = raw_lot("own", "My gold", 100, "me", owner=True)
+		other = raw_lot("other", "My gold", 100, "me", owner=True)
+		catalog = [raw_lot("c", "Gold", 50, "other")]
+
+		self.assertIsNotNone(service.decide(own, catalog, full, {"own", "other"}))
+		self.assertIsNone(service.decide(other, catalog, full, {"own", "other"}))
+
+	def test_describe_miss_reports_unbound_lot(self):
+		service = AutoDumpingService(lambda: self.config(), Gateway([], []), Storage())
+		bound_config = service_config({"enabled": True, "interval_minutes": 5, "rules": [{
+			"id": "rule-1", "enabled": True, "subcategory": 7, "keywords": ["gold"],
+			"keyword_mode": "any", "competitor_min_price": 0, "price_mode": "fixed",
+			"dumping_value": 5, "own_min_price": 10, "lot_id": "someone-else",
+		}]})
+		gold = raw_lot("g", "My gold", 100, "me", owner=True)
+
+		self.assertIn("no rule for lot", service.describe_miss(gold, bound_config))
+
 
 if __name__ == "__main__":
 	unittest.main()

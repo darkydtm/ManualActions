@@ -95,11 +95,17 @@ class AutoDumpingService:
 		return result
 
 	@staticmethod
+	def _rule_matches_lot(rule: DumpingRule, own_lot: Lot) -> bool:
+		if rule.lot_id:
+			return own_lot.id == rule.lot_id
+		return matches_subcategory(own_lot, rule.subcategory)
+
+	@staticmethod
 	def describe_miss(own_lot: Lot, config: AutoDumpingConfig) -> str:
 		if not any(rule.enabled for rule in config.rules):
 			return "no enabled rules"
-		if not any(rule.enabled and matches_subcategory(own_lot, rule.subcategory) for rule in config.rules):
-			return f"no rule for subcategory id {own_lot.subcategory_id!r}"
+		if not any(rule.enabled and AutoDumpingService._rule_matches_lot(rule, own_lot) for rule in config.rules):
+			return f"no rule for lot {own_lot.id} (subcategory id {own_lot.subcategory_id!r})"
 		return "no competitors matched keywords and filters"
 
 	def decide(
@@ -111,15 +117,19 @@ class AutoDumpingService:
 	) -> PriceDecision | None:
 		candidates = []
 		for rule in config.rules:
-			if not rule.enabled or not matches_subcategory(own_lot, rule.subcategory):
+			if not rule.enabled or not self._rule_matches_lot(rule, own_lot):
 				continue
+			if rule.lot_id:
+				subcategory_id = own_lot.subcategory_id or rule.subcategory
+			else:
+				subcategory_id = rule.subcategory
 			matched_competitors = []
 			for competitor in catalog:
 				if competitor.id == own_lot.id or competitor.id in own_ids:
 					continue
 				if not competitor.active or not competitor.available:
 					continue
-				if not matches_subcategory(competitor, rule.subcategory):
+				if not matches_subcategory(competitor, subcategory_id):
 					continue
 				if is_blacklisted(
 					competitor.username,

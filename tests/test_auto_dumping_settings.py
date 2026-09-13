@@ -4,7 +4,7 @@ import unittest
 
 from core.config.settings import normalize_settings
 from core.modules.auto_dumping.models import DumpingRule
-from core.modules.auto_dumping.settings import normalize_auto_dumping_settings, normalize_rule, parse_subcategory_id
+from core.modules.auto_dumping.settings import normalize_auto_dumping_settings, normalize_rule, parse_lot_id, parse_subcategory_id
 
 
 class AutoDumpingSettingsTest(unittest.TestCase):
@@ -94,6 +94,34 @@ class AutoDumpingSettingsTest(unittest.TestCase):
 		self.assertEqual(normalize_rule({"subcategory": 4093, "keywords": ["gold"], "dumping_value": 1, "commission_percent": 9})["commission_percent"], 9.0)
 		self.assertEqual(normalize_rule({"subcategory": 4093, "keywords": ["gold"], "dumping_value": 1, "commission_percent": -5})["commission_percent"], 0.0)
 		self.assertEqual(normalize_rule({"subcategory": 4093, "keywords": ["gold"], "dumping_value": 1, "commission_percent": 150})["commission_percent"], 100.0)
+
+	def test_parse_lot_id_accepts_digits_and_offer_url(self):
+		self.assertEqual(parse_lot_id(75213482), "75213482")
+		self.assertEqual(parse_lot_id(" 75213482 "), "75213482")
+		self.assertEqual(parse_lot_id("https://funpay.com/lots/offer?id=75213482"), "75213482")
+
+	def test_parse_lot_id_rejects_garbage(self):
+		for value in ("gold", "", "  ", 0, -3, True, None, "lots/4093"):
+			self.assertIsNone(parse_lot_id(value))
+
+	def test_normalize_lot_rule_without_subcategory(self):
+		rule = normalize_rule({"lot_id": "https://funpay.com/lots/offer?id=75213482", "keywords": ["gold"], "dumping_value": 5})
+
+		self.assertEqual(rule["lot_id"], "75213482")
+		self.assertEqual(rule["subcategory"], 0)
+
+	def test_normalize_rule_requires_lot_or_subcategory(self):
+		self.assertIsNone(normalize_rule({"keywords": ["gold"], "dumping_value": 1}))
+
+	def test_rejects_duplicate_lot_rules(self):
+		settings = normalize_auto_dumping_settings({
+			"rules": [
+				{"id": "one", "lot_id": 75213482, "keywords": ["gold"]},
+				{"id": "two", "lot_id": "https://funpay.com/lots/offer?id=75213482", "keywords": [" GOLD "]},
+			],
+		})
+
+		self.assertEqual([rule["id"] for rule in settings["rules"]], ["one"])
 
 
 if __name__ == "__main__":

@@ -29,6 +29,7 @@ class DumpingRule:
 	dumping_value: float
 	own_min_price: float
 	commission_percent: float = 0.0
+	lot_id: str = ""
 	sellers_blacklist: tuple[str, ...] = ()
 	keywords_blacklist: tuple[str, ...] = ()
 
@@ -45,6 +46,7 @@ class DumpingRule:
 			dumping_value=float(data["dumping_value"]),
 			own_min_price=float(data["own_min_price"]),
 			commission_percent=float(data.get("commission_percent", 0.0)),
+			lot_id=str(data.get("lot_id", "") or ""),
 			sellers_blacklist=tuple(data.get("sellers_blacklist", ())),
 			keywords_blacklist=tuple(data.get("keywords_blacklist", ())),
 		)

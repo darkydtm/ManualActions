@@ -53,7 +53,7 @@ from ...config.constants import (
 )
 from ...common.payloads import CallbackPayloadCache
 from ...runtime.settings import update_host_settings
-from .settings import INTERVAL_PRESETS, normalize_rule, normalize_words, parse_subcategory_id
+from .settings import INTERVAL_PRESETS, normalize_rule, normalize_words, parse_lot_id
 
 
 PAGE_SIZE = 5
@@ -65,7 +65,7 @@ MAX_RULE_REFERENCE = (1 << (PAGE_TOKEN_BYTES * 8)) - 1
 def validate_rule_input(data: dict[str, Any]) -> dict[str, Any]:
 	rule = normalize_rule(data)
 	if not rule:
-		raise ValueError("Укажите ID подраздела, ключевые слова и положительное значение демпинга.")
+		raise ValueError("Укажите ID лота, ключевые слова и положительное значение демпинга.")
 	if rule["competitor_min_price"] < 0 or rule["own_min_price"] < 0:
 		raise ValueError("Минимальные цены не могут быть отрицательными.")
 	return rule
@@ -570,7 +570,7 @@ class TelegramAutoDumpingFlow:
 		keyboard = K(row_width=1)
 		for offset, rule in enumerate(items, page * PAGE_SIZE):
 			keyboard.add(B(
-				f"{rule['subcategory']}: " + ", ".join(rule["keywords"]),
+				f"{rule.get('lot_id') or rule['subcategory']}: " + ", ".join(rule["keywords"]),
 				callback_data=self._rule_callback_with_page(CBT_AUTO_DUMPING_RULE, offset, page),
 			))
 		if not items:
@@ -597,7 +597,8 @@ class TelegramAutoDumpingFlow:
 		keyboard.add(B("Черный список", callback_data=self._blacklist_navigation_callback(CBT_AUTO_DUMPING_BLACKLIST_PAGE, rule_index, None, 0, page)))
 		keyboard.add(B("🗑 Удалить", callback_data=self._rule_callback_with_page(CBT_AUTO_DUMPING_RULE_DELETE, rule_index, page)))
 		keyboard.add(B("◀️ К правилам", callback_data=self._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, call.message.chat.id, None, page)))
-		text = f"<b>Правило {escape(str(rule.get('id', '')))}</b>\nПодкатегория: {escape(str(rule.get('subcategory', '')))}\nКлючевые слова: {escape(', '.join(rule.get('keywords', [])))}"
+		lot_line = f"\nЛот: {escape(str(rule.get('lot_id', '')))}" if rule.get("lot_id") else ""
+		text = f"<b>Правило {escape(str(rule.get('id', '')))}</b>{lot_line}\nПодкатегория: {escape(str(rule.get('subcategory', '')))}\nКлючевые слова: {escape(', '.join(rule.get('keywords', [])))}"
 		self.host.tgbot.edit_message_text(text, call.message.chat.id, call.message.id, reply_markup=keyboard)
 		self.host.tgbot.answer_callback_query(call.id)
 
@@ -624,12 +625,12 @@ class TelegramAutoDumpingFlow:
 		if value != str(call.message.chat.id):
 			self._rule_step_callback(call)
 			return
-		data: dict[str, Any] = {"step": "subcategory", "rule": {}}
+		data: dict[str, Any] = {"step": "lot", "rule": {}}
 		self._ask_rule(
 			call.message.chat.id,
 			call.from_user.id,
 			data,
-			"<b>Новое правило - шаг 1/8</b>\n\nВведите ID подраздела FunPay - цифры из ссылки вида <code>funpay.com/lots/4093</code>",
+			"<b>Новое правило - шаг 1/8</b>\n\nВведите ID вашего лота - цифры из ссылки вида <code>funpay.com/lots/offer?id=75213482</code>",
 			self._rule_cancel_keyboard(),
 		)
 		self.host.tgbot.answer_callback_query(call.id)
@@ -702,13 +703,13 @@ class TelegramAutoDumpingFlow:
 		if text is None:
 			return
 		chat_id, user_id = message.chat.id, message.from_user.id
-		if step == "subcategory":
+		if step == "lot":
 			first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
-			subcategory_id = parse_subcategory_id(first_line)
-			if subcategory_id is None:
-				self.host.tgbot.reply_to(message, "Укажите ID подраздела - цифры из ссылки вида funpay.com/lots/4093")
+			lot_id = parse_lot_id(first_line)
+			if lot_id is None:
+				self.host.tgbot.reply_to(message, "Укажите ID лота - цифры из ссылки вида funpay.com/lots/offer?id=75213482")
 				return
-			rule["subcategory"] = subcategory_id
+			rule["lot_id"] = lot_id
 			data["step"] = "keywords"
 			self._ask_rule(
 				chat_id,
@@ -839,7 +840,28 @@ class TelegramAutoDumpingFlow:
 				self._rule_cancel_keyboard(),
 			)
 		elif value == "confirm":
+			try:
+				own_lots = self.service.gateway.own_lots()
+			except Exception:
+				self.host.tgbot.answer_callback_query(call.id, "Не удалось получить ваши лоты, попробуйте позже.", show_alert=True)
+				return
+			own_lot = next((lot for lot in own_lots if str(lot.id) == str(rule.get("lot_id") or "")), None)
+			if own_lot is None:
+				data["step"] = "lot"
+				self._ask_rule(
+					call.message.chat.id,
+					call.from_user.id,
+					data,
+					"Лот не найден среди ваших активных лотов. Проверьте ID и отправьте ссылку заново.",
+					self._rule_cancel_keyboard(),
+				)
+				self.host.tgbot.answer_callback_query(call.id)
+				return
+			if own_lot.subcategory_id is None:
+				self.host.tgbot.answer_callback_query(call.id, "У лота нет подкатегории, правило создать нельзя.", show_alert=True)
+				return
 			rule["id"] = uuid4().hex
+			rule["subcategory"] = own_lot.subcategory_id
 			try:
 				rule = validate_rule_input(rule)
 			except ValueError as exc:
@@ -847,7 +869,7 @@ class TelegramAutoDumpingFlow:
 				return
 			update_host_settings(self.host, lambda settings: settings["auto_dumping"]["rules"].append(rule))
 			self.host.tg.clear_state(call.message.chat.id, call.from_user.id, True)
-			self.host.tgbot.send_message(call.message.chat.id, f"Правило сохранено: ID {rule['subcategory']}: {', '.join(rule['keywords'])}")
+			self.host.tgbot.send_message(call.message.chat.id, f"Правило сохранено: лот {rule['lot_id']}: {', '.join(rule['keywords'])}")
 		else:
 			self.host.tgbot.answer_callback_query(call.id, "Некорректный шаг.", show_alert=True)
 			return
@@ -857,6 +879,7 @@ class TelegramAutoDumpingFlow:
 	def _rule_summary(rule: dict[str, Any]) -> str:
 		return (
 			"<b>Проверьте правило</b>\n\n"
+			f"Лот: <code>{escape(str(rule.get('lot_id', '')))}</code>\n"
 			f"Подкатегория: <code>{escape(str(rule.get('subcategory', '')))}</code>\n"
 			f"Ключевые слова: <code>{escape(', '.join(rule.get('keywords', [])))}</code>\n"
 			f"Совпадение: <code>{'все' if rule.get('keyword_mode') == 'all' else 'любое'}</code>\n"
