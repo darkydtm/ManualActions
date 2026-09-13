@@ -26,11 +26,11 @@ def raw_lot(lot_id, title, price, sub=None, seller="seller", active=True, availa
 	)
 
 
-def rule(rule_id="rule-1", subcategory_name="Gold", keywords=("gold",), **changes):
+def rule(rule_id="rule-1", subcategory_id=7, keywords=("gold",), **changes):
 	data = {
 		"id": rule_id,
 		"enabled": True,
-		"subcategory": subcategory_name,
+		"subcategory": subcategory_id,
 		"keywords": keywords,
 		"keyword_mode": "any",
 		"competitor_min_price": 0,
@@ -109,19 +109,20 @@ class ParsePriceTest(unittest.TestCase):
 
 
 class MatchesSubcategoryTest(unittest.TestCase):
-	def test_matches_name_case_insensitively(self):
-		lot = Lot("1", "Gold fast", 10, "Gold", "a", raw=raw_lot("1", "Gold fast", 10))
-		self.assertTrue(matches_subcategory(lot, "gold"))
+	def test_matches_equal_ids(self):
+		lot = Lot("1", "Gold fast", 10, "Gold", "a", subcategory_id=7)
+		self.assertTrue(matches_subcategory(lot, 7))
 
-	def test_matches_id_and_fullname(self):
-		lot = Lot("1", "Gold fast", 10, "Gold", "a", raw=raw_lot("1", "Gold fast", 10))
-		self.assertTrue(matches_subcategory(lot, "7"))
-		self.assertTrue(matches_subcategory(lot, "game, gold"))
+	def test_rejects_mismatch_and_missing_id(self):
+		lot = Lot("1", "Gold fast", 10, "Gold", "a", subcategory_id=7)
+		self.assertFalse(matches_subcategory(lot, 8))
+		self.assertFalse(matches_subcategory(Lot("1", "Gold fast", 10, "Gold", "a"), 7))
+		self.assertFalse(matches_subcategory(Lot("1", "Gold fast", 10, "Gold", "a", subcategory_id=None), 7))
 
-	def test_rejects_blank_rule_and_mismatch(self):
-		lot = Lot("1", "Gold fast", 10, "Gold", "a", raw=raw_lot("1", "Gold fast", 10))
-		self.assertFalse(matches_subcategory(lot, ""))
-		self.assertFalse(matches_subcategory(lot, "Silver"))
+	def test_rejects_invalid_wanted_id(self):
+		lot = Lot("1", "Gold fast", 10, "Gold", "a", subcategory_id=7)
+		for wanted in (None, "", "Gold", True, "x"):
+			self.assertFalse(matches_subcategory(lot, wanted))
 
 
 class FunPayGatewayTest(unittest.TestCase):
@@ -203,9 +204,9 @@ class FunPayGatewayTest(unittest.TestCase):
 
 class SelfCompetitionTest(unittest.TestCase):
 	def test_ignores_other_own_lots_as_competitors(self):
-		own_a = Lot("a", "My gold", 100, "Gold", "me")
-		own_b = Lot("b", "My gold", 10, "Gold", "me")
-		alien = Lot("c", "Cheap gold", 50, "Gold", "other")
+		own_a = Lot("a", "My gold", 100, "Gold", "me", subcategory_id=7)
+		own_b = Lot("b", "My gold", 10, "Gold", "me", subcategory_id=7)
+		alien = Lot("c", "Cheap gold", 50, "Gold", "other", subcategory_id=7)
 		service = AutoDumpingService(lambda: {}, Gateway([own_a, own_b], []), Storage())
 
 		decision = service.decide(own_a, [own_a, own_b, alien], config(rule()), {"a", "b"})
@@ -216,16 +217,16 @@ class SelfCompetitionTest(unittest.TestCase):
 
 class SingleNotifyTest(unittest.TestCase):
 	def test_conflict_notifies_exactly_once(self):
-		own = Lot("own", "My gold", 100, "Gold", "me")
-		alien = Lot("c", "Gold fast", 50, "Gold", "other")
+		own = Lot("own", "My gold", 100, "Gold", "me", subcategory_id=7)
+		alien = Lot("c", "Gold fast", 50, "Gold", "other", subcategory_id=7)
 		settings = {
 			"enabled": True,
 			"interval_minutes": 5,
 			"rules": [
-				{"id": "one", "enabled": True, "subcategory": "Gold", "keywords": ["gold"],
+				{"id": "one", "enabled": True, "subcategory": 7, "keywords": ["gold"],
 					"keyword_mode": "any", "competitor_min_price": 0, "price_mode": "fixed",
 					"dumping_value": 5, "own_min_price": 0},
-				{"id": "two", "enabled": True, "subcategory": "Gold", "keywords": ["fast"],
+				{"id": "two", "enabled": True, "subcategory": 7, "keywords": ["fast"],
 					"keyword_mode": "any", "competitor_min_price": 0, "price_mode": "fixed",
 					"dumping_value": 1, "own_min_price": 0},
 			],
@@ -239,16 +240,16 @@ class SingleNotifyTest(unittest.TestCase):
 		self.assertEqual(len(notifier.calls), 1)
 
 	def test_repeated_cycle_does_not_renotify_detected(self):
-		own = Lot("own", "My gold", 49.0, "Gold", "me")
-		alien = Lot("c", "Gold fast", 50, "Gold", "other")
+		own = Lot("own", "My gold", 49.0, "Gold", "me", subcategory_id=7)
+		alien = Lot("c", "Gold fast", 50, "Gold", "other", subcategory_id=7)
 		settings = {
 			"enabled": True,
 			"interval_minutes": 5,
 			"rules": [
-				{"id": "one", "enabled": True, "subcategory": "Gold", "keywords": ["gold"],
+				{"id": "one", "enabled": True, "subcategory": 7, "keywords": ["gold"],
 					"keyword_mode": "any", "competitor_min_price": 0, "price_mode": "fixed",
 					"dumping_value": 1, "own_min_price": 0},
-				{"id": "two", "enabled": True, "subcategory": "Gold", "keywords": ["fast"],
+				{"id": "two", "enabled": True, "subcategory": 7, "keywords": ["fast"],
 					"keyword_mode": "any", "competitor_min_price": 0, "price_mode": "fixed",
 					"dumping_value": 1, "own_min_price": 0},
 			],
@@ -265,8 +266,8 @@ class SingleNotifyTest(unittest.TestCase):
 
 class PriceGuardTest(unittest.TestCase):
 	def test_skips_dust_difference(self):
-		own = Lot("own", "My gold", 45.0, "Gold", "me")
-		alien = Lot("c", "Gold", 50, "Gold", "other")
+		own = Lot("own", "My gold", 45.0, "Gold", "me", subcategory_id=7)
+		alien = Lot("c", "Gold", 50, "Gold", "other", subcategory_id=7)
 		service = AutoDumpingService(lambda: {}, Gateway([own], [alien]), Storage())
 
 		decision = service.decide(own, [alien], config(rule()), {"own"})
@@ -274,13 +275,13 @@ class PriceGuardTest(unittest.TestCase):
 		self.assertEqual(decision.candidate.final_price, 45.0)
 
 	def test_run_cycle_skips_dust_and_zero_target(self):
-		own = Lot("own", "My gold", 45.0, "Gold", "me")
-		alien = Lot("c", "Gold", 50, "Gold", "other")
+		own = Lot("own", "My gold", 45.0, "Gold", "me", subcategory_id=7)
+		alien = Lot("c", "Gold", 50, "Gold", "other", subcategory_id=7)
 		settings = {
 			"enabled": True,
 			"interval_minutes": 5,
 			"rules": [{
-				"id": "one", "enabled": True, "subcategory": "Gold", "keywords": ["gold"],
+				"id": "one", "enabled": True, "subcategory": 7, "keywords": ["gold"],
 				"keyword_mode": "any", "competitor_min_price": 0, "price_mode": "fixed",
 				"dumping_value": 5, "own_min_price": 0,
 			}],
@@ -294,13 +295,13 @@ class PriceGuardTest(unittest.TestCase):
 		self.assertEqual(result["updated"], 0)
 
 	def test_run_cycle_skips_non_positive_target(self):
-		own = Lot("own", "My gold", 100, "Gold", "me")
-		alien = Lot("c", "Gold", 3, "Gold", "other")
+		own = Lot("own", "My gold", 100, "Gold", "me", subcategory_id=7)
+		alien = Lot("c", "Gold", 3, "Gold", "other", subcategory_id=7)
 		settings = {
 			"enabled": True,
 			"interval_minutes": 5,
 			"rules": [{
-				"id": "one", "enabled": True, "subcategory": "Gold", "keywords": ["gold"],
+				"id": "one", "enabled": True, "subcategory": 7, "keywords": ["gold"],
 				"keyword_mode": "any", "competitor_min_price": 0, "price_mode": "fixed",
 				"dumping_value": 5, "own_min_price": 0,
 			}],
@@ -340,6 +341,19 @@ class SchedulerResilienceTest(unittest.TestCase):
 		scheduler.set_interval(0)
 
 		self.assertEqual(scheduler.interval_minutes, 1)
+
+class ToLotSubcategoryIdTest(unittest.TestCase):
+	def test_reads_id_from_object_digit_string_and_none(self):
+		gateway = FunPayCatalogGateway(SimpleNamespace(profile=None, account=None))
+
+		obj = gateway.to_lot(raw_lot("1", "Gold", 10))
+		self.assertEqual(obj.subcategory_id, 7)
+
+		str_lot = SimpleNamespace(id="2", description="Gold", price=10, subcategory="4093", username="a")
+		self.assertEqual(gateway.to_lot(str_lot).subcategory_id, 4093)
+
+		name_lot = SimpleNamespace(id="3", description="Gold", price=10, subcategory="Gold", username="a")
+		self.assertIsNone(gateway.to_lot(name_lot).subcategory_id)
 
 
 if __name__ == "__main__":

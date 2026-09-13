@@ -99,7 +99,7 @@ class AutoDumpingService:
 		if not any(rule.enabled for rule in config.rules):
 			return "no enabled rules"
 		if not any(rule.enabled and matches_subcategory(own_lot, rule.subcategory) for rule in config.rules):
-			return f"no rule for subcategory {own_lot.subcategory!r}"
+			return f"no rule for subcategory id {own_lot.subcategory_id!r}"
 		return "no competitors matched keywords and filters"
 
 	def decide(

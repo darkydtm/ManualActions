@@ -24,18 +24,17 @@ def is_blacklisted(
 	return any(keyword.casefold() in words for keyword in keywords)
 
 
-def matches_subcategory(lot: Any, rule_subcategory: str) -> bool:
-	wanted = str(rule_subcategory or "").strip().casefold()
-	if not wanted:
+def matches_subcategory(lot: Any, subcategory_id: int) -> bool:
+	if isinstance(subcategory_id, bool):
 		return False
-	aliases = {str(getattr(lot, "subcategory", "") or "").strip().casefold()}
-	raw_subcategory = getattr(getattr(lot, "raw", None), "subcategory", None)
-	if isinstance(raw_subcategory, (str, int, float)):
-		aliases.add(str(raw_subcategory).strip().casefold())
-	elif raw_subcategory is not None:
-		for attr in ("id", "name", "fullname"):
-			value = getattr(raw_subcategory, attr, None)
-			if value is not None and str(value).strip():
-				aliases.add(str(value).strip().casefold())
-	aliases.discard("")
-	return wanted in aliases
+	try:
+		wanted = int(subcategory_id)
+	except (TypeError, ValueError):
+		return False
+	actual = getattr(lot, "subcategory_id", None)
+	if isinstance(actual, bool):
+		return False
+	try:
+		return int(actual) == wanted
+	except (TypeError, ValueError):
+		return False

@@ -11,6 +11,7 @@ class Lot:
 	price: float
 	subcategory: str
 	username: str
+	subcategory_id: int | None = None
 	active: bool = True
 	available: bool = True
 	raw: Any = None
@@ -20,7 +21,7 @@ class Lot:
 class DumpingRule:
 	id: str
 	enabled: bool
-	subcategory: str
+	subcategory: int
 	keywords: tuple[str, ...]
 	keyword_mode: str
 	competitor_min_price: float
@@ -35,7 +36,7 @@ class DumpingRule:
 		return cls(
 			id=str(data["id"]),
 			enabled=bool(data["enabled"]),
-			subcategory=str(data["subcategory"]),
+			subcategory=int(data["subcategory"]),
 			keywords=tuple(data["keywords"]),
 			keyword_mode=str(data["keyword_mode"]),
 			competitor_min_price=float(data["competitor_min_price"]),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import re
 from typing import Any
 from uuid import uuid4
 
@@ -23,12 +24,12 @@ def normalize_auto_dumping_settings(data: Any) -> dict[str, Any]:
 	interval = data.get("interval_minutes")
 	if isinstance(interval, int) and not isinstance(interval, bool) and interval > 0:
 		settings["interval_minutes"] = interval
-	seen: set[tuple[str, tuple[str, ...]]] = set()
+	seen: set[tuple[int, tuple[str, ...]]] = set()
 	for item in data.get("rules", []):
 		rule = normalize_rule(item)
 		if not rule:
 			continue
-		key = (rule["subcategory"].casefold(), tuple(word.casefold() for word in rule["keywords"]))
+		key = (rule["subcategory"], tuple(word.casefold() for word in rule["keywords"]))
 		if key in seen:
 			continue
 		seen.add(key)
@@ -42,9 +43,9 @@ def normalize_rule(data: Any) -> dict[str, Any] | None:
 	rule_id = str(data.get("id") or "")
 	if not rule_id.strip():
 		rule_id = uuid4().hex
-	subcategory = data.get("subcategory")
+	subcategory = parse_subcategory_id(data.get("subcategory"))
 	keywords = normalize_words(data.get("keywords"))
-	if not isinstance(subcategory, str) or not subcategory.strip() or not keywords:
+	if subcategory is None or not keywords:
 		return None
 	keyword_mode = data.get("keyword_mode", "any")
 	if keyword_mode not in ("any", "all"):
@@ -59,7 +60,7 @@ def normalize_rule(data: Any) -> dict[str, Any] | None:
 	return {
 		"id": rule_id,
 		"enabled": data.get("enabled") is not False,
-		"subcategory": subcategory.strip(),
+		"subcategory": subcategory,
 		"keywords": keywords,
 		"keyword_mode": keyword_mode,
 		"competitor_min_price": competitor_min_price,
@@ -69,6 +70,27 @@ def normalize_rule(data: Any) -> dict[str, Any] | None:
 		"sellers_blacklist": normalize_words(data.get("sellers_blacklist")),
 		"keywords_blacklist": normalize_words(data.get("keywords_blacklist")),
 	}
+
+
+SUBCATEGORY_URL_RE = re.compile(r"/lots/(\d+)")
+
+
+def parse_subcategory_id(value: Any) -> int | None:
+	if isinstance(value, bool):
+		return None
+	if isinstance(value, int):
+		return value if value > 0 else None
+	if isinstance(value, float):
+		return int(value) if value.is_integer() and value > 0 else None
+	if isinstance(value, str):
+		text = value.strip()
+		if re.fullmatch(r"\d+", text):
+			result = int(text)
+			return result if result > 0 else None
+		match = SUBCATEGORY_URL_RE.search(text)
+		if match:
+			return int(match.group(1))
+	return None
 
 
 def normalize_words(value: Any) -> list[str]:

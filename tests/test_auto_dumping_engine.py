@@ -12,7 +12,7 @@ def rule(**changes):
 	data = {
 		"id": "rule",
 		"enabled": True,
-		"subcategory": "game",
+		"subcategory": 7,
 		"keywords": ("gold", "fast"),
 		"keyword_mode": "any",
 		"competitor_min_price": 0,

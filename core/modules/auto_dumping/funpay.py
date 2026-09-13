@@ -7,6 +7,7 @@ from typing import Any
 from ...config.constants import LOGGER_NAME
 from ...funpay.lots import get_profile_lots
 from .models import Lot
+from .settings import parse_subcategory_id
 
 
 logger = logging.getLogger(LOGGER_NAME)
@@ -86,18 +87,18 @@ class FunPayCatalogGateway:
 		return get_profile_lots(self.cardinal)
 
 	def _public_catalog(self, fetch: Any) -> list[Lot]:
-		refs: dict[str, tuple[Any, Any]] = {}
+		refs: dict[int, tuple[Any, Any]] = {}
 		for raw in self._profile_lots():
 			subcategory = getattr(raw, "subcategory", None)
 			if isinstance(subcategory, (str, int, float)):
-				sub_id, sub_type = subcategory, None
+				sub_id, sub_type = parse_subcategory_id(subcategory), None
 			elif subcategory is None:
 				continue
 			else:
-				sub_id, sub_type = getattr(subcategory, "id", None), getattr(subcategory, "type", None)
+				sub_id, sub_type = parse_subcategory_id(getattr(subcategory, "id", None)), getattr(subcategory, "type", None)
 			if sub_id is None:
 				continue
-			refs.setdefault(str(sub_id), (sub_id, sub_type))
+			refs.setdefault(sub_id, (sub_id, sub_type))
 		lots: list[Lot] = []
 		seen: set[str] = set()
 		errors = 0
@@ -160,11 +161,19 @@ class FunPayCatalogGateway:
 				or getattr(subcategory, "id", None)
 				or ""
 			)
+		subcategory = getattr(lot, "subcategory", None)
+		if isinstance(subcategory, (str, int, float)):
+			subcategory_id = parse_subcategory_id(subcategory)
+		elif subcategory is None:
+			subcategory_id = None
+		else:
+			subcategory_id = parse_subcategory_id(getattr(subcategory, "id", None))
 		return Lot(
 			id=str(getattr(lot, "id", None) or getattr(lot, "lot_id", "")),
 			title=str(getattr(lot, "description", None) or getattr(lot, "title", "")),
 			price=parse_price(getattr(lot, "price", 0)),
 			subcategory=subcategory_name,
+			subcategory_id=subcategory_id,
 			username=str(getattr(lot, "username", None) or getattr(lot, "seller", "")),
 			active=getattr(lot, "active", True) is not False,
 			available=getattr(lot, "available", True) is not False,

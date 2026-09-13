@@ -53,7 +53,7 @@ from ...config.constants import (
 )
 from ...common.payloads import CallbackPayloadCache
 from ...runtime.settings import update_host_settings
-from .settings import INTERVAL_PRESETS, normalize_rule, normalize_words
+from .settings import INTERVAL_PRESETS, normalize_rule, normalize_words, parse_subcategory_id
 
 
 PAGE_SIZE = 5
@@ -65,7 +65,7 @@ MAX_RULE_REFERENCE = (1 << (PAGE_TOKEN_BYTES * 8)) - 1
 def validate_rule_input(data: dict[str, Any]) -> dict[str, Any]:
 	rule = normalize_rule(data)
 	if not rule:
-		raise ValueError("Укажите одну подкатегорию, ключевые слова и положительное значение демпинга.")
+		raise ValueError("Укажите ID подраздела, ключевые слова и положительное значение демпинга.")
 	if rule["competitor_min_price"] < 0 or rule["own_min_price"] < 0:
 		raise ValueError("Минимальные цены не могут быть отрицательными.")
 	return rule
@@ -570,7 +570,7 @@ class TelegramAutoDumpingFlow:
 		keyboard = K(row_width=1)
 		for offset, rule in enumerate(items, page * PAGE_SIZE):
 			keyboard.add(B(
-				rule["subcategory"] + ": " + ", ".join(rule["keywords"]),
+				f"{rule['subcategory']}: " + ", ".join(rule["keywords"]),
 				callback_data=self._rule_callback_with_page(CBT_AUTO_DUMPING_RULE, offset, page),
 			))
 		if not items:
@@ -629,7 +629,7 @@ class TelegramAutoDumpingFlow:
 			call.message.chat.id,
 			call.from_user.id,
 			data,
-			"<b>Новое правило - шаг 1/7</b>\n\nВведите подкатегорию FunPay - точное название раздела.\nНапример: <code>Золото</code>",
+			"<b>Новое правило - шаг 1/7</b>\n\nВведите ID подраздела FunPay - цифры из ссылки вида <code>funpay.com/lots/4093</code>",
 			self._rule_cancel_keyboard(),
 		)
 		self.host.tgbot.answer_callback_query(call.id)
@@ -704,10 +704,11 @@ class TelegramAutoDumpingFlow:
 		chat_id, user_id = message.chat.id, message.from_user.id
 		if step == "subcategory":
 			first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
-			if not first_line:
-				self.host.tgbot.reply_to(message, "Подкатегория не может быть пустой. Например: Золото")
+			subcategory_id = parse_subcategory_id(first_line)
+			if subcategory_id is None:
+				self.host.tgbot.reply_to(message, "Укажите ID подраздела - цифры из ссылки вида funpay.com/lots/4093")
 				return
-			rule["subcategory"] = first_line
+			rule["subcategory"] = subcategory_id
 			data["step"] = "keywords"
 			self._ask_rule(
 				chat_id,
@@ -831,7 +832,7 @@ class TelegramAutoDumpingFlow:
 				return
 			update_host_settings(self.host, lambda settings: settings["auto_dumping"]["rules"].append(rule))
 			self.host.tg.clear_state(call.message.chat.id, call.from_user.id, True)
-			self.host.tgbot.send_message(call.message.chat.id, f"Правило сохранено: {rule['subcategory']}: {', '.join(rule['keywords'])}")
+			self.host.tgbot.send_message(call.message.chat.id, f"Правило сохранено: ID {rule['subcategory']}: {', '.join(rule['keywords'])}")
 		else:
 			self.host.tgbot.answer_callback_query(call.id, "Некорректный шаг.", show_alert=True)
 			return

@@ -7,8 +7,8 @@ from core.modules.auto_dumping.models import AutoDumpingConfig, DumpingRule, Lot
 from core.modules.auto_dumping.service import AutoDumpingService
 
 
-def raw_lot(lot_id, title, price, username, subcategory="game", owner=False):
-	return Lot(lot_id, title, price, subcategory, username, raw=SimpleNamespace(owner=owner))
+def raw_lot(lot_id, title, price, username, subcategory_id=7, owner=False):
+	return Lot(lot_id, title, price, f"sub-{subcategory_id}", username, subcategory_id=subcategory_id, raw=SimpleNamespace(owner=owner))
 
 
 def service_config(settings):
@@ -60,7 +60,7 @@ class AutoDumpingServiceTest(unittest.TestCase):
 			"enabled": True,
 			"interval_minutes": 5,
 			"rules": [{
-				"id": "rule-1", "enabled": True, "subcategory": "game", "keywords": ["gold"],
+				"id": "rule-1", "enabled": True, "subcategory": 7, "keywords": ["gold"],
 				"keyword_mode": "any", "competitor_min_price": 0, "price_mode": "fixed",
 				"dumping_value": 5, "own_min_price": 10,
 			}],
@@ -107,8 +107,7 @@ class AutoDumpingServiceTest(unittest.TestCase):
 		self.assertIsNone(service.decide(own, catalog, service_config(config)))
 
 	def test_run_cycle_counts_skipped_when_no_rule_matches(self):
-		own = raw_lot("own", "My silver", 100, "me", owner=True)
-		own = Lot(own.id, own.title, own.price, "Silver", own.username, raw=own.raw)
+		own = raw_lot("own", "My silver", 100, "me", subcategory_id=8, owner=True)
 		gateway = Gateway([own], [raw_lot("c", "Gold", 50, "other")])
 		service = AutoDumpingService(lambda: self.config(), gateway, Storage())
 
@@ -133,8 +132,7 @@ class AutoDumpingServiceTest(unittest.TestCase):
 		config = service_config(self.config())
 		service = AutoDumpingService(lambda: self.config(), Gateway([], []), Storage())
 
-		silver = raw_lot("s", "Silver", 100, "me", owner=True)
-		silver = Lot(silver.id, silver.title, silver.price, "Silver", silver.username, raw=silver.raw)
+		silver = raw_lot("s", "Silver", 100, "me", subcategory_id=8, owner=True)
 		self.assertIn("subcategory", service.describe_miss(silver, config))
 
 		gold = raw_lot("g", "My gold", 100, "me", owner=True)

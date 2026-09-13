@@ -154,7 +154,7 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		rule = {
 			"id": rule_id,
 			"enabled": True,
-			"subcategory": "game",
+			"subcategory": 4093,
 			"keywords": ["gold"],
 			"sellers_blacklist": [],
 			"keywords_blacklist": [],
@@ -187,7 +187,7 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.assertNotIn("JSON", self.host.tgbot.messages[-1][1])
 		self.assertEqual(self.host.tg.get_state(1, 7)["data"]["step"], "subcategory")
 
-		self.flow.save_rule(self._message("game"))
+		self.flow.save_rule(self._message("https://funpay.com/lots/4093"))
 		self.flow.save_rule(self._message("gold, sword"))
 		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "mode:all"))
 		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "price:percent"))
@@ -197,13 +197,21 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "confirm"))
 
 		rule = self.host.settings["auto_dumping"]["rules"][0]
-		self.assertEqual(rule["subcategory"], "game")
+		self.assertEqual(rule["subcategory"], 4093)
 		self.assertEqual(rule["keywords"], ["gold", "sword"])
 		self.assertEqual(rule["keyword_mode"], "all")
 		self.assertEqual(rule["price_mode"], "percent")
 		self.assertEqual(rule["dumping_value"], 10.0)
 		self.assertEqual(rule["competitor_min_price"], 20.0)
 		self.assertEqual(rule["own_min_price"], 30.0)
+
+	def test_add_rule_rejects_name_subcategory(self):
+		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "1"))
+		self.flow.save_rule(self._message("Золото"))
+
+		self.assertEqual(self.host.tg.get_state(1, 7)["data"]["step"], "subcategory")
+		self.assertIn("ID подраздела", self.host.tgbot.messages[-1][1])
+		self.assertEqual(self.host.settings["auto_dumping"]["rules"], [])
 
 	def test_status_button_works_for_negative_chat_ids(self):
 		self.flow.show_main(-1001234567890)
@@ -307,7 +315,7 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 	def test_rules_screen_has_five_rules_and_four_navigation_buttons(self):
 		self.host.settings["auto_dumping"]["rules"] = [
-			{"id": str(index), "enabled": True, "subcategory": "game", "keywords": [str(index)]}
+			{"id": str(index), "enabled": True, "subcategory": 4093, "keywords": [str(index)]}
 			for index in range(6)
 		]
 		call = self._call(self.flow._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, 1, None, 0))
@@ -321,7 +329,7 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 	def test_rule_detail_keeps_originating_rules_page(self):
 		self.host.settings["auto_dumping"]["rules"] = [
-			{"id": str(index), "subcategory": "game", "keywords": [str(index)]}
+			{"id": str(index), "subcategory": 4093, "keywords": [str(index)]}
 			for index in range(6)
 		]
 		page = 1
@@ -553,8 +561,8 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 	def test_rule_callback_rejects_reordered_duplicate_id_target(self):
 		self.host.settings["auto_dumping"]["rules"] = [
-			self._rule("duplicate", subcategory="first", enabled=False),
-			self._rule("duplicate", subcategory="target", enabled=False),
+			self._rule("duplicate", subcategory=101, enabled=False),
+			self._rule("duplicate", subcategory=102, enabled=False),
 		]
 		self.flow.show_rules(self._call(self.flow._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, 1, None, 0)))
 		callback = self.host.tgbot.edits[-1][3].rows[1][0].callback_data
@@ -589,8 +597,8 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 	def test_blacklist_save_rejects_reordered_duplicate_id_target(self):
 		self.host.settings["auto_dumping"]["rules"] = [
-			self._rule("duplicate", subcategory="first", sellers_blacklist=["first"]),
-			self._rule("duplicate", subcategory="target", sellers_blacklist=["target"]),
+			self._rule("duplicate", subcategory=101, sellers_blacklist=["first"]),
+			self._rule("duplicate", subcategory=102, sellers_blacklist=["target"]),
 		]
 		message = self._message("new", {"rule_id": "duplicate", "rule_index": 1, "kind": "sellers", "page": 0, "message_id": 2})
 		self.host.settings["auto_dumping"]["rules"].reverse()
@@ -692,7 +700,7 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.assertEqual(self.flow._parse_page_callback(data, CBT_AUTO_DUMPING_BLACKLIST_PAGE), (7, "sellers", 2))
 
 	def test_blacklist_page_callbacks_fit_for_generated_and_arbitrary_ids(self):
-		generated_id = normalize_rule({"subcategory": "game", "keywords": ["gold"]})["id"]
+		generated_id = normalize_rule({"subcategory": 4093, "keywords": ["gold"]})["id"]
 		rule_ids = (generated_id, "x" * 20)
 		self.host.settings["auto_dumping"]["rules"] = [{"id": rule_id} for rule_id in rule_ids]
 
@@ -723,7 +731,7 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 	def test_rule_callbacks_use_indexes_and_resolve_exact_long_ids(self):
 		rule_ids = ("x" * 200, "second-rule")
 		self.host.settings["auto_dumping"]["rules"] = [
-			{"id": rule_id, "enabled": False, "subcategory": "game", "keywords": ["gold"]}
+			{"id": rule_id, "enabled": False, "subcategory": 4093, "keywords": ["gold"]}
 			for rule_id in rule_ids
 		]
 		call = SimpleNamespace(
@@ -748,15 +756,15 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 	def test_show_rule_uses_index_when_rule_ids_are_duplicate(self):
 		self.host.settings["auto_dumping"]["rules"] = [
-			{"id": "duplicate", "enabled": False, "subcategory": "first", "keywords": ["one"]},
-			{"id": "duplicate", "enabled": True, "subcategory": "second", "keywords": ["two"]},
+			{"id": "duplicate", "enabled": False, "subcategory": 101, "keywords": ["one"]},
+			{"id": "duplicate", "enabled": True, "subcategory": 102, "keywords": ["two"]},
 		]
 		self.flow.show_rules(self._call(self.flow._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, 1, None, 0)))
 		call = self._call(self.host.tgbot.edits[-1][3].rows[1][0].callback_data, "show")
 
 		self.flow.show_rule(call)
 
-		self.assertIn("Подкатегория: second", self.host.tgbot.edits[-1][0])
+		self.assertIn("Подкатегория: 102", self.host.tgbot.edits[-1][0])
 
 	def test_toggle_rule_uses_index_when_rule_ids_are_duplicate(self):
 		self.host.settings["auto_dumping"]["rules"] = [
@@ -773,9 +781,9 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 	def test_delete_rule_uses_index_when_rule_ids_are_duplicate(self):
 		self.host.settings["auto_dumping"]["rules"] = [
-			{"id": "duplicate", "subcategory": "first", "keywords": ["one"]},
-			{"id": "duplicate", "subcategory": "second", "keywords": ["two"]},
-			{"id": "other", "subcategory": "third", "keywords": ["three"]},
+			{"id": "duplicate", "subcategory": 101, "keywords": ["one"]},
+			{"id": "duplicate", "subcategory": 102, "keywords": ["two"]},
+			{"id": "other", "subcategory": 103, "keywords": ["three"]},
 		]
 
 		self.flow.show_rules(self._call(self.flow._page_callback(CBT_AUTO_DUMPING_RULES_PAGE, 1, None, 0)))
@@ -785,7 +793,7 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 		self.assertEqual(
 			[(rule["id"], rule["subcategory"]) for rule in self.host.settings["auto_dumping"]["rules"]],
-			[("duplicate", "first"), ("other", "third")],
+			[("duplicate", 101), ("other", 103)],
 		)
 
 	def test_page_callback_rejects_pages_outside_callback_range(self):
@@ -840,9 +848,9 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 
 	def test_rule_validation_rejects_empty_keywords_and_nonpositive_dumping(self):
 		with self.assertRaises(ValueError):
-			validate_rule_input({"subcategory": "game", "keywords": [], "dumping_value": 1})
+			validate_rule_input({"subcategory": 4093, "keywords": [], "dumping_value": 1})
 		with self.assertRaises(ValueError):
-			validate_rule_input({"subcategory": "game", "keywords": ["gold"], "dumping_value": 0})
+			validate_rule_input({"subcategory": 4093, "keywords": ["gold"], "dumping_value": 0})
 
 
 class AutoDumpingCycleSummaryTest(unittest.TestCase):
