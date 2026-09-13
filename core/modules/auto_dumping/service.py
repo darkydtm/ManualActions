@@ -80,7 +80,7 @@ class AutoDumpingService:
 					self.gateway.update_price(own_lot, target)
 					result["updated"] += 1
 					applied = True
-					logger.info("Auto-dumping updated lot %s: %.2f -> %.2f (competitor %s %.2f).", own_lot.id, own_lot.price, target, decision.candidate.lot.id, decision.candidate.competitor_price)
+					logger.info("Auto-dumping updated lot %s: %.2f -> %.2f net (competitor %s buyer %.2f).", own_lot.id, own_lot.price, target, decision.candidate.lot.id, decision.candidate.competitor_price)
 				else:
 					result["skipped"] += 1
 					logger.debug("Auto-dumping skipped %s: price %.2f already at target.", own_lot.id, own_lot.price)

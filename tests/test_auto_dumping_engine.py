@@ -38,6 +38,18 @@ class AutoDumpingEngineTest(unittest.TestCase):
 		self.assertEqual(calculate_price(100.25, rule(price_mode="fixed", dumping_value=5)), 95.25)
 		self.assertEqual(calculate_price(100.25, rule(price_mode="percent", dumping_value=10)), 90.225)
 
+	def test_fixed_dumping_subtracts_from_seller_price(self):
+		with_commission = rule(price_mode="fixed", dumping_value=5, commission_percent=10)
+		self.assertAlmostEqual(calculate_price(110.0, with_commission), 95.0)
+
+	def test_percent_dumping_matches_seller_and_buyer_base(self):
+		with_commission = rule(price_mode="percent", dumping_value=10, commission_percent=10)
+		self.assertAlmostEqual(calculate_price(110.0, with_commission), 90.0)
+
+	def test_zero_commission_keeps_old_math(self):
+		plain = rule(price_mode="fixed", dumping_value=5)
+		self.assertEqual(calculate_price(100.0, plain), 95.0)
+
 	def test_resolves_by_keyword_count_then_final_price_and_marks_tie(self):
 		lot = Lot("competitor", "Gold", 20, "game", "seller")
 		first = RuleCandidate(rule(id="one"), lot, 1, 20, 15, 15)

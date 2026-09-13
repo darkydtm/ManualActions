@@ -629,7 +629,7 @@ class TelegramAutoDumpingFlow:
 			call.message.chat.id,
 			call.from_user.id,
 			data,
-			"<b>Новое правило - шаг 1/7</b>\n\nВведите ID подраздела FunPay - цифры из ссылки вида <code>funpay.com/lots/4093</code>",
+			"<b>Новое правило - шаг 1/8</b>\n\nВведите ID подраздела FunPay - цифры из ссылки вида <code>funpay.com/lots/4093</code>",
 			self._rule_cancel_keyboard(),
 		)
 		self.host.tgbot.answer_callback_query(call.id)
@@ -714,7 +714,7 @@ class TelegramAutoDumpingFlow:
 				chat_id,
 				user_id,
 				data,
-				"<b>Шаг 2/7</b>\n\nВведите ключевые слова через запятую, с новой строки или файлом .txt.\nНапример: <code>gemini, pro, 18 месяцев</code>",
+				"<b>Шаг 2/8</b>\n\nВведите ключевые слова через запятую, с новой строки или файлом .txt.\nНапример: <code>gemini, pro, 18 месяцев</code>",
 				self._rule_cancel_keyboard(),
 			)
 			return
@@ -729,31 +729,46 @@ class TelegramAutoDumpingFlow:
 				chat_id,
 				user_id,
 				data,
-				"<b>Шаг 3/7</b>\n\nКогда срабатывать правилу - при любом совпадении или только когда в названии есть все слова?",
+				"<b>Шаг 3/8</b>\n\nКогда срабатывать правилу - при любом совпадении или только когда в названии есть все слова?",
 				self._keyword_mode_keyboard(),
 			)
 			return
-		elif step in ("dumping_value", "competitor_min_price", "own_min_price"):
+		elif step in ("dumping_value", "competitor_min_price", "own_min_price", "commission_percent"):
 			value = self._parse_amount(text)
-			positive = step == "dumping_value"
-			if value is None or (value <= 0 if positive else value < 0):
-				if positive:
+			if step == "commission_percent":
+				valid = value is not None and 0 <= value <= 100
+			elif step == "dumping_value":
+				valid = value is not None and value > 0
+			else:
+				valid = value is not None and value >= 0
+			if not valid:
+				if step == "commission_percent":
+					self.host.tgbot.reply_to(message, "Введите комиссию раздела в процентах от 0 до 100. Например: 9")
+				elif step == "dumping_value":
 					example = "Например: 10 (процентов)" if rule.get("price_mode") == "percent" else "Например: 5 (рублей)"
 					self.host.tgbot.reply_to(message, f"Введите положительное число. {example}")
 				else:
 					self.host.tgbot.reply_to(message, "Введите 0 или больше. Например: 100")
 				return
 			rule[step] = value
-			next_step = {"dumping_value": "competitor_min_price", "competitor_min_price": "own_min_price", "own_min_price": "confirm"}[step]
+			next_step = {"dumping_value": "competitor_min_price", "competitor_min_price": "own_min_price", "own_min_price": "commission_percent", "commission_percent": "confirm"}[step]
 			data["step"] = next_step
 			if next_step == "confirm":
 				self._ask_rule(chat_id, user_id, data, self._rule_summary(rule), self._confirm_keyboard())
+			elif next_step == "commission_percent":
+				self._ask_rule(
+					chat_id,
+					user_id,
+					data,
+					"<b>Шаг 8/8</b>\n\nКомиссия раздела в процентах - FunPay начисляет ее поверх вашей цены. 0 - без учета.\nНапример: <code>9</code>",
+					self._rule_cancel_keyboard(),
+				)
 			elif next_step == "competitor_min_price":
 				self._ask_rule(
 					chat_id,
 					user_id,
 					data,
-					"<b>Шаг 6/7</b>\n\nНиже какой цены конкурента не опускаться? 0 - без ограничения.\nНапример: <code>100</code>",
+					"<b>Шаг 6/8</b>\n\nНиже какой цены конкурента не опускаться? 0 - без ограничения.\nНапример: <code>100</code>",
 					self._rule_cancel_keyboard(),
 				)
 			else:
@@ -761,7 +776,7 @@ class TelegramAutoDumpingFlow:
 					chat_id,
 					user_id,
 					data,
-					"<b>Шаг 7/7</b>\n\nНиже какой своей цены не опускаться? 0 - без ограничения.\nНапример: <code>50</code>",
+					"<b>Шаг 7/8</b>\n\nНиже какой своей цены не опускаться? 0 - без ограничения.\nНапример: <code>50</code>",
 					self._rule_cancel_keyboard(),
 				)
 			return
@@ -770,7 +785,7 @@ class TelegramAutoDumpingFlow:
 				chat_id,
 				user_id,
 				data,
-				"<b>Шаг 3/7</b>\n\nВыберите кнопкой: любое слово или все слова?",
+				"<b>Шаг 3/8</b>\n\nВыберите кнопкой: любое слово или все слова?",
 				self._keyword_mode_keyboard(),
 			)
 			return
@@ -779,7 +794,7 @@ class TelegramAutoDumpingFlow:
 				chat_id,
 				user_id,
 				data,
-				"<b>Шаг 4/7</b>\n\nКак снижать цену: фиксированной суммой или процентом?",
+				"<b>Шаг 4/8</b>\n\nКак снижать цену: фиксированной суммой или процентом?",
 				self._price_mode_keyboard(),
 			)
 			return
@@ -805,7 +820,7 @@ class TelegramAutoDumpingFlow:
 				call.message.chat.id,
 				call.from_user.id,
 				data,
-				"<b>Шаг 4/7</b>\n\nКак снижать цену: фиксированной суммой в рублях или процентом?",
+				"<b>Шаг 4/8</b>\n\nКак снижать цену: фиксированной суммой в рублях или процентом?",
 				self._price_mode_keyboard(),
 			)
 		elif value in ("price:fixed", "price:percent"):
@@ -820,7 +835,7 @@ class TelegramAutoDumpingFlow:
 				call.message.chat.id,
 				call.from_user.id,
 				data,
-				f"<b>Шаг 5/7</b>\n\nНа сколько {unit} опускаться ниже конкурента?\n{example}",
+				f"<b>Шаг 5/8</b>\n\nНа сколько {unit} опускаться ниже конкурента?\n{example}",
 				self._rule_cancel_keyboard(),
 			)
 		elif value == "confirm":
@@ -848,6 +863,7 @@ class TelegramAutoDumpingFlow:
 			f"Демпинг: <code>{rule.get('dumping_value')} {'%' if rule.get('price_mode') == 'percent' else '₽'}</code>\n"
 			f"Минимум конкурента: <code>{rule.get('competitor_min_price')}</code>\n"
 			f"Минимум своего лота: <code>{rule.get('own_min_price')}</code>"
+			f"\nКомиссия: <code>{rule.get('commission_percent', 0)}%</code>"
 		)
 
 	def _find_rule(self, rule_id: str) -> dict[str, Any]:

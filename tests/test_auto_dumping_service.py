@@ -141,6 +141,18 @@ class AutoDumpingServiceTest(unittest.TestCase):
 		disabled = service_config({"enabled": True, "interval_minutes": 5, "rules": [dict(self.config()["rules"][0], enabled=False)]})
 		self.assertIn("no enabled rules", service.describe_miss(gold, disabled))
 
+	def test_fixed_dumping_applies_to_seller_price(self):
+		config = self.config()
+		config["rules"][0]["commission_percent"] = 10.0
+		own = raw_lot("own", "My gold", 100, "me", owner=True)
+		gateway = Gateway([own], [raw_lot("c", "Gold", 110, "other")])
+		service = AutoDumpingService(lambda: config, gateway, Storage())
+
+		result = service.run_cycle()
+
+		self.assertEqual(gateway.updated, [("own", 95.0)])
+		self.assertEqual(result["updated"], 1)
+
 
 if __name__ == "__main__":
 	unittest.main()

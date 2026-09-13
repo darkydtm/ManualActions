@@ -194,6 +194,8 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.flow.save_rule(self._message("10"))
 		self.flow.save_rule(self._message("20"))
 		self.flow.save_rule(self._message("30"))
+		self.assertEqual(self.host.tg.get_state(1, 7)["data"]["step"], "commission_percent")
+		self.flow.save_rule(self._message("9"))
 		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "confirm"))
 
 		rule = self.host.settings["auto_dumping"]["rules"][0]
@@ -204,6 +206,21 @@ class AutoDumpingTelegramTest(unittest.TestCase):
 		self.assertEqual(rule["dumping_value"], 10.0)
 		self.assertEqual(rule["competitor_min_price"], 20.0)
 		self.assertEqual(rule["own_min_price"], 30.0)
+		self.assertEqual(rule["commission_percent"], 9.0)
+
+	def test_add_rule_rejects_out_of_range_commission(self):
+		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "1"))
+		self.flow.save_rule(self._message("4093"))
+		self.flow.save_rule(self._message("gold"))
+		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "mode:any"))
+		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "price:fixed"))
+		self.flow.save_rule(self._message("5"))
+		self.flow.save_rule(self._message("0"))
+		self.flow.save_rule(self._message("0"))
+		self.flow.save_rule(self._message("150"))
+
+		self.assertEqual(self.host.tg.get_state(1, 7)["data"]["step"], "commission_percent")
+		self.assertIn("от 0 до 100", self.host.tgbot.messages[-1][1])
 
 	def test_add_rule_rejects_name_subcategory(self):
 		self.flow.add_rule(self._call(CBT_AUTO_DUMPING_RULE_ADD + "1"))

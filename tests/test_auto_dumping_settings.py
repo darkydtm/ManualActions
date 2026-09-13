@@ -89,6 +89,12 @@ class AutoDumpingSettingsTest(unittest.TestCase):
 	def test_normalize_rule_drops_name_based_subcategory(self):
 		self.assertIsNone(normalize_rule({"subcategory": "Game", "keywords": ["gold"], "dumping_value": 1}))
 
+	def test_commission_defaults_to_zero_and_clamps_to_range(self):
+		self.assertEqual(normalize_rule({"subcategory": 4093, "keywords": ["gold"], "dumping_value": 1})["commission_percent"], 0.0)
+		self.assertEqual(normalize_rule({"subcategory": 4093, "keywords": ["gold"], "dumping_value": 1, "commission_percent": 9})["commission_percent"], 9.0)
+		self.assertEqual(normalize_rule({"subcategory": 4093, "keywords": ["gold"], "dumping_value": 1, "commission_percent": -5})["commission_percent"], 0.0)
+		self.assertEqual(normalize_rule({"subcategory": 4093, "keywords": ["gold"], "dumping_value": 1, "commission_percent": 150})["commission_percent"], 100.0)
+
 
 if __name__ == "__main__":
 	unittest.main()

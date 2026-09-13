@@ -67,6 +67,7 @@ def normalize_rule(data: Any) -> dict[str, Any] | None:
 		"price_mode": price_mode,
 		"dumping_value": dumping_value,
 		"own_min_price": nonnegative_number(data.get("own_min_price"), 0.0),
+		"commission_percent": min(nonnegative_number(data.get("commission_percent"), 0.0), 100.0),
 		"sellers_blacklist": normalize_words(data.get("sellers_blacklist")),
 		"keywords_blacklist": normalize_words(data.get("keywords_blacklist")),
 	}
